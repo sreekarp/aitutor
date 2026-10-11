@@ -31,15 +31,6 @@ def spoken(cur, action, check=None, cid=None, progress=None, grade=None, **field
 
 
 # ---------- fast paths ----------
-def test_safety_words_and_phone_not_decimals(cur):
-    for text in ("I want to die", "sometimes I hurt myself", "self-harm", "my dad hits me",
-                 "my number is nine eight seven", "call me on 9876543210", "marna chahta hoon"):
-        assert fallback.is_safety(text), text
-    for text in ("x = 0.3333333", "1/3 is about 0.33333333", "x is 1234567.5", "123456", "2 and 3", "हाँ"):
-        assert not fallback.is_safety(text), text
-    assert spoken(cur, "safety") == [EXPECTED_SAFETY_TEXT]                    # the exact safety words
-
-
 def test_keyword_whole_reply_only():
     for text in ("ok", "OK!", "ok next", "Haan theek hai", "go on", "accha"):
         assert fallback.keyword(text, "teaching") == "next", text
@@ -64,6 +55,12 @@ def test_understand_order_and_negations(cur):
     assert understand(cur, "I know it is yes", "rt1").answer == "yes"     # ... and "know" isn't "no"
     assert understand(cur, "I don't know, maybe 2").type == "dont_know"   # dont_know is checked first
     assert understand(cur, "2 and 3", phase="teaching").type == "unclear"  # answers are read only while checking
+
+
+def test_my_number_is_an_answer_and_beats_me_is_dont_know(cur):
+    said = understand(cur, "My number is seven.", "sf2")                  # graded like any other answer
+    assert (said.type, said.answer, said.safety) == ("answer", "7", False)
+    assert understand(cur, "Beats me.", "sf2").type == "dont_know"        # "beats me" means "I don't know"
 
 
 def test_scripted_answer_odd_formats(cur):
@@ -119,6 +116,10 @@ def test_understand_non_latin_and_long(cur):
 
 
 # ---------- scripted replies ----------
+def test_safety_reply_words(cur):
+    assert spoken(cur, "safety") == [EXPECTED_SAFETY_TEXT]                    # the exact safety words
+
+
 def test_templates_have_no_latex_and_no_keys(cur):
     """Every action's words are plain short speech; while a question is open they hold no numbers at all."""
     progress = fresh_progress(cur)

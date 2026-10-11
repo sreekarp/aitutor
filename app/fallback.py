@@ -16,7 +16,7 @@ from app.models import (WORD_KINDS, BoardCommand, Check, Concept, Curriculum, De
                         Segment, Step, Understood)
 
 
-def _phrases(*phrases: str) -> re.Pattern:
+def phrases(*phrases: str) -> re.Pattern:
     """A regex that finds any of the phrases as whole words, longest first ("self harm" also finds "self-harm")."""
     words = sorted((r"\W+".join(map(re.escape, p.split())) for p in phrases), key=len, reverse=True)
     return re.compile(r"\b(?:" + "|".join(words) + r")\b")
@@ -29,22 +29,18 @@ def _whole_reply(*phrases: str) -> re.Pattern:
 
 
 # ---------- word lists ----------
-SAFETY = _phrases("kill myself", "suicide", "want to die", "end my life", "hurt myself", "self harm", "cut myself",
-                  "abuse", "abused", "hits me", "beats me", "scared to go home", "my address", "my phone number",
-                  "my number is", "i live at", "marna chahta", "marna chahti")
-PHONE = re.compile(r"(?<![\d.])\d{7,}(?!\.\d)")          # 7+ digits in a row, but not the digits of 0.3333333
 NEXT = _whole_reply("ok", "okay", "next", "go on", "continue", "yes", "haan", "han", "haan ji", "theek hai",
                     "thik hai", "accha")
 SAY_AGAIN = _whole_reply("say again", "repeat", "repeat please", "phir se", "phir se bolo", "dobara", "once more")
-DONT_KNOW = _phrases("dont know", "no idea", "just tell me", "hint", "help", "dont get it", "didnt get it",
-                     "dont understand", "didnt understand", "not understood", "havent understood", "pata nahi",
-                     "nahi pata", "samajh nahi")
-GET_IT = _phrases("get it", "got it", "understood", "samajh gaya", "samajh gayi")
+DONT_KNOW = phrases("dont know", "no idea", "just tell me", "hint", "help", "dont get it", "didnt get it",
+                    "dont understand", "didnt understand", "not understood", "havent understood", "pata nahi",
+                    "nahi pata", "samajh nahi", "beats me")
+GET_IT = phrases("get it", "got it", "understood", "samajh gaya", "samajh gayi")
 QUESTION_START = re.compile(r"\s*(?:why|how|what|kyun|kaise)\b")
 # Method words, by their start: "factor" also finds "factorise" and "factorised".
 METHOD = re.compile(r"\b(?:d|formula|discriminant|(?:factor|split|bracket|substitut|put|multipl|expand|simplif"
                     r"|cancel)\w*)\b")
-BECAUSE = _phrases("because", "since")
+BECAUSE = phrases("because", "since")
 MARKER = re.compile(r"\b(?:because|since|so|as)\b|=")    # the answer is read from the text before these
 X_OR_D = re.compile(r"(?<![a-z])[xd](?![a-z])")           # a part that mentions x or D is working, not a value
 MATHS = re.compile(r"sqrt|[-+*/().±0-9 ]")
@@ -78,11 +74,6 @@ REVIEW_LATER = "This one needs more practice, so we'll come back to this next ti
 
 
 # ---------- fast paths ----------
-def is_safety(text: str) -> bool:
-    """True for a distress phrase, personal details, or a phone-like run of 7+ digits."""
-    return bool(SAFETY.search(text.lower()) or PHONE.search(text))
-
-
 def keyword(text: str, phase: str) -> str | None:
     """"next" or "say_again" when the WHOLE reply is listed phrases; anything longer goes to UNDERSTAND."""
     clean = " ".join(re.sub(r"[^a-z0-9]+", " ", text.lower()).split())
@@ -126,8 +117,8 @@ def understand(text: str, *, phase: str, check: Check | None, awaiting_working: 
         kind = "answer"                                      # working only, e.g. "I factorised it"
     else:
         kind = "unclear"
-    return Understood(type=kind, answer=answer if kind == "answer" else "", showed_working=working,
-                      safety=is_safety(text))
+    # No safety flag here: the tutor runs safety.is_safety before any understanding.
+    return Understood(type=kind, answer=answer if kind == "answer" else "", showed_working=working)
 
 
 def _drop_names(text: str, check: Check | None) -> str:
@@ -156,7 +147,7 @@ def _answer(text: str, check: Check) -> str:
 def _answer_word(text: str, kind: str) -> str:
     """The first answer word this kind of question accepts: "haan" -> "yes", "no solution" -> "none"."""
     spellings = {spelling: word for word, group in WORD_CHOICES.get(kind, {}).items() for spelling in group}
-    found = _phrases(*spellings).search(text) if spellings else None
+    found = phrases(*spellings).search(text) if spellings else None
     return spellings[" ".join(re.findall(r"[a-z]+", found.group(0)))] if found else ""
 
 

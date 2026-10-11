@@ -172,7 +172,9 @@ UNDERSTAND made of the reply; SymPy's verdict; the decision's rule and reason; m
 stage; each model call's model, time, outcome, retry, backup, tokens and cost; and any issues. An
 issue is a rejected model output with its exact problems (not JSON, bad maths, a revealed answer,
 LaTeX in speech), a fall back to scripted words, a lesson change, a safety review or an internal
-error. A safety review and a model's breaker opening also write a warning line.
+error. A safety review is a reply caught by the keyword safety check (`app/safety.py`, run before
+anything else reads the reply) or by UNDERSTAND's safety flag. A safety review and a model's breaker
+opening also write a warning line.
 
 Alerts *(designed, not built; thresholds are targets to tune)*:
 
@@ -317,6 +319,11 @@ Known gaps, after the build:
   through trap answers, so it hints where the LLM might reteach; any "?" makes a reply a question,
   even "did India win yesterday?"; a second reply isn't merged with the first ("0 too" after "3");
   and mixed replies are read roughly. Without a key, students have to say the answer first.
+- **The keyword safety check has rare false alarms.** `app/safety.py` reads 7 or more digits in a row
+  as a phone number, so a factor list typed without commas ("1 2 3 4 6 12"), a hyphenated date or 7
+  or more number words in a row get the safety reply. "Beats me" alone means "I don't know", so "Rohan
+  beats me" relies on the person rule (any word before "beats me" except it, that, this or question),
+  which also flags "honestly beats me".
 - **One process only.** The breakers live in memory and SQLite wants one writer, so the app runs one
   uvicorn worker. More traffic means Postgres and shared breakers first.
 - **No duplicate-request guard.** A request sent twice would apply twice. The page never resends by

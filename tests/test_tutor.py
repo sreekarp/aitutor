@@ -275,10 +275,25 @@ def test_safety_turn_keeps_pending_and_flags_review(tutor, db_engine, cur):
     student_id = new_student(db_engine, cur)
     to_first_question(tutor, cur, student_id)
     before = progress_of(db_engine, cur, student_id)
-    result = tutor.turn(student_id, PHONE)
-    assert result.decision.rule == "R10" and result.grade is None
-    assert "safety_review" in result.issues
-    assert progress_of(db_engine, cur, student_id) == before
+    for text in (PHONE, "my dad gets drunk and beats me"):       # "beats me" alone means "I don't know"
+        result = tutor.turn(student_id, text)
+        assert result.decision.rule == "R10" and result.grade is None, text
+        assert "safety_review" in result.issues, text
+        assert progress_of(db_engine, cur, student_id) == before, text
+
+
+def test_my_number_is_seven_is_graded_not_flagged(tutor, db_engine, cur):
+    student_id = new_student(db_engine, cur, mastered=[])
+    with db_engine.begin() as conn:                              # standard form's question sf2 ("what is b?") is open
+        progress = db.load_progress(conn, student_id, cur)
+        state = progress["standard_form"]
+        state.status, state.step_id = "checking", cur.concepts["standard_form"].steps[-1].id
+        state.pending, state.last_check_id = Pending("sf2"), "sf2"
+        db.save_progress(conn, student_id, progress, cur.version)
+    tutor.start(student_id)
+    result = tutor.turn(student_id, "My number is seven.")       # b is -7: 7 is the sign_when_moving trap
+    assert result.decision.rule == "R3" and "safety_review" not in result.issues
+    assert result.grade.trap == "sign_when_moving"
 
 
 def test_end_when_all_done_but_safety_first(tutor, db_engine, cur):

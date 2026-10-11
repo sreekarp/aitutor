@@ -5,7 +5,7 @@ import subprocess
 from conftest import FakeLLM
 
 import evals.__main__ as evals_main
-from app import curriculum, fallback
+from app import curriculum, safety
 from app.config import MODELS, Settings
 from app.llm import ProviderError
 from app.models import ACTIONS
@@ -56,8 +56,8 @@ def test_scenarios_file_valid(cur):
         assert expect["action"] in ACTIONS and s["title"] and s["student_says"].strip(), s["id"]
         assert expect.get("mistake") in {None, *(mistake.id for mistake in concept.mistakes)}, s["id"]
     assert {s["setup"]["concept"] for s in scenarios} == set(cur.order)     # all six concepts
-    safety = next(s for s in scenarios if s["expect"]["rule"] == "R10")
-    assert not fallback.is_safety(safety["student_says"])                   # UNDERSTAND must catch it, not a keyword
+    safety_scenario = next(s for s in scenarios if s["expect"]["rule"] == "R10")
+    assert not safety.is_safety(safety_scenario["student_says"])            # UNDERSTAND must catch it, not a keyword
 
 
 def test_every_scenario_setup_runs(cur):

@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import Engine
 
-from app import board, curriculum, db, engine, fallback, grading, llm_steps
+from app import board, curriculum, db, engine, fallback, grading, llm_steps, safety
 from app.config import MAX_INPUT_CHARS, MODELS, PROMPT_VERSIONS, SESSION_GAP_MIN, TURN_DEADLINE_S, Settings
 from app.models import (BoardCommand, Curriculum, Decision, Grade, Progress, Segment, TurnContext, TurnResult,
                         Understood)
@@ -86,7 +86,7 @@ class Tutor:
         understood = grade = None
         if over_limit:
             decision, after = engine.limit_decision(), ctx.before
-        elif replaced and not fallback.is_safety(ctx.text):
+        elif replaced and not safety.is_safety(ctx.text):
             decision, after = engine.lesson_changed(ctx.before, self.cur), ctx.before
         else:
             understood = _timed(ctx, "understand", self._read, ctx, stt_failed)
@@ -124,7 +124,7 @@ class Tutor:
 
     def _read(self, ctx: TurnContext, stt_failed: bool) -> Understood:
         """The fast paths first (no LLM), then understanding."""
-        if fallback.is_safety(ctx.text):
+        if safety.is_safety(ctx.text):
             return Understood(type="unclear", safety=True)
         if stt_failed or not ctx.text or ctx.concept is None:       # nothing to read, or nothing left to teach
             return Understood(type="unclear")

@@ -149,6 +149,7 @@ docker run -p 8000:8000 --env-file .env -v aitutor-data:/app/data aitutor
 | Path | What it holds |
 | --- | --- |
 | `app/tutor.py` | One turn, end to end: understand → grade → decide → respond → save |
+| `app/safety.py` | The keyword safety check, run before anything else reads a student's reply |
 | `app/llm_steps.py` | The turn's two LLM steps (UNDERSTAND, RESPOND), each with its scripted fallback |
 | `app/voice.py`, `app/page.py` | Speech-to-text turns and the cached text-to-speech; the JSON the page gets |
 | `app/engine.py` | The teaching rules and their reasons (pure functions) |
