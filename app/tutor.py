@@ -9,10 +9,11 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import Engine
 
-from app import board, curriculum, db, engine, fallback, grading
+from app import board, curriculum, db, engine, fallback, grading, prompts
 from app.config import MAX_INPUT_CHARS, MODELS, PROMPT_VERSIONS, SESSION_GAP_MIN, TURN_DEADLINE_S, Settings
-from app.models import (BoardCommand, BoardLine, Check, Concept, ConceptState, Curriculum, Decision, Grade,
-                        Progress, Segment, TurnResult, Understood)
+from app.llm import BadOutputError, ProviderError
+from app.models import (LLM_ACTIONS, BoardCommand, BoardLine, Check, Concept, ConceptState, Curriculum, Decision,
+                        Grade, Pending, Progress, Segment, TurnResult, Understood)
 
 log = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ class TurnContext:
     calls: list[dict]                  # model calls made so far this turn
     issues: list[str]
     latency: dict
+    scripted: bool = False             # no LLM for the rest of this turn (scripted mode, or UNDERSTAND failed)
 
 
 class Tutor:
@@ -133,7 +135,7 @@ class Tutor:
             before=before, check=curriculum.get_check(concept, pending.check_id) if pending else None,
             text=text, tutor_last_line=said[-1] if said else "", previous_reason=last["reason"] if last else "",
             board=board_now, deadline=started + TURN_DEADLINE_S, calls=calls, issues=list(issues),
-            latency=latency)
+            latency=latency, scripted=self.scripted)
         return ctx, replaced
 
     def _read(self, ctx: TurnContext, stt_failed: bool) -> Understood:
@@ -145,16 +147,27 @@ class Tutor:
         fast = fallback.keyword(ctx.text, ctx.phase)
         return Understood(type=fast) if fast else self._understand(ctx)
 
-    # ---------- the two seams: scripted here; the LLM version tries the model first ----------
+    # ---------- the two seams: the LLM first, the scripted version when it fails (spec §7.2, §7.3) ----------
     def _understand(self, ctx: TurnContext) -> Understood:
-        """What kind of reply this is, and the answer in it (scripted, spec §7.3)."""
+        """What kind of reply this is, and the answer in it: UNDERSTAND, or scripted if the LLM fails."""
         pending = ctx.before[ctx.concept.id].pending
+        if not ctx.scripted:
+            try:
+                return self._llm_understand(ctx, pending)
+            except (ProviderError, BadOutputError):
+                ctx.issues.append("understand_fallback")
+                ctx.scripted = True                       # the rest of this turn is scripted too
         return fallback.understand(ctx.text, phase=ctx.phase, check=ctx.check,
                                    awaiting_working=bool(pending and pending.awaiting_working))
 
     def _words(self, ctx: TurnContext, decision: Decision, after: Progress, understood: Understood,
                grade: Grade | None) -> tuple[list[Segment], Decision, Progress]:
         """Words for the decision's action only; compose adds steps, questions and re-asks afterwards."""
+        if decision.action in LLM_ACTIONS and not ctx.scripted:
+            try:
+                return self._llm_words(ctx, decision, understood, grade), decision, after
+            except (ProviderError, BadOutputError):
+                ctx.issues.append("respond_fallback")
         if decision.action == "reteach":                  # a scripted reteach replays the lesson's reteach step
             decision, after = engine.replay_instead(decision, ctx.before, after)
         if decision.action == "repeat" and ctx.phase == "teaching":
@@ -164,6 +177,57 @@ class Tutor:
         words = fallback.words(decision, cur=self.cur, progress=after, check=ctx.check, grade=grade,
                                first_name=ctx.student["first_name"])
         return words, decision, after
+
+    def _llm_understand(self, ctx: TurnContext, pending: Pending | None) -> Understood:
+        """UNDERSTAND (spec §5.2). A rejected output is recorded as an issue; the client asks once more."""
+        messages = prompts.understand_messages(
+            concept=ctx.concept, phase=ctx.phase, check=ctx.check,
+            previous_answer=pending.last_answer if pending else "", tutor_last_line=ctx.tutor_last_line,
+            student_text=ctx.text)
+
+        def validate(data: dict) -> Understood:
+            understood, problems = prompts.read_understood(data, ctx.check)
+            if problems:
+                ctx.issues.append("understand_rejected")
+                raise ValueError("; ".join(problems))
+            return understood
+
+        return self.llm.chat_json("understand", messages, "understood", prompts.UNDERSTAND_SCHEMA, validate,
+                                  deadline=ctx.deadline, calls=ctx.calls)
+
+    def _llm_words(self, ctx: TurnContext, decision: Decision, understood: Understood,
+                   grade: Grade | None) -> list[Segment]:
+        """RESPOND (spec §6.1). The reply is checked (§6.3) against the question pending before decide()."""
+        concept, check = ctx.concept, ctx.check
+        next_check = curriculum.get_check(concept, decision.ask_check_id) if decision.action == "reteach" else None
+        key = grading.answer_key(check) if check else None
+        next_key = grading.answer_key(next_check) if next_check else None
+        equations = [question.equation for question in concept.checks]
+        reply_ctx = board.ReplyContext(action=decision.action, board=ctx.board,
+                                       anchor=check.equation if check else None, key=key, next_key=next_key,
+                                       student_answer=understood.answer, check_equations=equations,
+                                       formulas=self.cur.formulas)
+        messages = prompts.respond_messages(
+            decision=decision, concept=concept,
+            step=None if check else curriculum.get_step(concept, ctx.before[concept.id].step_id),
+            check=check, key=key, next_check=next_check, next_key=next_key, understood=understood, grade=grade,
+            mistake=next((m for m in concept.mistakes if m.id == decision.mistake), None),
+            hint_text=check.hints[decision.hint_level - 1] if decision.action == "hint" else None,
+            board=ctx.board, check_equations=equations, formulas=self.cur.formulas,
+            previous_reason=ctx.previous_reason, student_text=ctx.text)
+
+        def validate(data: dict) -> list[Segment]:
+            segments, problems = prompts.read_reply(data, reply_ctx)
+            if problems:
+                ctx.issues.extend(f"respond_rejected:{problem}" for problem in problems)
+                raise ValueError("; ".join(problems))
+            return segments
+
+        words = self.llm.chat_json("respond", messages, "reply", prompts.RESPOND_SCHEMA, validate,
+                                   deadline=ctx.deadline, calls=ctx.calls)
+        if decision.action == "needs_review":            # spec §4.7: the worked answer, then this scripted line
+            words = words + [Segment(say=fallback.REVIEW_LATER)]
+        return words
 
     def _last_speech(self, session_id: str) -> list[Segment]:
         """R8 while teaching: the previous reply's speech again, without its board commands."""
