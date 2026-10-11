@@ -1,0 +1,136 @@
+# Concept 1. Our own variants of NCERT 4.1-4.2 (Examples 1-2). Every answer key is computed by SymPy.
+# Mistake fixes and the reteach step (simplify_first) use numbers that answer no check in this file.
+id: standard_form
+title: Standard form and recognising a quadratic
+ncert: "4.1–4.2, Examples 1–2"
+
+steps:
+  - id: hook
+    segments:
+      - say: "Here's a real problem. A prayer hall's floor is a rectangle. Its length is 1 metre more than twice its breadth, and its area is 300 square metres. Call the breadth x metres."
+        board:
+          - {op: write, id: hk1, text: "Prayer hall: length = 2 × breadth + 1 m, area = 300 m²"}
+          - {op: write, id: hk2, latex: 'x(2x+1) = 300', check: "Eq(x*(2*x+1), 300)"}
+      - say: "Multiply out the bracket and move the 300 to the left. The equation now has an x squared term, so it is called a quadratic equation."
+        board:
+          - {op: write, id: hk3, latex: '2x^2 + x - 300 = 0', check: "Eq(2*x**2 + x - 300, 0)"}
+          - {op: highlight, target: hk3, part: '2x^2'}
+
+  - id: definition
+    segments:
+      - say: "Every quadratic equation can be written in this standard form, where a, b and c are real numbers."
+        board:
+          - {op: write, id: df1, formula: standard_form}
+      - say: "a can't be zero, because then there would be no x squared term. In the prayer hall equation, a is 2, b is 1 and c is minus 300."
+        board:
+          - {op: highlight, target: df1, part: 'a \neq 0'}
+
+  - id: rearrange
+    segments:
+      - say: "To read a, b and c, put the equation in standard form. Here the terms are out of order, so write the x squared term first, then the x term, then the number."
+        board:
+          - {op: write, id: ra1, latex: '4x - 3x^2 + 2 = 0', check: "Eq(4*x - 3*x**2 + 2, 0)"}
+          - {op: write, id: ra2, latex: '-3x^2 + 4x + 2 = 0', check: "Eq(-3*x**2 + 4*x + 2, 0)"}
+      - say: "The x squared term is negative. Multiply every term by minus 1. The roots stay the same, and we keep the x squared term positive. Now a is 3, b is minus 4 and c is minus 2."
+        board:
+          - {op: write, id: ra3, latex: '3x^2 - 4x - 2 = 0', check: "Eq(3*x**2 - 4*x - 2, 0)"}
+          - {op: highlight, target: ra3, part: '3x^2'}
+      - say: "When a term moves across the equals sign, its sign changes. So move every term to the side where the x squared term is positive. Here b is minus 3 and c is minus 5."
+        board:
+          - {op: write, id: ra4, latex: '2x^2 = 3x + 5', check: "Eq(2*x**2, 3*x + 5)", relation: new}
+          - {op: write, id: ra5, latex: '2x^2 - 3x - 5 = 0', check: "Eq(2*x**2 - 3*x - 5, 0)"}
+
+  - id: simplify_first
+    segments:
+      - say: "Don't decide from how an equation looks. Simplify it first. This one seems to have an x squared term."
+        board:
+          - {op: write, id: si1, latex: 'x(x+1) + 8 = (x+2)(x-2)', check: "Eq(x*(x+1) + 8, (x+2)*(x-2))"}
+      - say: "Multiply out both sides. The x squared terms cancel, leaving x plus 12 equals zero. There is no x squared term left, so it is not a quadratic equation."
+        board:
+          - {op: write, id: si2, latex: 'x^2 + x + 8 = x^2 - 4', check: "Eq(x**2 + x + 8, x**2 - 4)"}
+          - {op: write, id: si3, latex: 'x + 12 = 0', check: "Eq(x + 12, 0)"}
+      - say: "This one has x cubed terms, so it looks like it isn't a quadratic. Expand and simplify: the x cubed terms cancel and an x squared term is left. So it is a quadratic equation."
+        board:
+          - {op: write, id: si4, latex: '(x+2)^3 = x^3 - 4', check: "Eq((x+2)**3, x**3 - 4)", relation: new}
+          - {op: write, id: si5, latex: 'x^3 + 6x^2 + 12x + 8 = x^3 - 4', check: "Eq(x**3 + 6*x**2 + 12*x + 8, x**3 - 4)"}
+          - {op: write, id: si6, latex: '6x^2 + 12x + 12 = 0', check: "Eq(6*x**2 + 12*x + 12, 0)"}
+          - {op: highlight, target: si6, part: '6x^2'}
+
+checks:
+  - id: sf1
+    say: "Is x plus 3, times x minus 3, equals x squared plus 2x a quadratic equation? Tell me how you know."
+    label: "Is this a quadratic equation?"
+    equation: "Eq((x+3)*(x-3), x**2 + 2*x)"
+    kind: is_quadratic
+    hints:
+      - "Don't decide from how it looks. Simplify it first."
+      - "Multiply out the left side, then bring every term to one side."
+      - "x plus 3, times x minus 3, is x squared minus 9. Take x squared from both sides and see what is left."
+
+  - id: sf2
+    say: "Write 5 plus 2x squared equals 7x in standard form, with the x squared term positive. What is b?"
+    label: "In standard form, with the x² term positive, find b:"
+    equation: "Eq(5 + 2*x**2, 7*x)"
+    kind: coefficient
+    which: b
+    hints:
+      - "Move every term to the side where the x squared term is positive."
+      - "The 7x moves across the equals sign, so its sign changes."
+      - "You get 2x squared minus 7x plus 5 equals zero. Now read b, the number in front of x."
+    traps: {sign_when_moving: "7"}
+
+  - id: sf3
+    say: "Is x minus 1, all cubed, equals x cubed plus x a quadratic equation? Tell me how you know."
+    label: "Is this a quadratic equation?"
+    equation: "Eq((x-1)**3, x**3 + x)"
+    kind: is_quadratic
+    hints:
+      - "It has x cubed terms, but simplify it before you decide."
+      - "Expand the left side, then bring every term to one side."
+      - "x minus 1, all cubed, is x cubed minus 3x squared plus 3x minus 1. Take x cubed from both sides and see what is left."
+
+  - id: sf4
+    say: "Write x times x minus 3 equals 10 in standard form, with the x squared term positive. What is c?"
+    label: "In standard form, with the x² term positive, find c:"
+    equation: "Eq(x*(x-3), 10)"
+    kind: coefficient
+    which: c
+    hints:
+      - "Multiply out the left side first."
+      - "Then move the 10 to the side with the x squared term. Its sign changes as it moves."
+      - "You get x squared minus 3x minus 10 equals zero. Now read c, the number on its own."
+    traps: {sign_when_moving: "10"}
+
+  - id: sf5
+    say: "Is x plus 1, all squared, equals 3 times x minus 2 a quadratic equation? Tell me how you know."
+    label: "Is this a quadratic equation?"
+    equation: "Eq((x+1)**2, 3*(x-2))"
+    kind: is_quadratic
+    hints:
+      - "Simplify it first, then decide."
+      - "Expand both sides, then bring every term to one side."
+      - "The left side is x squared plus 2x plus 1, and the right side is 3x minus 6. Move the right side across and look at what is left."
+
+  - id: sf6
+    say: "Is x times 2x minus 1 equals 2x squared plus 3 a quadratic equation? Tell me how you know."
+    label: "Is this a quadratic equation?"
+    equation: "Eq(x*(2*x-1), 2*x**2 + 3)"
+    kind: is_quadratic
+    hints:
+      - "Simplify it first, then decide."
+      - "Multiply out the left side, then bring every term to one side."
+      - "The left side is 2x squared minus x. Take 2x squared from both sides and see what is left."
+
+mistakes:
+  - id: looks_quadratic
+    looks_like: "calls an equation quadratic because it shows x squared, though the x squared terms cancel once it is simplified"
+    fix: "Always simplify before you decide. Multiply out, bring every term to one side, and only then look for an x squared term."
+  - id: looks_cubic
+    looks_like: "says an equation with x cubed terms is not quadratic, though the x cubed terms cancel and an x squared term is left"
+    fix: "Expand and simplify before you decide. When the x cubed terms cancel, an x squared term may be left, and then it is a quadratic."
+  - id: sign_when_moving
+    looks_like: "a coefficient with the wrong sign: a term moved across the equals sign without changing its sign, or every term moved to the side where the x squared term is negative"
+    fix: "Move every term to the side where the x squared term is positive, and change the sign of each term you move."
+
+strategies: [worked_example, compare_non_example]
+reteach_step: simplify_first

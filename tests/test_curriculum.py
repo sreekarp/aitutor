@@ -1,8 +1,10 @@
 """Tests for app/curriculum.py and the lesson files (spec §3.1-§3.3)."""
+import re
+
 import pytest
 import yaml
 from conftest import fresh_progress
-from sympy import Rational
+from sympy import Eq, Rational
 
 from app import curriculum, grading, mathcheck
 from app.models import BoardCommand, Check, Concept, Curriculum, Mistake, Segment, Step
@@ -232,3 +234,81 @@ def test_factorisation_keys_and_traps(cur):
     assert_keys_and_traps(concept, FACTORISATION)
     fa3 = curriculum.get_check(concept, "fa3")
     assert curriculum.ask_segment(fa3, cur.formulas).board[1].latex == "(x-2)(x+3)=0"   # reads as written
+
+
+# ---------- concepts 1 and 2 ----------
+
+STANDARD_FORM = {   # spec §3.3 concept 1
+    "sf1": ("no", {}),
+    "sf2": ([-7], {"sign_when_moving": ("7", "wrong")}),
+    "sf3": ("yes", {}),
+    "sf4": ([-10], {"sign_when_moving": ("10", "wrong")}),
+    "sf5": ("yes", {}),
+    "sf6": ("no", {}),
+}
+
+
+def test_standard_form_keys(cur):
+    concept = cur.concepts["standard_form"]
+    assert [step.id for step in concept.steps] == ["hook", "definition", "rearrange", "simplify_first"]
+    assert_keys_and_traps(concept, STANDARD_FORM)
+    definition = curriculum.get_step(concept, "definition")
+    assert any(cmd.formula == "standard_form" for segment in definition.segments for cmd in segment.board)
+    for check in concept.checks:
+        if check.kind == "coefficient":                      # the convention is said out loud
+            assert "with the x squared term positive" in check.say, check.id
+    sign = next(mistake for mistake in concept.mistakes if mistake.id == "sign_when_moving")
+    assert "change the sign of each term you move" in sign.fix
+    assert concept.strategies == ["worked_example", "compare_non_example"]
+    assert concept.reteach_step == "simplify_first"
+
+
+ROOTS = {"rt1": ("-2", "yes"), "rt2": ("-1", "no"), "rt3": ("3/2", "yes"),   # check -> (candidate, key)
+         "rt4": ("-2", "no"), "rt5": ("-5", "yes")}
+
+
+def test_roots_keys_three_yes_two_no(cur):
+    concept = cur.concepts["roots"]
+    assert [step.id for step in concept.steps] == ["definition", "not_a_root", "negative_values", "at_most_two"]
+    assert_keys_and_traps(concept, {check_id: (key, {}) for check_id, (_, key) in ROOTS.items()})
+    assert [check.candidate for check in concept.checks] == [candidate for candidate, _ in ROOTS.values()]
+    keys = [grading.answer_key(check).word for check in concept.checks]
+    assert (keys.count("yes"), keys.count("no")) == (3, 2)
+    assert sorted(mistake.id for mistake in concept.mistakes) == ["negative_square", "sign_times_negative"]
+    assert concept.reteach_step == "negative_values"
+
+
+SPOKEN_NUMBER = re.compile(r"(minus |-)?\b(\d+(?:\.\d+)?)(?:(?: over |/)(\d+))?(?!\w)")   # "minus 12.5", "3 over 2"
+
+
+def spoken_numbers(text: str) -> list:
+    """Numbers written as digits, with their signs: "x is minus 5" -> [-5]. "2x" or "4ac" aren't values."""
+    return [Rational(top) / int(bottom or 1) * (-1 if sign else 1)
+            for sign, top, bottom in SPOKEN_NUMBER.findall(text)]
+
+
+def board_numbers(cmd: BoardCommand) -> list:
+    """The values a board line shows: an equation's roots, an arithmetic result, or numbers in a text line."""
+    if cmd.text:
+        return spoken_numbers(cmd.text)
+    if not cmd.check:
+        return []                                           # a formula: letters only
+    expr = mathcheck.parse_check(cmd.check)
+    if expr.free_symbols:
+        roots = mathcheck.solutions(expr)                   # None for a bare expression
+        return list(roots) if roots is not None else []
+    return [expr.rhs if isinstance(expr, Eq) else expr]
+
+
+def test_mistake_fixes_reveal_no_answers(cur):
+    """Fixes and the reteach step are spoken just before the next question and never run through the
+    "reveals the answer" check (spec §3.1), so none of their numbers may answer a check in the concept."""
+    for concept in cur.concepts.values():
+        answers = [value for check in concept.checks for value in grading.answer_key(check).values or []]
+        found = [(f"mistake {mistake.id}", spoken_numbers(mistake.fix)) for mistake in concept.mistakes]
+        for segment in curriculum.get_step(concept, concept.reteach_step).segments:
+            found.append((f"step {concept.reteach_step}", spoken_numbers(segment.say)))
+            found += [(f"line {cmd.id}", board_numbers(cmd)) for cmd in segment.board if cmd.op == "write"]
+        clashes = [(concept.id, where, number) for where, numbers in found for number in numbers
+                   if any(grading.same_value(number, answer) for answer in answers)]
+        assert clashes == []

@@ -2,6 +2,8 @@
 version: "2026.10.1"
 
 order:
+  - standard_form
+  - roots
   - factorisation
 
 # The 4 general formulas, written by hand. SymPy can't check them (they use the letters a, b, c and D),
