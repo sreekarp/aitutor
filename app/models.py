@@ -70,6 +70,7 @@ class Concept(BaseModel):
     id: str
     title: str
     ncert: str
+    intro: str = Field(min_length=1)   # said before step 1: what we'll learn and why it's useful
     steps: list[Step]
     checks: list[Check]
     mistakes: list[Mistake]

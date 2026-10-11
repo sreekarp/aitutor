@@ -3,6 +3,7 @@
 id: standard_form
 title: Standard form and recognising a quadratic
 ncert: "4.1–4.2, Examples 1–2"
+intro: "Many real problems, like finding a length from an area, lead to a quadratic equation. We'll learn to spot one, even in disguise, and to write it in standard form."
 
 steps:
   - id: hook
@@ -23,6 +24,7 @@ steps:
           - {op: write, id: df1, formula: standard_form}
       - say: "a can't be zero, because then there would be no x squared term. In the prayer hall equation, a is 2, b is 1 and c is minus 300."
         board:
+          - {op: write, id: hk3, latex: '2x^2 + x - 300 = 0', check: "Eq(2*x**2 + x - 300, 0)"}
           - {op: highlight, target: df1, part: 'a \neq 0'}
 
   - id: rearrange

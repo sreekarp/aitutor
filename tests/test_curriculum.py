@@ -15,7 +15,7 @@ STANDARD_FORM_LATEX = r"ax^{2} + bx + c = 0, \quad a \neq 0"
 def tiny_concept() -> Concept:
     """A small valid concept. Each validation test breaks one thing in a fresh copy."""
     return Concept(
-        id="tiny", title="Tiny", ncert="none",
+        id="tiny", title="Tiny", ncert="none", intro="We'll learn one small thing.",
         steps=[
             Step(id="s1", segments=[Segment(say="If two brackets multiply to zero, one of them is zero.", board=[
                 BoardCommand(op="write", id="t1", latex="(x-4)(x+1) = 0", check="Eq((x-4)*(x+1), 0)"),
@@ -83,6 +83,7 @@ BROKEN = [  # (what is broken, how to break it, words the problem must contain)
     ("LaTeX in a hint", lambda c: setattr(c.checks[0], "hints", ["One.", "Two.", r"Use \frac."]),
      "LaTeX characters"),
     ("LaTeX in a fix", lambda c: setattr(c.mistakes[0], "fix", "Watch x_1."), "LaTeX characters"),
+    ("LaTeX in the intro", lambda c: setattr(c, "intro", "We'll solve x^2 = 4."), "intro: spoken text has LaTeX"),
     ("too many words", lambda c: setattr(c.checks[0], "say", "word " * 61), "over 60 words"),
     ("file id differs", lambda c: setattr(c, "id", "other"), "the file's id is other"),
 ]
@@ -149,9 +150,11 @@ def test_load_reads_valid_files(tmp_path):
 def test_load_reports_bad_fields_and_missing_files(tmp_path):
     data = tiny_concept().model_dump()
     del data["title"]
+    data["intro"] = ""                                         # an intro must say something
     write_lessons(tmp_path, data)
-    with pytest.raises(curriculum.CurriculumError, match="title: Field required"):
+    with pytest.raises(curriculum.CurriculumError, match="title: Field required") as error:
         curriculum.load(tmp_path)
+    assert "intro: String should have at least 1 character" in str(error.value)
     (tmp_path / "index.yaml").write_text("version: '1'\norder: [ghost, phantom]\nformulas: {}\n",
                                          encoding="utf-8")
     with pytest.raises(curriculum.CurriculumError) as error:
@@ -201,7 +204,7 @@ def assert_keys_and_traps(concept: Concept, expected: dict) -> None:
 
 
 def test_load_real_curriculum(cur):
-    assert cur.version == "2026.10.1"
+    assert cur.version == "2026.10.2"
     assert set(cur.formulas) == {"standard_form", "quadratic_formula", "discriminant", "nature_cases"}
     concept = cur.concepts["factorisation"]
     assert concept.title == "Solving by factorisation"
@@ -216,6 +219,27 @@ def test_fresh_progress_starts_every_concept(cur):
     progress = fresh_progress(cur)
     assert list(progress) == cur.order
     assert all(state.status == "not_started" and state.pending is None for state in progress.values())
+
+
+def test_intros_are_short(cur):
+    for concept in cur.concepts.values():
+        assert len(concept.intro.split()) <= 35, concept.id                 # one or two short sentences
+
+
+# Steps that talk about a line from an earlier step: (concept, step) -> that line's id.
+POINTS_BACK = {("standard_form", "definition"): "hk3", ("roots", "not_a_root"): "rd1",
+               ("roots", "at_most_two"): "nv1", ("quadratic_formula", "careful_minus_b"): "tf1"}
+
+
+def test_a_step_that_points_back_writes_its_line_again(cur):
+    """A new session clears the board and can start at any step, so a step that talks about an earlier line
+    ("the same equation") writes that same line again, id and all (it replaces itself if it's still shown)."""
+    for (concept_id, step_id), line_id in POINTS_BACK.items():
+        written = [(step.id, cmd) for step in cur.concepts[concept_id].steps for segment in step.segments
+                   for cmd in segment.board if cmd.op == "write" and cmd.id == line_id]   # every write of it, in order
+        first_step, line = written[0]
+        assert first_step != step_id, (concept_id, line_id)                  # it comes from an earlier step
+        assert (step_id, line) in written[1:], (concept_id, step_id)         # and this step writes it again
 
 
 FACTORISATION = {   # concept 3: check -> (answer key, {mistake: (trap, verdict)})
@@ -337,8 +361,9 @@ def test_formula_keys_and_traps(cur):
     assert [step.id for step in concept.steps] == ["the_formula", "find_abc", "careful_minus_b", "surd_answers"]
     assert_keys_and_traps(concept, FORMULA)
     assert [cmd.formula for cmd in writes(concept, "the_formula")] == ["quadratic_formula"]
-    # The scripted reteach replays careful_minus_b; its example's roots, 7 and 4, answer no check.
-    assert writes(concept, "careful_minus_b")[0].check == "Eq(x**2 - 11*x + 28, 0)"
+    # The scripted reteach replays careful_minus_b: the formula again, then an example whose roots, 7 and 4,
+    # answer no check.
+    assert writes(concept, "careful_minus_b")[1].check == "Eq(x**2 - 11*x + 28, 0)"
     assert concept.reteach_step == "careful_minus_b"
 
 

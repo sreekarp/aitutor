@@ -34,7 +34,7 @@ def _known(mistake_id: str) -> Mistake:
 def tiny_curriculum() -> Curriculum:
     """Three small concepts: enough to reach every rule."""
     alpha = Concept(
-        id="alpha", title="Alpha practice", ncert="test", reteach_step="a_intro",
+        id="alpha", title="Alpha practice", ncert="test", intro="Test intro.", reteach_step="a_intro",
         steps=[_step("a_intro"), _step("a_method"), _step("a_check")],
         checks=[_check("a1", "Eq(x**2 - 18*x + 77, 0)", traps={"sign_flip": "-7, -11"}),
                 _check("a2", "Eq(x**2 - 4*x - 77, 0)", traps={"sign_flip": "-11, 7"}),
@@ -44,7 +44,7 @@ def tiny_curriculum() -> Curriculum:
         mistakes=[_known("sign_flip"), _known("sign_when_moving")],
         strategies=["worked_example", "substitute_back", "compare_non_example"])
     beta = Concept(
-        id="beta", title="Beta practice", ncert="test", reteach_step="b_what",
+        id="beta", title="Beta practice", ncert="test", intro="Test intro.", reteach_step="b_what",
         steps=[_step("b_what"), _step("b_cases")],
         checks=[_check("b1", "Eq(x**2 + 9*x + 7, 0)", kind="discriminant", traps={"sign_in_D": "109"}),
                 _check("b2", "Eq(x**2 + 8*x + 20, 0)", kind="nature"),
@@ -52,7 +52,7 @@ def tiny_curriculum() -> Curriculum:
         mistakes=[_known("sign_in_D")],
         strategies=["worked_example", "compare_non_example"])
     gamma = Concept(
-        id="gamma", title="Gamma practice", ncert="test", reteach_step="g_plan",
+        id="gamma", title="Gamma practice", ncert="test", intro="Test intro.", reteach_step="g_plan",
         steps=[_step("g_plan"), _step("g_example")],
         checks=[_check("g1", "Eq(x**2 - 64, 0)", keep="positive", show_equation=False,
                        traps={"kept_impossible_root": "8, -8"}),

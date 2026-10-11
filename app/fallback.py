@@ -57,7 +57,7 @@ WORD_CHOICES = {"is_quadratic": grading.YES_NO_WORDS, "is_root": grading.YES_NO_
 SAFETY_REPLY = ("Thank you for telling me. If something is worrying you, please talk to a parent, a teacher or "
                 "another adult you trust. And please don't share personal details like your phone number or "
                 "address here.")
-FIXED = {"resume": "Welcome back.", "start_check": "Let's see if you've got it.", "show_me": "Great, then show me.",
+FIXED = {"start_check": "Let's see if you've got it.", "show_me": "Great, then show me.",
          "safety": SAFETY_REPLY, "limit": "That's all for today. Let's continue tomorrow!",
          "lesson_changed": "The lesson has been updated, so here's a new question."}
 PRAISE = ("Right", "Well done", "That's right", "Nice work")
@@ -167,11 +167,13 @@ def words(decision: Decision, *, cur: Curriculum, progress: Progress, check: Che
     """Scripted words for a decision's action. Compose adds any step, question or re-ask afterwards."""
     concept = cur.concepts.get(decision.concept_id or "")
     action = decision.action
+    if first_name.islower() or first_name.isupper():         # typed "sreekar" or "SREEKAR": say "Sreekar"
+        first_name = first_name.title()
     if action in FIXED:
         return _say(FIXED[action])
     if action == "next_step":
         return []                                            # the step's own segments do the talking
-    if action == "greet":
+    if action in ("greet", "resume"):
         return _say(_greeting(decision, cur, progress, first_name))
     if action in ("credit", "mastered"):
         return _say(_praise(action, check, concept))
@@ -211,6 +213,17 @@ def reask(check: Check, awaiting_working: bool) -> Segment:
     return Segment(say=REASK[check.kind])
 
 
+def opening(concept: Concept, action: str, from_top: bool) -> list[Segment]:
+    """Said as a concept is picked up, before its step or question. From step 1: its intro (not on Continue).
+    Right after R1 or R9 ended another concept: first that we move on to it, or go back to it if already started."""
+    title, moved_on = _lower_first(concept.title), action in ("mastered", "needs_review")
+    if not from_top:
+        return _say(f"Now let's get back to {title}, where we left off.") if moved_on else []
+    if action == "resume":
+        return []                                            # Continue (S1) only replays the step
+    return _say(f"Now let's move on to {title}. {concept.intro}" if moved_on else concept.intro)
+
+
 def answer_line(check: Check) -> BoardCommand:
     """Scripted R9's board line: a checked root claim built from SymPy's key, or a text line in words."""
     key = grading.answer_key(check)
@@ -241,19 +254,23 @@ def _praise(action: str, check: Check, concept: Concept) -> str:
     praise = PRAISE[sum(map(ord, check.id)) % len(PRAISE)]
     text = f"{praise} — {_lower_first(grading.key_text(check))}." if check.kind in WORD_KINDS else f"{praise}!"
     if action == "mastered":
-        text += f" You've given enough right answers with working, so we've finished {_lower_first(concept.title)}."
+        text += f" You've mastered {_lower_first(concept.title)}."
     return text
 
 
 def _greeting(decision: Decision, cur: Curriculum, progress: Progress, first_name: str) -> str:
-    """S0: greet by first name and name the concept we're on, or say we're revisiting it."""
+    """S0 and S1: start the concept, go over it again, or carry on where we left off. S0 says the name."""
     cid = decision.resume_concept_id
     if cid is None:
-        return f"Hi {first_name}!"                           # nothing left: compose adds the summary
+        return "Welcome back!"                               # nothing left: compose adds the summary, with the name
     state, title = progress[cid], _lower_first(cur.concepts[cid].title)
+    if decision.action == "resume":                          # S1: no name, so its audio is cached for everyone
+        return f"Welcome back! Let's carry on with {title} from where we left off."
+    if state.pending or state.step_id != cur.concepts[cid].steps[0].id:      # S0 part-way through
+        return f"Welcome back, {first_name}! Let's carry on with {title} from where we left off."
     if state.status == "teaching" and state.last_check_id:   # S0 reset it from needs review (it keeps last_check_id)
         return f"Hi {first_name}! Last time, {title} needed more practice, so let's go over it again."
-    return f"Hi {first_name}! Let's work on {title}."
+    return f"Hi {first_name}! Let's start today with {title}."
 
 
 def _summary(cur: Curriculum, progress: Progress, first_name: str) -> list[Segment]:

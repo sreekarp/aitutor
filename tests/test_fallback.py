@@ -4,7 +4,7 @@ import re
 from conftest import fresh_progress
 
 from app import fallback, grading, mathcheck
-from app.models import ACTIONS, Check, ConceptState, Decision, Grade, Segment
+from app.models import ACTIONS, Check, ConceptState, Decision, Grade, Pending, Segment
 
 LATEX_CHARS = set("\\^{}$_")
 EXPECTED_SAFETY_TEXT = ("Thank you for telling me. If something is worrying you, please talk to a parent, a teacher or "
@@ -22,11 +22,11 @@ def understand(cur, text, check_id="fa1", *, phase="checking", awaiting_working=
     return fallback.understand(text, phase=phase, check=check_of(cur, check_id), awaiting_working=awaiting_working)
 
 
-def spoken(cur, action, check=None, cid=None, progress=None, grade=None, **fields):
+def spoken(cur, action, check=None, cid=None, progress=None, grade=None, first_name="Asha", **fields):
     """The `say` lines of fallback.words() for one action."""
     decision = Decision(rule="R0", action=action, concept_id=cid, reason="test", **fields)
     segments = fallback.words(decision, cur=cur, progress=progress or fresh_progress(cur), check=check,
-                              grade=grade, first_name="Asha")
+                              grade=grade, first_name=first_name)
     return [segment.say for segment in segments]
 
 
@@ -169,16 +169,61 @@ def test_praise_greeting_and_summary(cur):
     assert spoken(cur, "credit", check_of(cur, "fa1"), "factorisation")[0].endswith("!")   # no number restated
     praise = {spoken(cur, "credit", check_of(cur, f"fa{n}"), "factorisation")[0] for n in range(1, 6)}
     assert len(praise) > 1                                              # it rotates by check id
-    assert "finished solving by factorisation" in spoken(cur, "mastered", check_of(cur, "fa1"), "factorisation")[0]
+    mastered = spoken(cur, "mastered", check_of(cur, "fa1"), "factorisation")[0]
+    assert mastered.endswith("! You've mastered solving by factorisation.")
+    mastered = spoken(cur, "mastered", check_of(cur, "di3"), "discriminant")[0]   # a word answer is said first
+    assert mastered.endswith(" — no real roots. You've mastered discriminant and nature of roots.")
     progress = fresh_progress(cur)
+    progress["standard_form"] = ConceptState("standard_form", status="teaching", step_id="hook")   # as S0 leaves it
     greeting = spoken(cur, "greet", None, "standard_form", progress, resume_concept_id="standard_form")
-    assert greeting == ["Hi Asha! Let's work on standard form and recognising a quadratic."]
+    assert greeting == ["Hi Asha! Let's start today with standard form and recognising a quadratic."]
     progress["roots"] = ConceptState("roots", status="teaching", step_id="definition", last_check_id="rt3")
-    assert "needed more practice" in spoken(cur, "greet", None, "roots", progress, resume_concept_id="roots")[0]
+    assert spoken(cur, "greet", None, "roots", progress, resume_concept_id="roots") == [   # S0 started it again
+        "Hi Asha! Last time, roots and checking by substitution needed more practice, so let's go over it again."]
     progress["standard_form"].status, progress["roots"].status = "mastered", "needs_review"
     end = spoken(cur, "end", progress=progress)
     assert end == ["That's everything for now, Asha! You've mastered standard form and recognising a quadratic.",
                    "Next session we'll come back to roots and checking by substitution."]
+
+
+def test_welcome_back_lines(cur):
+    """A new session part-way through a concept, or with a question open, says we carry on, by name.
+    Continue (S1) leaves the name out, so its audio is the same for every student and stays cached."""
+    carry_on = "Let's carry on with roots and checking by substitution from where we left off."
+    progress = fresh_progress(cur)
+    progress["roots"] = ConceptState("roots", status="teaching", step_id="not_a_root")
+    new_session = spoken(cur, "greet", None, "roots", progress, resume_concept_id="roots")
+    assert new_session == [f"Welcome back, Asha! {carry_on}"]
+    for name in ("Asha", "Ravi"):
+        again = spoken(cur, "resume", None, "roots", progress, first_name=name, resume_concept_id="roots")
+        assert again == [f"Welcome back! {carry_on}"], name
+    progress["roots"] = ConceptState("roots", status="checking", pending=Pending("rt1"), last_check_id="rt1")
+    asking = spoken(cur, "greet", None, "roots", progress, resume_concept_id="roots")
+    assert asking == new_session                                        # a question is open: the same welcome
+    for action in ("greet", "resume"):                  # nothing left to teach: the END summary after it has the name
+        assert spoken(cur, action, progress=progress) == ["Welcome back!"], action
+
+
+def test_names_typed_in_one_case_get_capitals(cur):
+    progress = fresh_progress(cur)
+    progress["roots"] = ConceptState("roots", status="teaching", step_id="definition")     # as S0 leaves it
+    for typed, said in (("sreekar", "Sreekar"), ("SREEKAR", "Sreekar"), ("sai kiran", "Sai Kiran"),
+                        ("McDonald", "McDonald")):                                        # mixed case is kept
+        greeting = spoken(cur, "greet", None, "roots", progress, first_name=typed, resume_concept_id="roots")
+        assert greeting == [f"Hi {said}! Let's start today with roots and checking by substitution."], typed
+
+
+def test_opening_before_a_concepts_step_or_question(cur):
+    """From step 1, the intro (the greeting named the concept). Right after another concept ended (R1 mastered,
+    R9 needs review): that we move on to it, or go back to it when it was already started."""
+    roots = cur.concepts["roots"]
+    assert fallback.opening(roots, "greet", True) == [Segment(say=roots.intro)]
+    move_on = [Segment(say=f"Now let's move on to roots and checking by substitution. {roots.intro}")]
+    assert fallback.opening(roots, "mastered", True) == fallback.opening(roots, "needs_review", True) == move_on
+    back = [Segment(say="Now let's get back to roots and checking by substitution, where we left off.")]
+    assert fallback.opening(roots, "mastered", False) == fallback.opening(roots, "needs_review", False) == back
+    for action, from_top in (("resume", True), ("resume", False), ("greet", False)):   # Continue, or carrying on
+        assert fallback.opening(roots, action, from_top) == [], (action, from_top)
 
 
 def test_answer_line_is_checked_or_text(cur):

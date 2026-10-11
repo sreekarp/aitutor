@@ -3,6 +3,7 @@
 id: roots
 title: Roots and checking by substitution
 ncert: "4.3, opening"
+intro: "Solving an equation means finding its roots. We'll learn what a root is, and a quick way to check whether any number is one."
 
 steps:
   - id: definition
@@ -19,6 +20,7 @@ steps:
     segments:
       - say: "Now try x equals 2 in the same equation."
         board:
+          - {op: write, id: rd1, latex: '2x^2 - 3x + 1 = 0', check: "Eq(2*x**2 - 3*x + 1, 0)"}
           - {op: write, id: rn1, latex: '2(2)^2 - 3(2) + 1 = 3', check: "Eq(2*2**2 - 3*2 + 1, 3)"}
       - say: "8 minus 6 plus 1 is 3, not zero. The equation isn't true, so 2 is not a root."
         board:
@@ -42,6 +44,7 @@ steps:
     segments:
       - say: "4 is a root of the same equation too: 16 minus 12 minus 4 is zero."
         board:
+          - {op: write, id: nv1, latex: 'x^2 - 3x - 4 = 0', check: "Eq(x**2 - 3*x - 4, 0)"}
           - {op: write, id: am1, latex: '4^2 - 3(4) - 4 = 0', check: "Eq(4**2 - 3*4 - 4, 0)"}
       - say: "A quadratic equation has at most two roots. This one has minus 1 and 4, so there are no others to look for."
         board:

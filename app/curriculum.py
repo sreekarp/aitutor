@@ -106,7 +106,7 @@ def _concept_problems(concept: Concept, formulas: dict[str, str]) -> list[str]:
         problems += [f"check {check.id}: {p}" for p in _check_problems(check, mistake_ids)]
     for mistake in concept.mistakes:
         problems += [f"mistake {mistake.id}: {p}" for p in _speech_problems(mistake.fix)]
-    return problems
+    return problems + [f"intro: {p}" for p in _speech_problems(concept.intro)]
 
 
 def _step_problems(step: Step, formulas: dict[str, str]) -> list[str]:

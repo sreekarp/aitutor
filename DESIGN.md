@@ -140,6 +140,9 @@ its versions, so the comparison is a query.
 
 **Where the curriculum comes from.** Six hand-written YAML lesson files in the repo
 (`curriculum/ch4/`), plus `index.yaml` with the order, the version and the four general formulas.
+A lesson file holds the concept's title, its `intro` (a sentence or two on what it's for, said before
+step 1), its teaching steps, its questions with hints and trap answers, its known mistakes, and how to
+reteach it.
 At startup the app validates all of it: the schema, the ids, every answer key (computed by SymPy,
 never typed in), every board line (checked by SymPy) and the spoken text (no LaTeX). If anything
 fails, the app refuses to start, so a broken lesson never reaches a student. A new NCERT chapter is

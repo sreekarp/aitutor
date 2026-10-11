@@ -142,7 +142,7 @@ class Tutor:
             check = curriculum.get_check(concept, decision.ask_check_id)
             parts.append(curriculum.ask_segment(check, self.cur.formulas))
         if decision.resume_concept_id:
-            parts += self._resume(decision.resume_concept_id, after)
+            parts += self._resume(decision.resume_concept_id, after, decision.action)
         elif decision.action in RESUMING:                 # moving on, but nothing is left: the END summary
             parts += fallback.words(engine.end_decision(), cur=self.cur, progress=after, check=None, grade=None,
                                     first_name=ctx.student["first_name"])
@@ -153,13 +153,16 @@ class Tutor:
             parts[0] = Segment(say=parts[0].say, board=[BoardCommand(op="clear"), *parts[0].board])
         return parts
 
-    def _resume(self, concept_id: str, after: Progress) -> list[Segment]:
-        """Pick a concept up where it stands: its pending question, else its step (step 1 if none)."""
+    def _resume(self, concept_id: str, after: Progress, action: str) -> list[Segment]:
+        """Pick a concept up where it stands: its opening (fallback.opening), then its pending question,
+        else its step (step 1 if none)."""
         concept, state = self.cur.concepts[concept_id], after[concept_id]
+        step = curriculum.get_step(concept, state.step_id) or concept.steps[0]
+        opening = fallback.opening(concept, action, from_top=not state.pending and step.id == concept.steps[0].id)
         if state.pending:
             check = curriculum.get_check(concept, state.pending.check_id)
-            return [curriculum.ask_segment(check, self.cur.formulas)]
-        return list((curriculum.get_step(concept, state.step_id) or concept.steps[0]).segments)
+            return opening + [curriculum.ask_segment(check, self.cur.formulas)]
+        return opening + list(step.segments)
 
     def _finish(self, ctx: TurnContext, input_mode: str, understood: Understood | None, grade: Grade | None,
                 decision: Decision, after: Progress, words: list[Segment],

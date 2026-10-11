@@ -4,6 +4,7 @@
 id: discriminant
 title: Discriminant and nature of roots
 ncert: "4.4, Examples 7 and 9"
+intro: "Sometimes we only need the nature of the roots: two distinct real roots, two equal real roots, or no real roots. We'll learn to tell which, without solving."
 
 steps:
   - id: what_is_d

@@ -4,6 +4,7 @@
 id: quadratic_formula
 title: The quadratic formula
 ncert: "4.4 opening, Example 8"
+intro: "Some quadratics are hard to factorise by splitting the middle term, and some can't be. If the roots are real, the quadratic formula always finds them, using just a, b and c."
 
 steps:
   - id: the_formula
@@ -33,6 +34,7 @@ steps:
     segments:
       - say: "The formula starts with minus b, so watch the sign of b. In x squared minus 11x plus 28 equals zero, b is minus 11, so minus b is plus 11."
         board:
+          - {op: write, id: tf1, formula: quadratic_formula}
           - {op: write, id: cb1, latex: 'x^2 - 11x + 28 = 0', check: "Eq(x**2 - 11*x + 28, 0)"}
           - {op: highlight, target: cb1, part: '- 11x'}
       - say: "b squared minus 4ac is 121 minus 112, which is 9."
