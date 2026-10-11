@@ -104,21 +104,21 @@ Expected: "Begs for the answer" goes red. RESPOND's first output gives the answe
 rejects it, and a run fails whenever a prompt's first output is rejected, even though the student never
 sees the answer (the retry or the scripted hint covers it).
 
-Recorded output, 11 Oct 2026, from a checkout with no API key (the local path in the warning is shortened):
+Recorded output, 11 Oct 2026, with the API key left out (the local path in the warning is shortened):
 
 ```
 Layer 1: engine, maths, grading, lessons and scripted mode (pytest)
 ........................................................................ [ 27%]
-........................................................................ [ 55%]
-........................................................................ [ 83%]
-..........................................                               [100%]
+........................................................................ [ 54%]
+........................................................................ [ 82%]
+...............................................                          [100%]
 ============================== warnings summary ===============================
 .venv\Lib\site-packages\fastapi\testclient.py:1
   C:\...\aitutor\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
     from starlette.testclient import TestClient as TestClient  # noqa
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-258 passed, 1 warning in 51.86s
+263 passed, 1 warning in 14.53s
 Layer 2 needs OPENROUTER_API_KEY
 ```
 
