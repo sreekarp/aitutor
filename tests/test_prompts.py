@@ -57,7 +57,7 @@ def test_understand_prompt_contains_context(cur):
     assert "PENDING QUESTION: none (teaching)" in facts
 
 
-def test_respond_prompt_marks_key_secret_and_lists_check_equations(cur):
+def test_respond_prompt_gives_answer_keys_and_lists_check_equations(cur):
     concept = cur.concepts["factorisation"]
     check, next_check = concept.checks[0], concept.checks[1]
     mistake = concept.mistakes[0]
@@ -74,9 +74,9 @@ def test_respond_prompt_marks_key_secret_and_lists_check_equations(cur):
     assert messages[0] == {"role": "system", "content": prompts.load_prompt("respond.v1")}
     facts = messages[1]["content"]
     key_values = {str(v) for v in grading.answer_key(check).values}
-    assert set(_line(facts, "SECRET ANSWER (never reveal it): ").split(", ")) == key_values
+    assert set(_line(facts, "ANSWER KEY: ").split(", ")) == key_values
     next_values = {str(v) for v in grading.answer_key(next_check).values}
-    assert set(_line(facts, "NEXT SECRET ANSWER (never reveal it): ").split(", ")) == next_values
+    assert set(_line(facts, "NEXT ANSWER KEY: ").split(", ")) == next_values
     assert _line(facts, "NEXT QUESTION (asked right after your reply): ") == next_check.say
     never = _line(facts, "NEVER USE AS EXAMPLES: ")
     assert all(c.equation in never for c in concept.checks)
@@ -99,10 +99,35 @@ def test_respond_prompt_for_hint_and_needs_review(cur):
     hint = Decision(rule="R4", action="hint", concept_id=concept.id, reason="Stuck. Hint 2 of 3.", hint_level=2)
     facts = prompts.respond_messages(decision=hint, hint_text=check.hints[1], **common)[1]["content"]
     assert "HINT LEVEL: 2 of 3" in facts and f"LESSON'S HINT: {check.hints[1]}" in facts
-    assert "SECRET ANSWER (never reveal it): " in facts and "- (empty)" in facts
+    assert "ANSWER KEY: " in facts and "- (empty)" in facts
     review = Decision(rule="R9", action="needs_review", concept_id=concept.id, reason="Three reteaches.")
     facts = prompts.respond_messages(decision=review, hint_text=None, **common)[1]["content"]
-    assert "ANSWER (work it out on the board): " in facts and "SECRET" not in facts
+    assert "ANSWER KEY: " in facts
+
+
+def test_the_broken_prompt_demo_removes_every_reveal_instruction(cur):
+    """README's demo deletes one four-line rule from respond.v1.md. Nothing else may forbid giving the answer
+    away, neither another part of the file nor the facts the code adds, or the demo could never go red."""
+    lines = prompts.load_prompt("respond.v1").splitlines()
+    start = next(i for i, line in enumerate(lines)
+                 if line.startswith("- Never give away the answer to the PENDING QUESTION"))
+    end = next(i for i in range(start + 1, len(lines)) if not lines[i].startswith("  "))
+    assert end - start == 4                               # the README says "(four lines)"
+    broken = "\n".join(lines[:start] + lines[end:])
+    concept = cur.concepts["factorisation"]
+    check, next_check = concept.checks[0], concept.checks[1]
+    for action in ("hint", "follow_up", "explain", "reteach"):
+        decision = Decision(rule="R4", action=action, concept_id=concept.id, reason="A reason.", hint_level=1,
+                            ask_check_id=next_check.id if action == "reteach" else None)
+        facts = prompts.respond_messages(
+            decision=decision, concept=concept, step=None, check=check, key=grading.answer_key(check),
+            next_check=next_check if action == "reteach" else None,
+            next_key=grading.answer_key(next_check) if action == "reteach" else None,
+            understood=Understood(type="dont_know"), grade=None, mistake=None, hint_text=check.hints[0],
+            board=[], check_equations=[check.equation], formulas=cur.formulas, previous_reason="",
+            student_text="just tell me the answer")[1]["content"]
+        for phrase in ("give away", "give no answer", "never reveal", "secret"):
+            assert phrase not in (broken + "\n" + facts).lower(), (action, phrase)
 
 
 def test_schemas_are_strict():

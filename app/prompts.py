@@ -134,15 +134,13 @@ def respond_messages(*, decision: Decision, concept: Concept, step: Step | None,
              f"LAST DECISION'S REASON: {previous_reason or 'none'}", f"CONCEPT: {concept.title}"]
     if step is not None:
         lines.append("CURRENT STEP: " + " ".join(segment.say for segment in step.segments))
-    if check is not None:
-        secret = ("ANSWER (work it out on the board)" if decision.action == "needs_review"
-                  else "SECRET ANSWER (never reveal it)")
+    if check is not None:            # facts only: what to do with the answer key is the prompt file's rule
         lines += [f"PENDING QUESTION: {check.say}", f"QUESTION EQUATION: {_equation(check)}",
-                  f"{secret}: {_answer_text(key)}"]
+                  f"ANSWER KEY: {_answer_text(key)}"]
     if next_check is not None:
         lines += [f"NEXT QUESTION (asked right after your reply): {next_check.say}",
                   f"NEXT QUESTION EQUATION: {_equation(next_check)}",
-                  f"NEXT SECRET ANSWER (never reveal it): {_answer_text(next_key)}"]
+                  f"NEXT ANSWER KEY: {_answer_text(next_key)}"]
     lines.append(f"UNDERSTOOD AS: {_understood_text(understood)}")
     if grade is not None:
         detail = f" ({DETAILS.get(grade.detail, grade.detail)})" if grade.detail else ""

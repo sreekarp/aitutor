@@ -142,7 +142,7 @@ def test_llm_reteach_is_checked_against_the_next_question(cur, db_engine):
     assert factorisation_state(db_engine, cur, student_id).strategies_tried == ["worked_example"]
     assert [segment.say for segment in result.segments[:3]] == [s["say"] for s in worked["segments"]]
     assert result.segments[-1] == curriculum.ask_segment(next_check, cur.formulas)
-    assert "NEXT SECRET ANSWER (never reveal it): -1/3, 2" in fake.asked[1][1][1]["content"]
+    assert "NEXT ANSWER KEY: -1/3, 2" in fake.asked[1][1][1]["content"]
 
 
 def test_llm_needs_review_shows_worked_answer_then_moves_on(cur, db_engine):

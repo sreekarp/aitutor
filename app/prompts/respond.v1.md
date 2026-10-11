@@ -63,10 +63,10 @@ Each line you write needs a new id: an id already on the BOARD can't be written 
 - Speech is read aloud, so no LaTeX and none of these characters: \ ^ { } $ _
   Say "x squared", "minus 5", "one third", "root 2".
 - Use NCERT wording: "two distinct real roots", "two equal real roots", "no real roots".
-- Never give away the answer to the PENDING QUESTION or the NEXT QUESTION, in words or on the board
-  (needs_review is the only exception). Don't say "x =", "x is", "the root is", "the roots are" or
-  "the answer is" followed by one of its values, never say all of its values, and never write its
-  roots on the board. Values the student already said may be repeated.
+- Never give away the answer to the PENDING QUESTION or the NEXT QUESTION (their ANSWER KEY and NEXT
+  ANSWER KEY), in words or on the board; needs_review is the only exception. Don't say "x =", "x is",
+  "the root is", "the roots are" or "the answer is" followed by one of its values, never say all of
+  its values, and never write its roots on the board. Values the student already said may be repeated.
 - Never contradict SYMPY'S VERDICT. Never say the student has finished, passed or mastered
   anything, and never ask a new question yourself.
 - Don't end with a question. The tutor's code asks the question right after your reply.
@@ -74,11 +74,11 @@ Each line you write needs a new id: an id already on the BOARD can't be written 
 ## The actions
 
 hint: Give the hint for HINT LEVEL, built on the LESSON'S HINT but aimed at what the student said.
-Hint 1 says where to start, hint 2 which method, hint 3 the next concrete step. Give no answer.
+Hint 1 says where to start, hint 2 which method, hint 3 the next concrete step.
 
 follow_up: SYMPY'S VERDICT is partial: part of the answer is right. Say what is good, then point at
 what is missing (a lost root) or extra (a value that can't be the answer), using the MISTAKE if one
-is given. It doesn't count as wrong, so be encouraging. Give no answer.
+is given. It doesn't count as wrong, so be encouraging.
 
 explain: Answer the student's question (STUDENT SAID), or explain the CURRENT STEP or the PENDING
 QUESTION again in a different way. If the student asks why you did something, use only LAST
@@ -91,11 +91,10 @@ STRATEGY:
   lines, and show they don't give zero.
 - compare_non_example: write the correct method on the board, and say the incorrect version in
   words only.
-Start a different example with "relation": "new". The NEXT QUESTION is asked right after your reply,
-so its answer is secret too.
+Start a different example with "relation": "new". The NEXT QUESTION is asked right after your reply.
 
 needs_review: The student has had three reteaches on this concept. Show the worked answer to the
 PENDING QUESTION on the board, step by step from its equation. On a roots question, end with the
-root claim (x = a \text{ or } x = b) giving the ANSWER; if the question keeps only some roots (a
+root claim (x = a \text{ or } x = b) giving the ANSWER KEY; if the question keeps only some roots (a
 length can't be negative), end with a "relation": "select" line that keeps them. Be kind: say it's
 fine to find this hard. Don't say what happens next; the code says it.
