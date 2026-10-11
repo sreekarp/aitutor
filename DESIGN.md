@@ -64,7 +64,8 @@ CREATE TABLE turns (                   -- append-only: one row per reply, and pe
   grade         JSON,                 -- SymPy's verdict (correct | wrong | partial | unsure), trap
   tutor_output  JSON,                 -- the segments spoken and drawn (speech + board commands)
   versions      JSON,                 -- what this turn used: curriculum, understand and respond prompts
-  latency_ms    JSON,                 -- per stage, plus the browser's prev_first_audio_ms
+  latency_ms    JSON,                 -- per stage, plus the browser's prev_first_audio_ms, and for
+                                      -- voice turns its mic_open_ms and recording_ms
   calls         JSON,                 -- per model call: role, model, ms, outcome, retried,
                                       -- backup_used, tokens, cost
   issues        JSON,                 -- rejected outputs and why, fallbacks, lesson changes, safety
@@ -172,12 +173,12 @@ it started with. Neither is built: the rule above already keeps every student on
 Every turn writes one `turns` row, one `decisions` row and one JSON log line to stdout with the same
 fields: session, turn and student ids; the session's and the turn's versions; phase; what
 UNDERSTAND made of the reply; SymPy's verdict; the decision's rule and reason; milliseconds per
-stage; each model call's model, time, outcome, retry, backup, tokens and cost; and any issues. An
-issue is a rejected model output with its exact problems (not JSON, bad maths, a revealed answer,
-LaTeX in speech), a fall back to scripted words, a lesson change, a safety review or an internal
-error. A safety review is a reply caught by the keyword safety check (`app/safety.py`, run before
-anything else reads the reply) or by UNDERSTAND's safety flag. A safety review and a model's breaker
-opening also write a warning line.
+stage (for a voice turn, also the browser's mic-open and recording times); each model call's model,
+time, outcome, retry, backup, tokens and cost; and any issues. An issue is a rejected model output
+with its exact problems (not JSON, bad maths, a revealed answer, LaTeX in speech), a fall back to
+scripted words, a lesson change, a safety review or an internal error. A safety review is a reply
+caught by the keyword safety check (`app/safety.py`, run before anything else reads the reply) or by
+UNDERSTAND's safety flag. A safety review and a model's breaker opening also write a warning line.
 
 Alerts *(designed, not built; thresholds are targets to tune)*:
 
@@ -218,7 +219,11 @@ grading, the engine, RESPOND (only for hints, follow-ups, explanations, reteache
 with its board checks), then text-to-speech per segment. Every turn records milliseconds per stage
 in `turns.latency_ms` (`stt`, `understand`, `grade`, `decide`, `respond`, `total`), each
 text-to-speech call logs its own time, and the browser measures stop click → first audio and sends
-it with the next turn as `prev_first_audio_ms`.
+it with the next turn as `prev_first_audio_ms`. A voice turn's `latency_ms` also holds two times the
+browser sends with the recording: `mic_open_ms`, from the Speak click until the recording has really
+started (the mic is opened afresh for every recording, and a student's first-ever click also
+includes the browser asking them to allow the microphone), and `recording_ms`, from then until Stop
+(or the 30 s limit).
 
 **Measured: one scripted-mode session** (no LLM), 11 Oct 2026: 55 typed turns plus the Start,
 through the real web server (one uvicorn worker, a SQLite file) on a Windows 11 laptop. It covered
@@ -251,9 +256,11 @@ confirm it, the first levers are a faster UNDERSTAND model (the evals compare mo
 
 What the student perceives, and what we do about it:
 
-- **Show progress immediately:** the status line goes Listening… → Thinking… → Speaking…, and the mic
-  and text box are disabled while a turn runs. After ~17 s with no reply the page says "That took
-  too long — try again or type it", and nothing is resent.
+- **Show progress immediately:** the status line goes Opening the microphone… → Listening… →
+  Thinking… → Speaking…, and the mic and text box are disabled while a turn runs. The Speak button
+  reads "⏳ Opening mic…" until the recording has really started and only then turns into Stop, so
+  the student doesn't start talking before the mic can hear them. After ~17 s with no reply the page
+  says "That took too long — try again or type it", and nothing is resent.
 - **Board and voice together:** each segment's board commands run as that segment's audio starts.
   If its audio isn't ready ~3 s after it's due, the browser's own voice reads it, so the board is
   never more than ~3 s behind the reply.

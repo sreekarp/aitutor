@@ -1,6 +1,7 @@
 // Sound and the mic: the browser voice, each segment's server audio, the stop-click-to-first-audio timing,
-// and recording. Loaded after board.js; it calls runTurn, request, setStatus, showNote, setBusy and
-// addTranscript from app.js. Plain JS, no build step.
+// and recording. The Speak button reads "Opening mic…" until the recording has really started, and each
+// recording is sent with two mic timings (mic_open_ms, recording_ms). Loaded after board.js; it calls runTurn,
+// request, setStatus, showNote, setBusy and addTranscript from app.js. Plain JS, no build step.
 "use strict";
 
 const MAX_RECORDING_MS = 30000;   // a recording stops by itself after 30 s
@@ -111,37 +112,48 @@ function takeFirstAudioMs() {   // hands the measurement to the next turn, once
 }
 
 // ---------- recording: click to start, click to stop ----------
+// Each Speak click opens the mic and each recording closes it, so the mic is only on while the student talks.
 let recorder = null;   // the MediaRecorder while the mic is on
 
 async function onMic() {
   unlockSound();   // first, while the click is still being handled
   if (recorder) return stopRecording();
+  const clickedAt = performance.now();   // the first-ever click's mic_open_ms includes the browser's permission prompt
   setBusy(true);   // no typing, and no second recording, while the mic is on
+  micButton.textContent = "⏳ Opening mic…";   // still disabled: opening the mic can take a second
+  setStatus("Opening the microphone… start talking when it says Listening.");
   let stream = null;
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    startRecording(stream);
+    startRecording(stream, clickedAt);
   } catch (e) {
     if (stream) stream.getTracks().forEach((track) => track.stop());
+    showMic(false);
     setBusy(false);
     showNote("I can't use the microphone. Allow it in the browser, or type instead.");
   }
 }
 
-function startRecording(stream) {
+function startRecording(stream, clickedAt) {
   const mimeType = RECORDING_TYPES.find((type) => MediaRecorder.isTypeSupported(type));   // undefined: browser picks
   const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
   const chunks = [];
+  let startedAt = 0;   // performance.now() when the recording really started
   rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  rec.onstart = () => {   // the recording has really started: only now is it safe to talk
+    startedAt = performance.now();
+    showMic(true);
+    setStatus("Listening… speak now, then click Stop.");
+    setTimeout(() => { if (recorder === rec) stopRecording(); }, MAX_RECORDING_MS);
+  };
   rec.onstop = () => {
     stream.getTracks().forEach((track) => track.stop());   // release the mic
-    sendRecording(new Blob(chunks, { type: rec.mimeType || mimeType || "audio/webm" }));
+    const micOpenMs = Math.round(startedAt - clickedAt);          // Speak click -> recording started
+    const recordingMs = Math.round(stopClickedAt - startedAt);    // recording started -> the stop click (or 30 s)
+    sendRecording(new Blob(chunks, { type: rec.mimeType || mimeType || "audio/webm" }), micOpenMs, recordingMs);
   };
   rec.start();
   recorder = rec;
-  showMic(true);
-  setStatus("Listening… click Stop when you're done.");
-  setTimeout(() => { if (recorder === rec) stopRecording(); }, MAX_RECORDING_MS);
 }
 
 function stopRecording() {   // the stop click (or 30 s); onstop then sends the recording
@@ -157,9 +169,11 @@ function showMic(recording) {   // while recording, the mic button is a Stop but
   micButton.disabled = !recording;
 }
 
-function sendRecording(blob) {
+function sendRecording(blob, micOpenMs, recordingMs) {   // the recording and its mic timings, never the mic's name
   const form = new FormData();
   form.append("audio", blob, "recording");
+  form.append("mic_open_ms", String(micOpenMs));
+  form.append("recording_ms", String(recordingMs));
   const ms = takeFirstAudioMs();
   if (ms !== null) form.append("prev_first_audio_ms", String(ms));
   runTurn(async () => {

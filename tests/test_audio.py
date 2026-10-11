@@ -67,7 +67,8 @@ def test_turn_audio_transcribes_then_runs_turn(cur, db_engine):
     with db_engine.begin() as conn:
         student_id = db.get_or_create_student(conn, "asha", "Asha")["id"]
     tutor.start(student_id)
-    result = voice.turn_audio(tutor, student_id, SPEECH, "audio/webm;codecs=opus", prev_first_audio_ms=850)
+    result = voice.turn_audio(tutor, student_id, SPEECH, "audio/webm;codecs=opus", prev_first_audio_ms=850,
+                              mic_open_ms=640, recording_ms=1500)
     assert fake.stt_calls == [("audio/webm;codecs=opus", "en")]   # llm.py turns the MIME type into "webm"
     assert (result.transcript, result.decision.rule) == ("ok", "R0")   # the same turn as typing "ok"
     assert result.calls[0]["role"] == "stt"           # the speech-to-text call is part of the turn's record
@@ -75,17 +76,30 @@ def test_turn_audio_transcribes_then_runs_turn(cur, db_engine):
         saved = db.get_turn(conn, result.turn_id)
     assert saved["input"] == "voice"
     assert saved["latency_ms"]["prev_first_audio_ms"] == 850
+    assert saved["latency_ms"]["mic_open_ms"] == 640      # the browser's Speak click -> recording started
+    assert saved["latency_ms"]["recording_ms"] == 1500    # and recording started -> Stop
     assert "stt" in saved["latency_ms"] and "total" in saved["latency_ms"]
 
 
-def test_audio_route_runs_a_turn(cur):
+def test_audio_route_runs_a_turn(cur, tmp_path):
     fake = FakeVoice(heard="ok")
-    client = voice_client(cur, fake)
+    url = f"sqlite:///{(tmp_path / 'tutor.db').as_posix()}"   # a file, so the test can open it and read the turn
+    client = TestClient(create_app(make_settings(openrouter_api_key="test-key", llm_mode="auto", database_url=url),
+                                   llm=fake, cur=cur))
+    sign_in(client)
     client.post("/api/session")
-    r = upload(client, mime="audio/webm;codecs=opus", prev_first_audio_ms="850")
+    r = upload(client, mime="audio/webm;codecs=opus", prev_first_audio_ms="850", mic_open_ms="640",
+               recording_ms="1500")
     assert r.status_code == 200
     assert (r.json()["transcript"], r.json()["decision"]["rule"]) == ("ok", "R0")
     assert fake.stt_calls == [("audio/webm;codecs=opus", "en")]
+    # FastAPI drops form fields a route doesn't name, so only the saved turn shows the mic times got through
+    engine = db.connect(url)
+    with engine.connect() as conn:
+        latency = db.get_turn(conn, r.json()["turn_id"])["latency_ms"]
+    engine.dispose()
+    assert latency["mic_open_ms"] == 640
+    assert latency["recording_ms"] == 1500
 
 
 def test_stt_failure_asks_to_type(cur):

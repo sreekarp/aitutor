@@ -90,6 +90,7 @@ def create_app(settings: Settings | None = None, *, llm=None, cur: Curriculum | 
 
     @app.post("/api/turn/audio")
     def audio_turn(audio: UploadFile, prev_first_audio_ms: int | None = Form(None),
+                   mic_open_ms: int | None = Form(None), recording_ms: int | None = Form(None),
                    student_id: str = Depends(signed_in)) -> dict:
         if tutor.scripted:
             raise HTTPException(status_code=503, detail="Voice needs the API key; type instead.")
@@ -98,7 +99,8 @@ def create_app(settings: Settings | None = None, *, llm=None, cur: Curriculum | 
             raise HTTPException(status_code=413, detail="That recording is too long.")
         try:
             result = voice.turn_audio(tutor, student_id, data, audio.content_type or "",
-                                      prev_first_audio_ms=prev_first_audio_ms)
+                                      prev_first_audio_ms=prev_first_audio_ms, mic_open_ms=mic_open_ms,
+                                      recording_ms=recording_ms)
         except NoSession:
             raise HTTPException(status_code=409, detail="Press Start first.") from None
         return page.payload(tutor, student_id, result)

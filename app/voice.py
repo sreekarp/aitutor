@@ -21,7 +21,8 @@ class NotFound(Exception):
 
 
 def turn_audio(tutor: Tutor, student_id: str, audio: bytes, mime: str, *,
-               prev_first_audio_ms: int | None = None) -> TurnResult:
+               prev_first_audio_ms: int | None = None, mic_open_ms: int | None = None,
+               recording_ms: int | None = None) -> TurnResult:
     """Speech-to-text, then the same turn as a typed reply. No transcript: "Say it again, or type it"."""
     _, over_limit = tutor.open_session(student_id)   # before Start, or past the daily limit: no paid call
     started, calls, text = time.monotonic(), [], ""
@@ -33,8 +34,10 @@ def turn_audio(tutor: Tutor, student_id: str, audio: bytes, mime: str, *,
         except ProviderError:
             text = ""                         # failed or empty: R8 asks the student to say it again or type
     stt_ms = round((time.monotonic() - started) * 1000)
+    # The browser's mic times (Speak click -> recording started, then started -> Stop) are saved next to "stt"
+    pre_latency = {"mic_open_ms": mic_open_ms, "recording_ms": recording_ms, "stt": stt_ms}
     return tutor.turn(student_id, text, input_mode="voice", prev_first_audio_ms=prev_first_audio_ms,
-                      stt_failed=not text and not over_limit, pre_calls=calls, pre_latency={"stt": stt_ms})
+                      stt_failed=not text and not over_limit, pre_calls=calls, pre_latency=pre_latency)
 
 
 def speech(tutor: Tutor, student_id: str, turn_id: str, index: int) -> bytes | None:
