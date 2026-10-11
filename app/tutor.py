@@ -1,6 +1,7 @@
 """One student turn, end to end (spec §2.2): fast paths, understand, grade, decide, words, compose, save."""
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import time
@@ -10,7 +11,8 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import Engine
 
 from app import board, curriculum, db, engine, fallback, grading, prompts
-from app.config import MAX_INPUT_CHARS, MODELS, PROMPT_VERSIONS, SESSION_GAP_MIN, TURN_DEADLINE_S, Settings
+from app.config import (MAX_INPUT_CHARS, MIN_AUDIO_BYTES, MODELS, PROMPT_VERSIONS, SESSION_GAP_MIN, TTS_CACHE_DIR,
+                        TTS_TIMEOUT_S, TURN_DEADLINE_S, Settings)
 from app.llm import BadOutputError, ProviderError
 from app.models import (LLM_ACTIONS, BoardCommand, BoardLine, Check, Concept, ConceptState, Curriculum, Decision,
                         Grade, Pending, Progress, Segment, TurnResult, Understood)
@@ -25,6 +27,10 @@ LOG_FIELDS = ("session_id", "student_id", "versions", "phase", "understood", "gr
 
 class NoSession(Exception):
     """The student hasn't pressed Start yet, so there is no session to add a turn to."""
+
+
+class NotFound(Exception):
+    """No such turn, or no such segment in it, for this student (the web route answers 404)."""
 
 
 @dataclass
@@ -302,6 +308,48 @@ class Tutor:
         return TurnResult(turn_id="", session_id=session["id"], transcript=text, understood=None, grade=None,
                           decision=decision, segments=[Segment(say=SORRY)], board=board_now,
                           issues=["internal_error"], latency_ms={}, calls=[])
+
+    # ---------- voice (spec §8.2); in scripted mode the audio route answers 503 before turn_audio ----------
+    def turn_audio(self, student_id: str, audio: bytes, mime: str, *,
+                   prev_first_audio_ms: int | None = None) -> TurnResult:
+        """Speech-to-text, then the same turn as a typed reply. No transcript: "Say it again, or type it"."""
+        started, calls, text = time.monotonic(), [], ""
+        # A click with no speech isn't sent: it would fail and count towards the speech-to-text breaker.
+        if len(audio) >= MIN_AUDIO_BYTES:
+            try:                                  # each attempt gets STT_TIMEOUT_S, all inside the turn's deadline
+                text = self.llm.transcribe(audio, mime, self.settings.stt_language,
+                                           deadline=started + TURN_DEADLINE_S, calls=calls)
+            except ProviderError:
+                text = ""                         # failed or empty: R8 asks the student to say it again or type
+        stt_ms = round((time.monotonic() - started) * 1000)
+        return self.turn(student_id, text, input_mode="voice", prev_first_audio_ms=prev_first_audio_ms,
+                         stt_failed=not text, pre_calls=calls, pre_latency={"stt": stt_ms})
+
+    def speech(self, student_id: str, turn_id: str, index: int) -> bytes | None:
+        """MP3 of segment `index` of the student's own turn, cached on disk. None: the browser voice reads it."""
+        with self.db_engine.connect() as conn:
+            turn = db.get_turn(conn, turn_id) if db.turn_owner(conn, turn_id) == student_id else None
+        segments = turn["tutor_output"]["segments"] if turn else []
+        if not 0 <= index < len(segments):        # someone else's turn, no such turn, or no such segment
+            raise NotFound(f"turn {turn_id} has no segment {index} for this student")
+        text, voice = segments[index]["say"], self.settings.tts_voice
+        if self.scripted or not text.strip():
+            return None
+        key = f"{MODELS['tts'][0]['id']}|{voice}|{text}"
+        cache_file = TTS_CACHE_DIR / f"{hashlib.sha256(key.encode()).hexdigest()}.mp3"
+        if cache_file.exists():
+            return cache_file.read_bytes()
+        started, calls = time.monotonic(), []
+        try:
+            audio = self.llm.speak(text, voice, deadline=started + TTS_TIMEOUT_S, calls=calls)
+        except ProviderError:
+            audio = None                          # not cached, so the next request tries again
+        ms = round((time.monotonic() - started) * 1000)
+        log.info(json.dumps({"tts_turn_id": turn_id, "segment": index, "ms": ms, "calls": calls}))
+        if audio:                                 # speak() only returns complete audio (an audio type, over 1 KB)
+            cache_file.parent.mkdir(parents=True, exist_ok=True)
+            cache_file.write_bytes(audio)
+        return audio
 
     # ---------- what the page gets ----------
     def state(self, student_id: str) -> dict:

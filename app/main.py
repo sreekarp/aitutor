@@ -5,7 +5,7 @@ import logging
 import secrets
 import sys
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response, UploadFile
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.middleware.sessions import SessionMiddleware
@@ -14,9 +14,10 @@ from app import curriculum, db
 from app.config import WEB_DIR, Settings, load_settings
 from app.llm import Client
 from app.models import Curriculum
-from app.tutor import NoSession, Tutor
+from app.tutor import NoSession, NotFound, Tutor
 
 COOKIE_MAX_AGE = 30 * 24 * 60 * 60   # the sign-in cookie lasts 30 days (in seconds)
+MAX_AUDIO_BYTES = 10 * 1024 * 1024   # 10 MB; a 30-second recording is far smaller
 
 
 class LoginForm(BaseModel):
@@ -86,6 +87,31 @@ def create_app(settings: Settings | None = None, *, llm=None, cur: Curriculum | 
         except NoSession:
             raise HTTPException(status_code=409, detail="Press Start first.") from None
         return tutor.payload(student_id, result)
+
+    @app.post("/api/turn/audio")
+    def audio_turn(audio: UploadFile, prev_first_audio_ms: int | None = Form(None),
+                   student_id: str = Depends(signed_in)) -> dict:
+        if tutor.scripted:
+            raise HTTPException(status_code=503, detail="Voice needs the API key; type instead.")
+        data = audio.file.read(MAX_AUDIO_BYTES + 1)   # one byte more than allowed is enough to tell
+        if len(data) > MAX_AUDIO_BYTES:
+            raise HTTPException(status_code=413, detail="That recording is too long.")
+        try:
+            result = tutor.turn_audio(student_id, data, audio.content_type or "",
+                                      prev_first_audio_ms=prev_first_audio_ms)
+        except NoSession:
+            raise HTTPException(status_code=409, detail="Press Start first.") from None
+        return tutor.payload(student_id, result)
+
+    @app.get("/api/tts/{turn_id}/{index}")
+    def tts(turn_id: str, index: int, student_id: str = Depends(signed_in)) -> Response:
+        try:
+            audio = tutor.speech(student_id, turn_id, index)
+        except NotFound:
+            raise HTTPException(status_code=404, detail="No such turn.") from None
+        if audio is None:
+            raise HTTPException(status_code=503, detail="No server voice right now; the browser voice reads it.")
+        return Response(content=audio, media_type="audio/mpeg")
 
     app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")   # last, so the /api routes win
     return app
