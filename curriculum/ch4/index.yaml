@@ -1,0 +1,14 @@
+# NCERT Class 10, Chapter 4: Quadratic Equations. The lessons, in teaching order.
+version: "2026.10.1"
+
+order:
+  - factorisation
+
+# The 4 general formulas, written by hand. SymPy can't check them (they use the letters a, b, c and D),
+# so a lesson places them by name: {op: write, id: ..., formula: quadratic_formula}.
+# LaTeX is in single quotes so YAML keeps every backslash.
+formulas:
+  standard_form: 'ax^{2} + bx + c = 0, \quad a \neq 0'
+  quadratic_formula: 'x = \frac{-b \pm \sqrt{b^{2} - 4ac}}{2a}'
+  discriminant: 'D = b^{2} - 4ac'
+  nature_cases: '\begin{aligned} D > 0 &: \text{two distinct real roots} \\ D = 0 &: \text{two equal real roots} \\ D < 0 &: \text{no real roots} \end{aligned}'
