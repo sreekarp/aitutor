@@ -1,0 +1,29 @@
+[project]
+name = "aitutor"
+version = "0.1.0"
+description = "Voice + whiteboard tutor for NCERT Class 10 quadratic equations"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # SymPy's LaTeX parser only works with antlr 4.11.x, so these two are pinned together.
+    "sympy==1.14.0",
+    "antlr4-python3-runtime==4.11.1",
+    "fastapi",
+    "uvicorn",
+    "sqlalchemy>=2",
+    "httpx",
+    "pyyaml",
+    "pydantic>=2",
+    "itsdangerous",
+    "python-multipart",
+]
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.uv]
+# An app, not a library: nothing is built or installed. app/, evals/ and sims/ are imported from the repo root.
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

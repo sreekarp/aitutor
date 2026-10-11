@@ -1,0 +1,11 @@
+# Never committed: your notes, the proposal folder (it holds the NCERT PDF), local data and secrets.
+_notes/
+proposal/
+*.pdf
+data/
+evals/results/
+sims/runs/
+.env
+.venv/
+__pycache__/
+.pytest_cache/
