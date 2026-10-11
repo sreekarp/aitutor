@@ -17,7 +17,7 @@ from app.models import Curriculum
 from app.tutor import NoSession, NotFound, Tutor
 
 COOKIE_MAX_AGE = 30 * 24 * 60 * 60   # the sign-in cookie lasts 30 days (in seconds)
-MAX_AUDIO_BYTES = 10 * 1024 * 1024   # 10 MB; a 30-second recording is far smaller
+MAX_AUDIO_BYTES = 2 * 1024 * 1024    # 2 MB: a 30-second recording is under 1 MB, and speech-to-text is paid
 
 
 class LoginForm(BaseModel):

@@ -105,12 +105,32 @@ def test_tiny_recording_is_not_sent(cur):
     assert fake.stt_calls == []                           # no call spent, and no breaker failure counted
 
 
-def test_audio_over_10_mb_is_413(cur):
+def test_audio_over_2_mb_is_413(cur):
     fake = FakeVoice()
     client = voice_client(cur, fake)
     client.post("/api/session")
-    assert upload(client, audio=bytes(10 * 1024 * 1024 + 1)).status_code == 413
+    assert upload(client, audio=bytes(2 * 1024 * 1024 + 1)).status_code == 413
     assert fake.stt_calls == []
+
+
+def test_no_speech_to_text_before_start(cur):
+    fake = FakeVoice()
+    client = voice_client(cur, fake)                      # signed in, but Start not pressed yet
+    assert upload(client).status_code == 409
+    assert fake.stt_calls == []                           # no paid call for a turn that can't happen
+
+
+def test_no_speech_to_text_past_the_daily_limit(cur):
+    fake = FakeVoice()
+    settings = make_settings(openrouter_api_key="test-key", llm_mode="auto", max_turns_per_day=2)
+    client = TestClient(create_app(settings, llm=fake, cur=cur))
+    sign_in(client)
+    client.post("/api/session")                           # turn 1 of a 2-turn day
+    client.post("/api/turn", json={"text": "ok"})         # turn 2
+    body = upload(client).json()
+    assert body["decision"]["rule"] == "LIMIT"
+    assert fake.stt_calls == []                           # the daily limit caps speech-to-text spending too
+    assert body["input_hint"] is None                     # nothing to retype: the day's turns are used up
 
 
 def test_voice_routes_require_sign_in(cur):

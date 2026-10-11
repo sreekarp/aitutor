@@ -89,11 +89,7 @@ class Tutor:
         pre_latency = pre_latency or {}
         started = time.monotonic() - pre_latency.get("stt", 0) / 1000    # a voice turn began with speech-to-text
         text = text.strip()[:MAX_INPUT_CHARS]
-        with self.db_engine.connect() as conn:
-            session = db.latest_session(conn, student_id)
-            over_limit = db.turns_today(conn) >= self.settings.max_turns_per_day
-        if session is None:
-            raise NoSession(student_id)
+        session, over_limit = self.open_session(student_id)
         latency = {**pre_latency, "prev_first_audio_ms": prev_first_audio_ms}
         try:
             ctx, replaced = self._context(student_id, session, text, started, list(pre_calls or []), latency)
@@ -101,6 +97,15 @@ class Tutor:
         except Exception:
             log.exception("turn failed for student %s", student_id)
             return self._sorry(session, text)
+
+    def open_session(self, student_id: str) -> tuple[dict, bool]:
+        """The student's latest session, and whether today's turn limit is used up. NoSession before the first Start."""
+        with self.db_engine.connect() as conn:
+            session = db.latest_session(conn, student_id)
+            over_limit = db.turns_today(conn) >= self.settings.max_turns_per_day
+        if session is None:
+            raise NoSession(student_id)
+        return session, over_limit
 
     def _run(self, ctx: TurnContext, replaced: bool, over_limit: bool, input_mode: str,
              stt_failed: bool) -> TurnResult:
@@ -313,9 +318,10 @@ class Tutor:
     def turn_audio(self, student_id: str, audio: bytes, mime: str, *,
                    prev_first_audio_ms: int | None = None) -> TurnResult:
         """Speech-to-text, then the same turn as a typed reply. No transcript: "Say it again, or type it"."""
+        _, over_limit = self.open_session(student_id)   # before Start, or past the daily limit: no paid call
         started, calls, text = time.monotonic(), [], ""
         # A click with no speech isn't sent: it would fail and count towards the speech-to-text breaker.
-        if len(audio) >= MIN_AUDIO_BYTES:
+        if len(audio) >= MIN_AUDIO_BYTES and not over_limit:
             try:                                  # each attempt gets STT_TIMEOUT_S, all inside the turn's deadline
                 text = self.llm.transcribe(audio, mime, self.settings.stt_language,
                                            deadline=started + TURN_DEADLINE_S, calls=calls)
@@ -323,7 +329,7 @@ class Tutor:
                 text = ""                         # failed or empty: R8 asks the student to say it again or type
         stt_ms = round((time.monotonic() - started) * 1000)
         return self.turn(student_id, text, input_mode="voice", prev_first_audio_ms=prev_first_audio_ms,
-                         stt_failed=not text, pre_calls=calls, pre_latency={"stt": stt_ms})
+                         stt_failed=not text and not over_limit, pre_calls=calls, pre_latency={"stt": stt_ms})
 
     def speech(self, student_id: str, turn_id: str, index: int) -> bytes | None:
         """MP3 of segment `index` of the student's own turn, cached on disk. None: the browser voice reads it."""
