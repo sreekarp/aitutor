@@ -2,6 +2,7 @@
 import pytest
 
 from app import curriculum, db
+from app.config import Settings
 from app.llm import BadOutputError
 from app.models import ConceptState, Curriculum, Progress
 
@@ -53,3 +54,17 @@ class FakeLLM:
                 calls[-1]["outcome"] = "bad_output"
                 if attempt == 2:
                     raise BadOutputError(str(err)) from None
+
+
+# ---------- web tests (Tasks 17-18) ----------
+def make_settings(**changes) -> Settings:
+    """Settings for web tests: scripted mode, in-memory database. Change fields by name, e.g. https_only=True."""
+    values = dict(openrouter_api_key="", access_code="letmein", session_secret="test-secret",
+                  database_url="sqlite://", llm_mode="scripted", max_turns_per_day=2000, tts_voice="sarah",
+                  stt_language="en", https_only=False)
+    return Settings(**{**values, **changes})
+
+
+def sign_in(client, username: str = "asha", first_name: str = "Asha"):
+    """Sign in through the real route; the TestClient keeps the cookie for later requests."""
+    return client.post("/api/login", json={"username": username, "first_name": first_name, "access_code": "letmein"})
