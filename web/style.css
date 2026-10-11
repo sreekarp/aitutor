@@ -135,6 +135,8 @@ button[aria-pressed="true"] { background: var(--hl); border-color: var(--hl); co
 .transcript .note { color: var(--warn); }
 .say { display: flex; gap: 8px; margin-top: 8px; }
 .say input { flex: 1; min-width: 0; }
+#mic { min-width: 10.5em; }   /* as wide as its longest label, "⏳ Opening mic…", so the text box doesn't jump */
+@media (max-width: 480px) { #mic { min-width: 6.5em; } }   /* phones: just Speak and Stop, to leave room to type */
 
 /* panels */
 .panel { padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
