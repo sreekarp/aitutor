@@ -4,7 +4,7 @@ import re
 import pytest
 import yaml
 from conftest import fresh_progress
-from sympy import Eq, Rational
+from sympy import Eq, Poly, Rational, expand, sqrt
 
 from app import curriculum, grading, mathcheck
 from app.models import BoardCommand, Check, Concept, Curriculum, Mistake, Segment, Step
@@ -312,3 +312,105 @@ def test_mistake_fixes_reveal_no_answers(cur):
         clashes = [(concept.id, where, number) for where, numbers in found for number in numbers
                    if any(grading.same_value(number, answer) for answer in answers)]
         assert clashes == []
+
+
+# ---------- concepts 4, 5 and 6 ----------
+
+def writes(concept: Concept, step_id: str) -> list[BoardCommand]:
+    """Every write command in one step of a concept."""
+    step = curriculum.get_step(concept, step_id)
+    return [cmd for segment in step.segments for cmd in segment.board if cmd.op == "write"]
+
+
+FORMULA = {   # spec §3.3 concept 4
+    "qf1": ([2, Rational(-1, 2)], {"minus_b": ("1/2, -2", "wrong"), "divide_by_2_not_2a": ("4, -1", "wrong"),
+                                   "sign_in_D": ("none", "wrong")}),
+    "qf2": ([2 + sqrt(3), 2 - sqrt(3)], {"minus_b": ("-2 + sqrt(3), -2 - sqrt(3)", "wrong")}),
+    "qf3": ([3, -5], {"minus_b": ("-3, 5", "wrong")}),
+    "qf4": ([2, 5], {"minus_b": ("-2, -5", "wrong")}),
+    "qf5": ([Rational(1, 3), -2], {"minus_b": ("2, -1/3", "wrong"), "sign_in_D": ("-2/3, -1", "wrong")}),
+}
+
+
+def test_formula_keys_and_traps(cur):
+    concept = cur.concepts["quadratic_formula"]
+    assert [step.id for step in concept.steps] == ["the_formula", "find_abc", "careful_minus_b", "surd_answers"]
+    assert_keys_and_traps(concept, FORMULA)
+    assert [cmd.formula for cmd in writes(concept, "the_formula")] == ["quadratic_formula"]
+    # The scripted reteach replays careful_minus_b; its example's roots, 7 and 4, answer no check.
+    assert writes(concept, "careful_minus_b")[0].check == "Eq(x**2 - 11*x + 28, 0)"
+    assert concept.reteach_step == "careful_minus_b"
+
+
+DISCRIMINANT = {   # spec §3.3 concept 5
+    "di1": ([25], {"sign_in_D": ("-7", "wrong")}),
+    "di2": ("equal", {}),
+    "di3": ("none", {}),
+    "di4": ([-4], {"sign_in_D": ("36", "wrong")}),
+    "di5": ("distinct", {}),
+    "di6": ([Rational(1, 3)], {"mixed_cases": ("none", "wrong")}),
+}
+
+
+def test_discriminant_keys_and_traps(cur):
+    concept = cur.concepts["discriminant"]
+    assert [step.id for step in concept.steps] == ["what_is_d", "three_cases", "d_negative", "d_zero"]
+    assert_keys_and_traps(concept, DISCRIMINANT)
+    assert [cmd.formula for cmd in writes(concept, "what_is_d")][0] == "discriminant"
+    assert [cmd.formula for cmd in writes(concept, "three_cases")] == ["nature_cases"]
+    for phrase in ("two distinct real roots", "two equal real roots", "no real roots"):   # NCERT's words
+        assert phrase in cur.formulas["nature_cases"]
+    for step_id, d in (("d_negative", -3), ("d_zero", 0)):     # a value of D is a pure arithmetic line
+        values = [board_numbers(cmd) for cmd in writes(concept, step_id)
+                  if cmd.check and not mathcheck.parse_check(cmd.check).free_symbols]
+        assert len(values) == 1 and grading.same_value(values[0][0], d), step_id
+
+
+WORD_PROBLEMS = {   # spec §3.3 concept 6: the impossible root kept grades partial
+    "wp1": ([5], {"kept_impossible_root": ("5, -8", "partial")}),
+    "wp2": ("no", {}),
+    "wp3": ([11], {"kept_impossible_root": ("11, -12", "partial")}),
+    "wp4": ([7], {"kept_impossible_root": ("7, -4", "partial")}),
+    "wp5": ([6], {"kept_impossible_root": ("6, -8", "partial")}),
+}
+
+
+def test_word_problem_keys_keep_positive(cur):
+    concept = cur.concepts["word_problems"]
+    assert [step.id for step in concept.steps] == ["plan", "prayer_hall", "is_it_possible"]
+    assert_keys_and_traps(concept, WORD_PROBLEMS)
+    for check in concept.checks:
+        assert check.show_equation is False, check.id          # forming the equation is the skill
+        assert [cmd.id for cmd in curriculum.ask_segment(check, cur.formulas).board] == ["q-label"]
+        assert check.say.count("?") == 1, check.id             # one quantity asked
+        if check.kind == "roots":
+            assert check.keep == "positive", check.id
+            assert len(grading.answer_key(check).values) == 1, check.id
+    assert "positive" in curriculum.get_check(concept, "wp3").say   # -12 and -11 also multiply to 132
+
+
+def test_all_six_concepts_load_in_order(cur):
+    assert cur.order == ["standard_form", "roots", "factorisation", "quadratic_formula", "discriminant",
+                         "word_problems"]
+    assert list(cur.concepts) == cur.order
+    prefixes = {"standard_form": "sf", "roots": "rt", "factorisation": "fa", "quadratic_formula": "qf",
+                "discriminant": "di", "word_problems": "wp"}
+    for concept_id, prefix in prefixes.items():                # check ids are numbered in the order asked
+        ids = [check.id for check in cur.concepts[concept_id].checks]
+        assert ids == [f"{prefix}{n}" for n in range(1, len(ids) + 1)], concept_id
+    assert sum(len(concept.checks) for concept in cur.concepts.values()) == 34   # load() validated them all
+
+
+def skill(check: Check) -> tuple:
+    """Roughly what a check tests: its kind, the mistakes its traps catch, a yes/no answer, and whether a is 1."""
+    equation = mathcheck.parse_check(check.equation)
+    a = Poly(expand(equation.lhs - equation.rhs), mathcheck.x).coeff_monomial(mathcheck.x**2)
+    return check.kind, frozenset(check.traps), grading.answer_key(check).word, abs(a) == 1
+
+
+def test_first_two_checks_differ_in_skill(cur):
+    """A strong student masters a concept on two answers, so those two must test different skills (spec §3.2).
+    A rough guard only: the real review is by eye."""
+    for concept in cur.concepts.values():
+        first, second = concept.checks[:2]
+        assert skill(first) != skill(second), concept.id

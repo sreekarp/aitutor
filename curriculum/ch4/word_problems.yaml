@@ -1,0 +1,116 @@
+# Concept 6. Our own variants of NCERT Examples 1, 6 and 8 and Exercises 4.1 Q2, 4.2 Q2-6, 4.3 Q3-5.
+# Forming the equation is the skill being tested, so every check sets show_equation: false and the board
+# shows only the story (the label). Each question asks for one quantity, x, and says "positive" where it matters.
+# Mistake fixes and the reteach step (prayer_hall) use numbers that answer no check in this file.
+id: word_problems
+title: Word problems
+ncert: "Examples 1, 6, 8; Exercises 4.1 Q2, 4.2 Q2–6, 4.3 Q3–5"
+
+steps:
+  - id: plan
+    segments:
+      - say: "Word problems take four moves. Name the unknown, write the equation, solve it, and check that the answer makes sense."
+        board:
+          - {op: write, id: pl1, text: "Name the unknown → write the equation → solve → check it makes sense"}
+      - say: "The last move matters. A length, an age or a count can't be negative, so we drop any root that doesn't fit the story."
+
+  - id: prayer_hall
+    segments:
+      - say: "Remember the prayer hall. With its breadth as x metres, 2x squared plus x minus 300 equals zero. Splitting the middle term factorises it."
+        board:
+          - {op: write, id: ph1, text: "Prayer hall: length = 2 × breadth + 1 m, area = 300 m²"}
+          - {op: write, id: ph2, latex: '2x^2 + x - 300 = 0', check: "Eq(2*x**2 + x - 300, 0)"}
+          - {op: write, id: ph3, latex: '(x-12)(2x+25) = 0', check: "Eq((x-12)*(2*x+25), 0)"}
+      - say: "So x is 12 or minus 12.5. A breadth can't be negative, so we reject minus 12.5. The hall is 12 metres wide and 25 metres long."
+        board:
+          - {op: write, id: ph4, latex: 'x = 12 \text{ or } x = -12.5', check: "Or(Eq(x, 12), Eq(x, -12.5))"}
+          - {op: write, id: ph5, latex: 'x = 12', check: "Eq(x, 12)", relation: select}
+
+  - id: is_it_possible
+    segments:
+      - say: "Some questions ask if something is possible. Can two numbers add up to 10 and multiply to 30? Call one number x, so the other is 10 minus x."
+        board:
+          - {op: write, id: ip1, text: "Two numbers add up to 10 and multiply to 30. Possible?"}
+          - {op: write, id: ip2, latex: 'x(10-x) = 30', check: "Eq(x*(10-x), 30)"}
+          - {op: write, id: ip3, latex: 'x^2 - 10x + 30 = 0', check: "Eq(x**2 - 10*x + 30, 0)"}
+      - say: "Before solving, work out D. It is 100 minus 120, which is minus 20. D is negative, so there are no real roots, and it is not possible."
+        board:
+          - {op: write, id: ip4, latex: '(-10)^2 - 4 \cdot 1 \cdot 30 = -20', check: "Eq((-10)**2 - 4*1*30, -20)"}
+
+checks:
+  - id: wp1
+    say: "A rectangle's length is 3 metres more than its breadth, and its area is 40 square metres. What is its breadth? Tell me how you got it."
+    label: "A rectangle's length is 3 m more than its breadth, and its area is 40 m². What is its breadth?"
+    equation: "Eq(x*(x + 3), 40)"
+    kind: roots
+    keep: positive
+    show_equation: false
+    hints:
+      - "Call the breadth x metres. What is the length?"
+      - "The length is x plus 3, so x times x plus 3 equals 40. Bring the 40 to the left side."
+      - "x squared plus 3x minus 40 equals zero factorises as x minus 5, times x plus 8. Which root can be a breadth?"
+    traps: {kept_impossible_root: "5, -8"}
+
+  - id: wp2
+    say: "Can two numbers add up to 8 and multiply to 20? Tell me how you know."
+    label: "Two numbers add up to 8 and multiply to 20. Is that possible?"
+    equation: "Eq(x*(8 - x), 20)"
+    kind: has_real_roots
+    show_equation: false
+    hints:
+      - "Call one number x. Then the other number is 8 minus x."
+      - "x times 8 minus x equals 20 becomes x squared minus 8x plus 20 equals zero. Work out D before solving."
+      - "D is 64 minus 80. Is that zero or more, or is it negative?"
+
+  - id: wp3
+    say: "Two consecutive positive integers multiply to 132. What is the smaller one? Tell me how you got it."
+    label: "Two consecutive positive integers multiply to 132. What is the smaller one?"
+    equation: "Eq(x*(x + 1), 132)"
+    kind: roots
+    keep: positive
+    show_equation: false
+    hints:
+      - "Call the smaller integer x. What is the next one?"
+      - "The next integer is x plus 1, so x times x plus 1 equals 132. Bring the 132 to the left side."
+      - "x squared plus x minus 132 equals zero. Find two numbers that multiply to minus 132 and add to 1, then keep the positive root."
+    traps: {kept_impossible_root: "11, -12"}
+
+  - id: wp4
+    say: "My little brother's age now, times his age 3 years ago, is 28. How old is he now? Tell me how you got it."
+    label: "My little brother's age now, times his age 3 years ago, is 28. How old is he now?"
+    equation: "Eq(x*(x - 3), 28)"
+    kind: roots
+    keep: positive
+    show_equation: false
+    hints:
+      - "Call his age now x years. How old was he 3 years ago?"
+      - "3 years ago he was x minus 3, so x times x minus 3 equals 28. Bring the 28 to the left side."
+      - "x squared minus 3x minus 28 equals zero factorises as x minus 7, times x plus 4. Which root can be an age?"
+    traps: {kept_impossible_root: "7, -4"}
+
+  - id: wp5
+    say: "A right triangle has a hypotenuse of 10 centimetres, and one of its other sides is 2 centimetres longer than the third. How long is the shorter side? Tell me how you got it."
+    label: "A right triangle has a 10 cm hypotenuse. One of its other sides is 2 cm longer than the third. How long is the shorter side?"
+    equation: "Eq(x**2 + (x + 2)**2, 100)"
+    kind: roots
+    keep: positive
+    show_equation: false
+    hints:
+      - "Call the shorter side x centimetres. What is the other side?"
+      - "The other side is x plus 2. By Pythagoras, x squared plus x plus 2, all squared, equals 10 squared."
+      - "That simplifies to x squared plus 2x minus 48 equals zero. Factorise it and keep the positive root."
+    traps: {kept_impossible_root: "6, -8"}
+
+mistakes:
+  - id: kept_impossible_root
+    looks_like: "keeps a root the story rules out, such as a negative length, age or count"
+    fix: "Check each root against the story. A length, an age or a count can't be negative, so drop that root and keep the one that fits."
+  - id: skipped_possibility_check
+    looks_like: "tries to solve, or says yes, without first checking whether the equation has real roots"
+    fix: "When a question asks if something is possible, work out D first. If D is negative, there are no real roots, so it is not possible."
+  - id: wrong_equation
+    looks_like: "writes an equation that doesn't match the story, e.g. adds where the story multiplies"
+    fix: "Name the unknown first, then turn each fact in the story into maths, one at a time. Read your equation back as a sentence to check it."
+
+strategies: [worked_example, compare_non_example]
+reteach_step: prayer_hall

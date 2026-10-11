@@ -1,0 +1,125 @@
+# Concept 4. The formula is taught as a tool, without its derivation (NCERT 4.4 opening, Example 8).
+# Mistake fixes and the reteach step (careful_minus_b) use numbers that answer no check in this file:
+# that's why its example, x^2 - 11x + 28 = 0, has the roots 7 and 4.
+id: quadratic_formula
+title: The quadratic formula
+ncert: "4.4 opening, Example 8"
+
+steps:
+  - id: the_formula
+    segments:
+      - say: "When a quadratic equation has real roots, this formula finds them. Read a, b and c from the standard form and put them in."
+        board:
+          - {op: write, id: tf1, formula: quadratic_formula}
+      - say: "The part under the square root, b squared minus 4ac, can't be negative. If it is, there are no real roots, and the formula can't be used."
+        board:
+          - {op: highlight, target: tf1, part: 'b^{2} - 4ac'}
+
+  - id: find_abc
+    segments:
+      - say: "First read a, b and c, with their signs. In x squared plus 7x minus 60 equals zero, a is 1, b is 7 and c is minus 60."
+        board:
+          - {op: write, id: fb1, latex: 'x^2 + 7x - 60 = 0', check: "Eq(x**2 + 7*x - 60, 0)"}
+          - {op: write, id: fb2, text: "a = 1, b = 7, c = -60"}
+      - say: "c is negative, so minus 4ac is plus 240. b squared minus 4ac is 49 plus 240, which is 289, and its square root is 17."
+        board:
+          - {op: write, id: fb3, latex: '7^2 - 4 \cdot 1 \cdot (-60) = 289', check: "Eq(7**2 - 4*1*(-60), 289)"}
+      - say: "Minus 7 plus 17, over 2, is 5. Minus 7 minus 17, over 2, is minus 12."
+        board:
+          - {op: write, id: fb4, latex: 'x = \frac{-7 \pm \sqrt{289}}{2}', check: "Or(Eq(x, 5), Eq(x, -12))"}
+          - {op: write, id: fb5, latex: 'x = 5 \text{ or } x = -12', check: "Or(Eq(x, 5), Eq(x, -12))"}
+
+  - id: careful_minus_b
+    segments:
+      - say: "The formula starts with minus b, so watch the sign of b. In x squared minus 11x plus 28 equals zero, b is minus 11, so minus b is plus 11."
+        board:
+          - {op: write, id: cb1, latex: 'x^2 - 11x + 28 = 0', check: "Eq(x**2 - 11*x + 28, 0)"}
+          - {op: highlight, target: cb1, part: '- 11x'}
+      - say: "b squared minus 4ac is 121 minus 112, which is 9."
+        board:
+          - {op: write, id: cb2, latex: '(-11)^2 - 4 \cdot 1 \cdot 28 = 9', check: "Eq((-11)**2 - 4*1*28, 9)"}
+      - say: "So x is 11 plus or minus the square root of 9, all over 2a. That gives x equals 7 or x equals 4."
+        board:
+          - {op: write, id: cb3, latex: 'x = \frac{11 \pm \sqrt{9}}{2}', check: "Or(Eq(x, 7), Eq(x, 4))"}
+          - {op: write, id: cb4, latex: 'x = 7 \text{ or } x = 4', check: "Or(Eq(x, 7), Eq(x, 4))"}
+
+  - id: surd_answers
+    segments:
+      - say: "Sometimes the square root doesn't come out exactly. In x squared minus 2x minus 1 equals zero, b squared minus 4ac is 4 plus 4, which is 8."
+        board:
+          - {op: write, id: sa1, latex: 'x^2 - 2x - 1 = 0', check: "Eq(x**2 - 2*x - 1, 0)"}
+          - {op: write, id: sa2, latex: '(-2)^2 - 4 \cdot 1 \cdot (-1) = 8', check: "Eq((-2)**2 - 4*1*(-1), 8)"}
+      - say: "The square root of 8 is 2 root 2. Dividing everything by 2 gives 1 plus or minus root 2. We leave the roots with the root sign in them."
+        board:
+          - {op: write, id: sa3, latex: 'x = \frac{2 \pm \sqrt{8}}{2}', check: "Or(Eq(x, 1 + sqrt(2)), Eq(x, 1 - sqrt(2)))"}
+          - {op: write, id: sa4, latex: 'x = 1 \pm \sqrt{2}', check: "Or(Eq(x, 1 + sqrt(2)), Eq(x, 1 - sqrt(2)))"}
+
+checks:
+  - id: qf1
+    say: "Use the quadratic formula to solve 2x squared minus 3x minus 2 equals zero. Tell me how you got it."
+    label: "Solve with the quadratic formula:"
+    equation: "Eq(2*x**2 - 3*x - 2, 0)"
+    kind: roots
+    hints:
+      - "Start by reading a, b and c, with their signs."
+      - "a is 2, b is minus 3 and c is minus 2. Work out b squared minus 4ac."
+      - "b squared minus 4ac is 9 plus 16, which is 25, and its square root is 5. Now work out minus b, plus or minus 5, all over 2a."
+    traps: {minus_b: "1/2, -2", divide_by_2_not_2a: "4, -1", sign_in_D: "none"}
+
+  - id: qf2
+    say: "Solve x squared minus 4x plus 1 equals zero. It doesn't factorise, so use the formula. Tell me how you got it."
+    label: "Solve with the quadratic formula:"
+    equation: "Eq(x**2 - 4*x + 1, 0)"
+    kind: roots
+    hints:
+      - "Read a, b and c first, with their signs."
+      - "b squared minus 4ac is 16 minus 4, which is 12. The square root of 12 is 2 root 3."
+      - "Minus b is plus 4, so x is 4 plus or minus 2 root 3, all over 2. Now divide each part by 2."
+    traps: {minus_b: "-2 + sqrt(3), -2 - sqrt(3)"}
+
+  - id: qf3
+    say: "Use the formula to solve x squared plus 2x minus 15 equals zero. Tell me how you got it."
+    label: "Solve with the quadratic formula:"
+    equation: "Eq(x**2 + 2*x - 15, 0)"
+    kind: roots
+    hints:
+      - "Read a, b and c, with their signs."
+      - "b squared minus 4ac is 4 plus 60, which is 64, and its square root is 8."
+      - "b is plus 2, so minus b is minus 2. Work out minus 2 plus 8, over 2, and minus 2 minus 8, over 2."
+    traps: {minus_b: "-3, 5"}
+
+  - id: qf4
+    say: "Use the formula to solve x squared minus 7x plus 10 equals zero. Tell me how you got it."
+    label: "Solve with the quadratic formula:"
+    equation: "Eq(x**2 - 7*x + 10, 0)"
+    kind: roots
+    hints:
+      - "Read a, b and c, with their signs."
+      - "b squared minus 4ac is 49 minus 40, which is 9, and its square root is 3."
+      - "b is minus 7, so minus b is plus 7. Work out 7 plus 3, over 2, and 7 minus 3, over 2."
+    traps: {minus_b: "-2, -5"}
+
+  - id: qf5
+    say: "Use the formula to solve 3x squared plus 5x minus 2 equals zero. Tell me how you got it."
+    label: "Solve with the quadratic formula:"
+    equation: "Eq(3*x**2 + 5*x - 2, 0)"
+    kind: roots
+    hints:
+      - "Read a, b and c, with their signs. Here a is 3."
+      - "c is minus 2, so minus 4ac is plus 24. b squared minus 4ac is 25 plus 24, which is 49."
+      - "The square root of 49 is 7, and 2a is 6. Work out minus 5 plus 7, over 6, and minus 5 minus 7, over 6."
+    traps: {minus_b: "2, -1/3", sign_in_D: "-2/3, -1"}
+
+mistakes:
+  - id: minus_b
+    looks_like: "uses b instead of minus b at the start of the formula, so both roots come out with the wrong sign"
+    fix: "The formula starts with minus b. If b is minus 11, minus b is plus 11. Write minus b down first, with its sign."
+  - id: divide_by_2_not_2a
+    looks_like: "divides by 2 instead of by 2a when a is not 1"
+    fix: "Divide the whole top by 2a, the whole bottom of the formula. When a isn't 1, dividing by only part of it gives the wrong roots."
+  - id: sign_in_D
+    looks_like: "the 4ac part with the wrong sign: b squared plus 4ac instead of b squared minus 4ac, often from a negative a or c"
+    fix: "It is b squared minus 4ac. Put a negative a or c in brackets, and work out the sign of 4ac before you subtract it."
+
+strategies: [worked_example, substitute_back, compare_non_example]
+reteach_step: careful_minus_b

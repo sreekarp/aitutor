@@ -5,6 +5,9 @@ order:
   - standard_form
   - roots
   - factorisation
+  - quadratic_formula
+  - discriminant
+  - word_problems
 
 # The 4 general formulas, written by hand. SymPy can't check them (they use the letters a, b, c and D),
 # so a lesson places them by name: {op: write, id: ..., formula: quadratic_formula}.
