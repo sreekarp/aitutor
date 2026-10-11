@@ -43,10 +43,12 @@
       <section class="talk" aria-label="Conversation">
         <div id="transcript" class="transcript" aria-live="polite"></div>
         <form id="say-form" class="say" hidden>
+          <button id="mic" type="button" aria-pressed="false">🎤 Speak</button>
           <input id="text-box" aria-label="Your answer or question" maxlength="500" autocomplete="off"
                  placeholder="Type your answer or question">
           <button id="send" type="submit" class="primary">Send</button>
         </form>
+        <p id="mic-note" class="hint" hidden>The microphone needs https (or localhost), so please type your answers.</p>
       </section>
       <aside class="side">
         <section class="panel" aria-label="Progress">

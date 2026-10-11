@@ -1,9 +1,15 @@
-// The tutor's page: sign-in, the whiteboard, the panels and the conversation. Plain JS, no build step.
+// The tutor's page: sign-in, the whiteboard, the panels and the conversation, typed or spoken.
+// Plain JS, no build step.
 "use strict";
 
 // ---------- settings ----------
 const REPLY_TIMEOUT_MS = 17000;   // stop waiting for the server after ~17 s (spec §7.2)
 const TOO_LONG = "That took too long — try again or type it";
+const MAX_RECORDING_MS = 30000;   // a recording stops by itself after 30 s
+const AUDIO_WAIT_MS = 3000;       // a segment's audio must start within ~3 s of being due, else the browser voice reads it
+const RECORDING_TYPES = ["audio/webm;codecs=opus", "audio/mp4;codecs=mp4a.40.2", "audio/mp4", "audio/ogg;codecs=opus"];
+const SILENCE = "data:audio/wav;base64,UklGRnQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVAAAACAgICAgICAgICAgICA" +
+  "gICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==";   // 10 ms of silence
 const BOARD_MAX_LINES = 8;        // as board.py: at most 8 lines, and the question's two lines stay
 const PINNED_IDS = ["q-label", "q-eq"];
 const POINTS_TO_MASTER = 2, MAX_HINTS = 3, MAX_RETEACHES = 3;   // as config.py
@@ -16,6 +22,7 @@ const KATEX_OPTIONS = {
 
 const $ = (id) => document.getElementById(id);
 const boardEl = $("board"), startButton = $("start"), sayForm = $("say-form"), textBox = $("text-box");
+const micButton = $("mic");
 
 // ---------- talking to the server ----------
 class ApiError extends Error {
@@ -161,10 +168,6 @@ function chooseVoice() {   // voices load late, so this runs again on "voicescha
   browserVoice = english.find((v) => /^en[-_]IN$/i.test(v.lang)) || english[0] || null;
 }
 
-function unlockSound() {   // call inside a click: browsers (iPhones most of all) only allow sound after one
-  if (canSpeak) speechSynthesis.speak(new SpeechSynthesisUtterance(""));
-}
-
 function stopSpeaking() {
   if (canSpeak) speechSynthesis.cancel();
 }
@@ -179,7 +182,7 @@ function speakSentence(sentence) {   // resolves true if the voice started speak
     const finish = () => { clearTimeout(noStart); clearTimeout(stuck); resolve(started); };
     const noStart = setTimeout(() => { if (!started) { speechSynthesis.cancel(); finish(); } }, 2000);
     const stuck = setTimeout(finish, 3000 + sentence.length * 120);   // "end" never came
-    utterance.onstart = () => { started = true; };
+    utterance.onstart = () => { started = true; noteFirstAudio(); };
     utterance.onend = utterance.onerror = finish;
     speechSynthesis.speak(utterance);
   });
@@ -194,18 +197,84 @@ async function speakWithBrowser(text) {   // one sentence per utterance: Chrome 
   return true;
 }
 
+// ---------- server audio ----------
+const player = new Audio();   // the one <audio> element: iPhones unlock sound per element, so every segment plays here
+
+function unlockSound() {   // call inside a click: browsers (iPhones most of all) only allow sound after one
+  player.src = SILENCE;
+  player.play().catch(() => {});
+  if (canSpeak) speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+}
+
+function fetchAudio(turnId, i) {   // resolves to a blob: URL of segment i's audio, or null when there is none
+  return fetch(`/api/tts/${turnId}/${i}`)
+    .then((res) => (res.ok ? res.blob() : null))
+    .then((blob) => (blob ? URL.createObjectURL(blob) : null))
+    .catch(() => null);
+}
+
+// Plays one segment's audio on the one <audio> element. Resolves true once it has played, or false when it
+// failed or hadn't started ~3 s after it was due (then the browser voice reads the segment instead).
+function playAudio(audio, onStart) {
+  return new Promise((resolve) => {
+    let started = false, finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      player.onplaying = player.onpause = player.onended = player.onerror = null;
+      if (!started) player.pause();   // too late: it must not talk over the browser voice
+      resolve(started);
+    };
+    const timer = setTimeout(finish, AUDIO_WAIT_MS);
+    audio.then((url) => {
+      if (!url || finished) return finish();
+      player.onplaying = () => {
+        if (started) return;
+        started = true;
+        clearTimeout(timer);
+        onStart();
+      };
+      player.onpause = player.onended = player.onerror = finish;
+      player.src = url;
+      player.play().catch(finish);
+    });
+  });
+}
+
+// ---------- latency: stop click -> first audio (spec §8.5) ----------
+let stopClickedAt = 0;     // performance.now() at the last stop click; 0 when nothing is being measured
+let firstAudioMs = null;   // the last measurement, sent with the next turn
+
+function noteFirstAudio() {   // the first sound of the reply to a recording
+  if (!stopClickedAt) return;
+  firstAudioMs = Math.round(performance.now() - stopClickedAt);
+  stopClickedAt = 0;
+}
+
+function takeFirstAudioMs() {   // hands the measurement to the next turn, once
+  const ms = firstAudioMs;
+  firstAudioMs = null;
+  return ms;
+}
+
 // ---------- one turn ----------
 function showSegment(segment) {
   runBoard(segment.board);
   addTranscript("tutor", segment.say);
 }
 
-async function playReply(reply) {   // the browser voice reads each segment in turn
+// Every segment's audio is requested at once; the segments then play in order, and each one's board
+// commands run as its audio starts. A segment without audio in time is read by the browser voice.
+async function playReply(reply) {
   setStatus("Speaking…");
-  for (const segment of reply.segments) {
+  const audios = reply.segments.map((_, i) => fetchAudio(reply.turn_id, i));
+  for (const [i, segment] of reply.segments.entries()) {
+    if (await playAudio(audios[i], () => { showSegment(segment); noteFirstAudio(); })) continue;
     showSegment(segment);
     await speakWithBrowser(segment.say);
   }
+  audios.forEach((audio) => audio.then((url) => url && URL.revokeObjectURL(url)));
 }
 
 function showProblem(e) {
@@ -234,8 +303,68 @@ async function runTurn(send) {   // send() makes the request and resolves to the
   } catch (e) {
     showProblem(e);
   }
+  stopClickedAt = 0;   // only this turn's reply counts as the "first audio"
   setBusy(false);
   if (typeIt) textBox.focus();
+}
+
+// ---------- recording: click to start, click to stop ----------
+let recorder = null;   // the MediaRecorder while the mic is on
+
+async function onMic() {
+  unlockSound();   // first, while the click is still being handled
+  if (recorder) return stopRecording();
+  setBusy(true);   // no typing, and no second recording, while the mic is on
+  let stream = null;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    startRecording(stream);
+  } catch (e) {
+    if (stream) stream.getTracks().forEach((track) => track.stop());
+    setBusy(false);
+    showNote("I can't use the microphone. Allow it in the browser, or type instead.");
+  }
+}
+
+function startRecording(stream) {
+  const mimeType = RECORDING_TYPES.find((type) => MediaRecorder.isTypeSupported(type));   // undefined: browser picks
+  const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+  const chunks = [];
+  rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  rec.onstop = () => {
+    stream.getTracks().forEach((track) => track.stop());   // release the mic
+    sendRecording(new Blob(chunks, { type: rec.mimeType || mimeType || "audio/webm" }));
+  };
+  rec.start();
+  recorder = rec;
+  showMic(true);
+  setStatus("Listening… click Stop when you're done.");
+  setTimeout(() => { if (recorder === rec) stopRecording(); }, MAX_RECORDING_MS);
+}
+
+function stopRecording() {   // the stop click (or 30 s); onstop then sends the recording
+  stopClickedAt = performance.now();
+  recorder.stop();
+  recorder = null;
+  showMic(false);
+}
+
+function showMic(recording) {   // while recording, the mic button is a Stop button and the only control on
+  micButton.setAttribute("aria-pressed", String(recording));
+  micButton.textContent = recording ? "■ Stop" : "🎤 Speak";
+  micButton.disabled = !recording;
+}
+
+function sendRecording(blob) {
+  const form = new FormData();
+  form.append("audio", blob, "recording");
+  const ms = takeFirstAudioMs();
+  if (ms !== null) form.append("prev_first_audio_ms", String(ms));
+  runTurn(async () => {
+    const reply = await request("/api/turn/audio", { method: "POST", body: form });
+    if (reply.transcript) addTranscript("you", reply.transcript);
+    return reply;
+  });
 }
 
 // ---------- sign-in, Start / Continue and the text box ----------
@@ -296,12 +425,17 @@ function onSend(event) {
   if (!text) return;
   textBox.value = "";
   addTranscript("you", text);
-  runTurn(() => postJSON("/api/turn", { text, prev_first_audio_ms: null }));
+  runTurn(() => postJSON("/api/turn", { text, prev_first_audio_ms: takeFirstAudioMs() }));
 }
 
 $("signin-form").addEventListener("submit", onSignIn);
 $("signout").addEventListener("click", onSignOut);
 startButton.addEventListener("click", onStart);
 sayForm.addEventListener("submit", onSend);
+micButton.addEventListener("click", onMic);
 if (canSpeak) speechSynthesis.onvoiceschanged = chooseVoice;
+if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {   // not https (or localhost): no mic
+  micButton.hidden = true;
+  $("mic-note").hidden = false;
+}
 loadPage();
