@@ -1,13 +1,14 @@
-"""Scripted-mode tests of app/tutor.py and app/page.py: whole turns, real lesson files, an in-memory database."""
+"""Scripted-mode tests of app/tutor.py and app/page.py: whole turns, real lesson files, an in-memory database.
+The whole turns about how a session or topic starts are in test_topic_starts.py."""
 import json
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
 
 import pytest
+from conftest import new_student, progress_of, said_with_working
 
 from app import curriculum, db, engine, grading, page
-from app.config import MAX_INPUT_CHARS, POINTS_TO_MASTER, SESSION_GAP_MIN, Settings
-from app.models import BoardCommand, ConceptState, Pending, Segment
+from app.config import MAX_INPUT_CHARS, Settings
+from app.models import BoardCommand, Pending, Segment
 from app.tutor import DIDNT_CATCH, NoSession, Tutor
 
 SETTINGS = Settings(openrouter_api_key="", access_code="test", session_secret="test", database_url="sqlite://",
@@ -21,33 +22,12 @@ def tutor(cur, db_engine):
     return Tutor(cur, db_engine, SETTINGS)
 
 
-def new_student(db_engine, cur, mastered=None):
-    """Asha, with the concepts before factorisation mastered (or the ones given), so factorisation is current."""
-    with db_engine.begin() as conn:
-        student_id = db.get_or_create_student(conn, "asha", "Asha")["id"]
-        progress = db.load_progress(conn, student_id, cur)
-        for concept_id in cur.order[:cur.order.index("factorisation")] if mastered is None else mastered:
-            progress[concept_id].status, progress[concept_id].points = "mastered", POINTS_TO_MASTER
-        db.save_progress(conn, student_id, progress, cur.version)
-    return student_id
-
-
-def progress_of(db_engine, cur, student_id):
-    with db_engine.connect() as conn:
-        return db.load_progress(conn, student_id, cur)
-
-
 def to_first_question(tutor, cur, student_id):
     """Start, then "ok" through every factorisation step; returns the turn that asked the first question."""
     tutor.start(student_id)
     for _ in cur.concepts["factorisation"].steps:
         result = tutor.turn(student_id, "ok")
     return result
-
-
-def said_with_working(check):
-    """The right answer, said first (scripted mode reads values before "because"), then the working."""
-    return " and ".join(str(value) for value in grading.answer_key(check).values) + " because I factorised it"
 
 
 def test_full_pass_through_factorisation_scripted(tutor, db_engine, cur):
@@ -85,49 +65,9 @@ def test_full_pass_through_factorisation_scripted(tutor, db_engine, cur):
     assert says[0].endswith("! You've mastered solving by factorisation.")
     assert says[1] == f"Now let's move on to the quadratic formula. {cur.concepts[following].intro}"
     assert says[2:] == [segment.say for segment in cur.concepts[following].steps[0].segments]
+    assert says[2] == "Here is the formula. Read a, b and c from the standard form and put them in."   # no repeat
     assert "q-eq" not in [line.id for line in result.board]     # the board was cleared for the new concept
     assert result.calls == []
-
-
-def test_session_start_greets_then_opens_the_concept(tutor, db_engine, cur):
-    """A new session from step 1: greeting, intro, step 1. Continue (S1) within 30 minutes, and a new session
-    part-way through, say "Welcome back" and carry on with the step: no intro."""
-    student_id = new_student(db_engine, cur)
-    concept = cur.concepts["factorisation"]
-    first = tutor.start(student_id)
-    assert [segment.say for segment in first.segments] == [
-        "Hi Asha! Let's start today with solving by factorisation.", concept.intro,
-        *[segment.say for segment in concept.steps[0].segments]]
-    tutor.turn(student_id, "ok")                                 # now on step 2
-    step_2 = [segment.say for segment in concept.steps[1].segments]
-    carry_on = "Let's carry on with solving by factorisation from where we left off."
-    again = tutor.start(student_id)                              # Continue within 30 minutes: S1
-    assert [segment.say for segment in again.segments] == [f"Welcome back! {carry_on}", *step_2]
-    long_ago = datetime.now(timezone.utc) - timedelta(minutes=SESSION_GAP_MIN + 1)
-    with db_engine.begin() as conn:
-        conn.execute(db.turns_table.update().values(created_at=long_ago))
-    later = tutor.start(student_id)                              # a new session part-way through: S0
-    assert later.decision.rule == "S0"
-    assert [segment.say for segment in later.segments] == [f"Welcome back, Asha! {carry_on}", *step_2]
-
-
-def test_review_pass_goes_back_to_the_open_question(tutor, db_engine, cur):
-    """Mastering the concept under review goes back to the next concept's open question, and says so first."""
-    student_id = new_student(db_engine, cur, mastered=[])
-    with db_engine.begin() as conn:            # standard form is being reviewed; roots still has a question open
-        progress = db.load_progress(conn, student_id, cur)
-        progress["standard_form"] = ConceptState("standard_form", status="checking", points=1.0,
-                                                 pending=Pending("sf2"), last_check_id="sf2")
-        progress["roots"] = ConceptState("roots", status="checking", pending=Pending("rt2"), last_check_id="rt2")
-        db.save_progress(conn, student_id, progress, cur.version)
-    tutor.start(student_id)
-    result = tutor.turn(student_id, said_with_working(curriculum.get_check(cur.concepts["standard_form"], "sf2")))
-    assert (result.decision.rule, result.decision.action) == ("R1", "mastered")
-    says = [segment.say for segment in result.segments]
-    assert says[0].endswith("! You've mastered standard form and recognising a quadratic.")
-    assert says[1] == "Now let's get back to roots and checking by substitution, where we left off."
-    rt2 = curriculum.get_check(cur.concepts["roots"], "rt2")
-    assert result.segments[2:] == [curriculum.ask_segment(rt2, cur.formulas)]     # then its question again
 
 
 def test_wrong_trap_answer_reteaches_and_asks_next(tutor, db_engine, cur):
@@ -166,35 +106,6 @@ def test_turn_without_session_raises(tutor, db_engine, cur):
     student_id = new_student(db_engine, cur)
     with pytest.raises(NoSession):
         tutor.turn(student_id, "ok")
-
-
-def test_start_twice_is_one_session(tutor, db_engine, cur):
-    student_id = new_student(db_engine, cur)
-    first = tutor.start(student_id)
-    tutor.turn(student_id, "ok")                                 # now on step 2
-    again = tutor.start(student_id)                              # a second click, or a page reload
-    assert again.decision.rule == "S1" and again.session_id == first.session_id
-    with db_engine.connect() as conn:
-        assert db.latest_session(conn, student_id)["session_no"] == 1
-    step = cur.concepts["factorisation"].steps[1]
-    assert progress_of(db_engine, cur, student_id)["factorisation"].step_id == step.id
-    says = [segment.say for segment in again.segments]
-    assert says[-len(step.segments):] == [segment.say for segment in step.segments]   # the current step again
-    ids = [line.id for line in again.board]
-    assert len(ids) == len(set(ids))                             # replayed lines replace themselves
-
-
-def test_new_session_after_gap_runs_s0(tutor, db_engine, cur):
-    student_id = new_student(db_engine, cur)
-    first = tutor.start(student_id)
-    long_ago = datetime.now(timezone.utc) - timedelta(minutes=SESSION_GAP_MIN + 1)
-    with db_engine.begin() as conn:
-        conn.execute(db.turns_table.update().values(created_at=long_ago))
-    again = tutor.start(student_id)
-    assert again.decision.rule == "S0" and again.session_id != first.session_id
-    with db_engine.connect() as conn:
-        assert db.latest_session(conn, student_id)["session_no"] == 2
-    assert "Asha" in " ".join(segment.say for segment in again.segments)    # greeted by first name
 
 
 def test_turn_long_input_truncated(tutor, db_engine, cur):
@@ -248,16 +159,6 @@ def test_internal_error_leaves_progress(tutor, db_engine, cur, monkeypatch):
     assert "Sorry, let's try that again" in result.segments[0].say
     assert "internal_error" in result.issues
     assert progress_of(db_engine, cur, student_id) == before
-
-
-def test_r8_teaching_replays_speech_only(tutor, db_engine, cur):
-    student_id = new_student(db_engine, cur)
-    first = tutor.start(student_id)
-    result = tutor.turn(student_id, "say again")
-    assert result.decision.rule == "R8"
-    assert [segment.say for segment in result.segments] == [segment.say for segment in first.segments if segment.say]
-    assert all(segment.board == [] for segment in result.segments)
-    assert result.board == first.board
 
 
 def test_stt_failed_turn_asks_to_type(tutor, db_engine, cur):
@@ -348,7 +249,7 @@ def test_end_when_all_done_but_safety_first(tutor, db_engine, cur):
     assert [segment.say for segment in first.segments] == [                   # greeting, then the END summary
         "Welcome back!", "That's everything for now, Asha! You've mastered standard form and recognising a "
         "quadratic, roots and checking by substitution, solving by factorisation, the quadratic formula, "
-        "discriminant and nature of roots and word problems."]
+        "the discriminant and the nature of roots and word problems."]
     result = tutor.turn(student_id, "ok")
     assert result.decision.rule == "END"
     assert [segment.say for segment in result.segments] == [segment.say for segment in first.segments[1:]]

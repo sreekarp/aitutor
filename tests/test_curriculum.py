@@ -204,7 +204,7 @@ def assert_keys_and_traps(concept: Concept, expected: dict) -> None:
 
 
 def test_load_real_curriculum(cur):
-    assert cur.version == "2026.10.2"
+    assert cur.version == "2026.10.3"
     assert set(cur.formulas) == {"standard_form", "quadratic_formula", "discriminant", "nature_cases"}
     concept = cur.concepts["factorisation"]
     assert concept.title == "Solving by factorisation"

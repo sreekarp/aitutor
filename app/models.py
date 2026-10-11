@@ -214,7 +214,8 @@ class TurnContext:
     before: Progress                   # progress before decide()
     check: Check | None                # the pending question before decide() (None while teaching)
     text: str                          # the student's words, cut to MAX_INPUT_CHARS
-    last_speech: list[Segment]         # what the tutor said last turn, without its board commands
+    last_speech: list[Segment]         # what R8 replays: last turn's speech, without its board commands
+                                       # (right after a topic start or move-on: just the current step's speech)
     previous_reason: str               # reason of the previous turn's decision ("" if none)
     board: list[BoardLine]             # the session board before this turn
     deadline: float                    # time.monotonic() + TURN_DEADLINE_S, set at turn start

@@ -160,3 +160,18 @@ def test_llm_needs_review_shows_worked_answer_then_moves_on(cur, db_engine):
     assert [segment.say for segment in result.segments[:2]] == [worked["segments"][0]["say"], REVIEW_LATER]
     assert result.issues == [] and result.decision.resume_concept_id == "quadratic_formula"
     assert factorisation_state(db_engine, cur, student_id).status == "needs_review"
+
+
+def test_after_a_topic_start_understand_still_reads_the_real_last_line(cur, db_engine):
+    """Right after Start, UNDERSTAND gets the tutor's real last line (the end of step 1), and a reply it finds
+    unclear hears just step 1 again: not the greeting and the intro."""
+    fake = FakeLLM(understand=[understood("unclear")])
+    tutor = Tutor(cur, db_engine, SETTINGS, llm=fake)
+    with db_engine.begin() as conn:
+        student_id = db.get_or_create_student(conn, "asha", "Asha")["id"]
+    first = tutor.start(student_id)                       # standard form: greeting, intro, step 1
+    result = tutor.turn(student_id, "hmm, which one")
+    assert roles(fake) == ["understand"]
+    assert f"TUTOR'S LAST LINE: {first.segments[-1].say}" in fake.asked[0][1][1]["content"]
+    step_1 = cur.concepts["standard_form"].steps[0].segments
+    assert [segment.say for segment in result.segments] == [segment.say for segment in step_1]

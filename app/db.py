@@ -226,8 +226,8 @@ def get_turn(conn, turn_id: str) -> dict | None:
 
 
 def last_turn(conn, session_id: str) -> dict | None:
-    """The session's newest turn, plus its decision's rule and reason; None before the first turn."""
-    query = (select(turns_table, decisions_table.c.rule, decisions_table.c.reason)
+    """The session's newest turn, plus its decision's rule, action and reason; None before the first turn."""
+    query = (select(turns_table, decisions_table.c.rule, decisions_table.c.action, decisions_table.c.reason)
              .join(decisions_table, decisions_table.c.turn_id == turns_table.c.id)
              .where(turns_table.c.session_id == session_id)
              .order_by(turns_table.c.turn_no.desc()).limit(1))

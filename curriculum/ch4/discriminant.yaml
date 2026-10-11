@@ -2,7 +2,7 @@
 # SymPy can't read "D = ...", so a value of D is always a pure arithmetic line, e.g. (-4)^2 - 4.2.3 = -8.
 # Mistake fixes and the reteach step (three_cases) use numbers that answer no check in this file.
 id: discriminant
-title: Discriminant and nature of roots
+title: The discriminant and the nature of roots
 ncert: "4.4, Examples 7 and 9"
 intro: "Sometimes we only need the nature of the roots: two distinct real roots, two equal real roots, or no real roots. We'll learn to tell which, without solving."
 

@@ -88,7 +88,8 @@ def test_session_and_turn_numbers(db_engine):
         db.save_turn(conn, make_turn(first["id"], student_id), Decision("S0", "greet", None, "new session"))
         assert [db.get_turn(conn, turn_id)["turn_no"] for turn_id in turn_ids] == [0, 1, 2]
         last = db.last_turn(conn, second["id"])
-        assert (last["id"], last["turn_no"], last["rule"], last["reason"]) == (turn_ids[2], 2, "R0", "step 2")
+        assert (last["id"], last["turn_no"], last["rule"], last["action"], last["reason"]) == (
+            turn_ids[2], 2, "R0", "next_step", "step 2")
         assert last["tutor_output"] == {"segments": [{"say": "Next step.", "board": []}]}
         assert last["created_at"].tzinfo is not None
         assert db.last_turn(conn, first["id"])["turn_no"] == 0      # numbering is per session

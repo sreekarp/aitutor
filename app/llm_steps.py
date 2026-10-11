@@ -32,7 +32,7 @@ def respond(llm, cur: Curriculum, ctx: TurnContext, decision: Decision, after: P
     if decision.action == "reteach":                  # a scripted reteach replays the lesson's reteach step
         decision, after = engine.replay_instead(decision, ctx.before, after)
     if decision.action == "repeat" and ctx.phase == "teaching" and ctx.last_speech:
-        return ctx.last_speech, decision, after       # R8 while teaching: the last reply's speech again
+        return ctx.last_speech, decision, after       # R8 while teaching: say last_speech again (see TurnContext)
     words = fallback.words(decision, cur=cur, progress=after, check=ctx.check, grade=grade,
                            first_name=ctx.student["first_name"])
     return words, decision, after

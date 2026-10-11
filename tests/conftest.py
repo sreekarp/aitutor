@@ -1,8 +1,8 @@
 """Shared test fixtures and helpers."""
 import pytest
 
-from app import curriculum, db
-from app.config import Settings
+from app import curriculum, db, grading
+from app.config import POINTS_TO_MASTER, Settings
 from app.llm import BadOutputError
 from app.models import ConceptState, Curriculum, Progress
 
@@ -54,6 +54,29 @@ class FakeLLM:
                 calls[-1]["outcome"] = "bad_output"
                 if attempt == 2:
                     raise BadOutputError(str(err)) from None
+
+
+# ---------- whole-turn tests (use: from conftest import new_student, progress_of, said_with_working) ----------
+def new_student(db_engine, cur, mastered=None):
+    """Asha, with the concepts before factorisation mastered (or the ones given), so factorisation is current."""
+    with db_engine.begin() as conn:
+        student_id = db.get_or_create_student(conn, "asha", "Asha")["id"]
+        progress = db.load_progress(conn, student_id, cur)
+        for concept_id in cur.order[:cur.order.index("factorisation")] if mastered is None else mastered:
+            progress[concept_id].status, progress[concept_id].points = "mastered", POINTS_TO_MASTER
+        db.save_progress(conn, student_id, progress, cur.version)
+    return student_id
+
+
+def progress_of(db_engine, cur, student_id):
+    """The student's progress, as saved."""
+    with db_engine.connect() as conn:
+        return db.load_progress(conn, student_id, cur)
+
+
+def said_with_working(check):
+    """The right answer, said first (scripted mode reads values before "because"), then the working."""
+    return " and ".join(str(value) for value in grading.answer_key(check).values) + " because I factorised it"
 
 
 # ---------- web tests ----------

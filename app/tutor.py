@@ -114,6 +114,11 @@ class Tutor:
         concept = self.cur.concepts[concept_id] if concept_id else None
         pending = before[concept_id].pending if concept_id else None
         said = [Segment(say=seg["say"]) for seg in last["tutor_output"]["segments"] if seg["say"]] if last else []
+        step = curriculum.get_step(concept, before[concept_id].step_id) if concept and not pending else None
+        if step and last and last["action"] in RESUMING:
+            # After a topic start or move-on, "say again" replays just the step: not the greeting, intro or praise.
+            # That reply ended with the step, so UNDERSTAND's "tutor's last line" is still its real last line.
+            said = [Segment(say=segment.say) for segment in step.segments]
         ctx = TurnContext(
             student=student, session=session, concept=concept, phase="checking" if pending else "teaching",
             before=before, check=curriculum.get_check(concept, pending.check_id) if pending else None,

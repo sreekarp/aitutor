@@ -170,14 +170,19 @@ def test_praise_greeting_and_summary(cur):
     assert spoken(cur, "credit", check_of(cur, "fa1"), "factorisation")[0].endswith("!")   # no number restated
     praise = {spoken(cur, "credit", check_of(cur, f"fa{n}"), "factorisation")[0] for n in range(1, 6)}
     assert len(praise) > 1                                              # it rotates by check id
-    mastered = spoken(cur, "mastered", check_of(cur, "fa1"), "factorisation")[0]
-    assert mastered.endswith("! You've mastered solving by factorisation.")
-    mastered = spoken(cur, "mastered", check_of(cur, "di3"), "discriminant")[0]   # a word answer is said first
-    assert mastered.endswith(" — no real roots. You've mastered discriminant and nature of roots.")
+    mastered = spoken(cur, "mastered", check_of(cur, "fa1"), "factorisation", resume_concept_id="quadratic_formula")
+    assert mastered[0].endswith("! You've mastered solving by factorisation.")
+    mastered = spoken(cur, "mastered", check_of(cur, "di3"), "discriminant", resume_concept_id="word_problems")
+    assert mastered == ["Right — no real roots. You've mastered the discriminant and the nature of roots."]
+    # The very last mastery (nothing to resume): the END summary right after it says what's mastered.
+    assert spoken(cur, "mastered", check_of(cur, "di3"), "discriminant") == ["Right — no real roots."]
     progress = fresh_progress(cur)
     progress["standard_form"] = ConceptState("standard_form", status="teaching", step_id="hook")   # as S0 leaves it
     greeting = spoken(cur, "greet", None, "standard_form", progress, resume_concept_id="standard_form")
     assert greeting == ["Hi Asha! Let's start today with standard form and recognising a quadratic."]
+    progress["discriminant"] = ConceptState("discriminant", status="teaching", step_id="what_is_d")
+    assert spoken(cur, "greet", None, "discriminant", progress, resume_concept_id="discriminant") == [
+        "Hi Asha! Let's start today with the discriminant and the nature of roots."]
     progress["roots"] = ConceptState("roots", status="teaching", step_id="definition", last_check_id="rt3")
     assert spoken(cur, "greet", None, "roots", progress, resume_concept_id="roots") == [   # S0 started it again
         "Hi Asha! Last time, roots and checking by substitution needed more practice, so let's go over it again."]
@@ -221,7 +226,7 @@ def test_opening_before_a_concepts_step_or_question(cur):
     assert fallback.opening(roots, "greet", True) == [Segment(say=roots.intro)]
     move_on = [Segment(say=f"Now let's move on to roots and checking by substitution. {roots.intro}")]
     assert fallback.opening(roots, "mastered", True) == fallback.opening(roots, "needs_review", True) == move_on
-    back = [Segment(say="Now let's get back to roots and checking by substitution, where we left off.")]
+    back = [Segment(say="Let's get back to roots and checking by substitution, where we left off.")]
     assert fallback.opening(roots, "mastered", False) == fallback.opening(roots, "needs_review", False) == back
     for action, from_top in (("resume", True), ("resume", False), ("greet", False)):   # Continue, or carrying on
         assert fallback.opening(roots, action, from_top) == [], (action, from_top)

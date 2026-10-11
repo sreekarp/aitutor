@@ -9,7 +9,7 @@ intro: "Some quadratics are hard to factorise by splitting the middle term, and 
 steps:
   - id: the_formula
     segments:
-      - say: "When a quadratic equation has real roots, this formula finds them. Read a, b and c from the standard form and put them in."
+      - say: "Here is the formula. Read a, b and c from the standard form and put them in."
         board:
           - {op: write, id: tf1, formula: quadratic_formula}
       - say: "The part under the square root, b squared minus 4ac, can't be negative. If it is, there are no real roots, and the formula can't be used."
