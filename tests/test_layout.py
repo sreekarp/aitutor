@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MAX_LINES = 300
 # Section marks, build-task numbers and the private folders of design notes and source material.
-OUTSIDE = re.compile(r"§|\bTask \d+\b|proposal/|_notes/|your prototype", re.IGNORECASE)
+OUTSIDE = re.compile(r"§|\bTasks? \d+|proposal/|_notes/|your prototype", re.IGNORECASE)
 
 
 def test_code_files_stay_small():

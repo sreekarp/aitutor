@@ -22,3 +22,20 @@ def test_safety_answers_and_idioms_are_not_disclosures():
                  "my mobile number is 98765 43210", "(987) 654-3210", "Sir beats me", "Maa beats me",
                  "my dad gets drunk and beats me", "I feel suicidal", "I keep hurting myself", "my number is 9876"):
         assert safety.is_safety(text), text
+
+
+def test_punctuation_between_the_person_and_the_verb():
+    """A comma, "..." or a dash after the person still counts, and "he's" and "she's" are people too."""
+    for text in ("my dad... beats me", "my dad, beats me", "my mom, hits me", "my dad - beats me", "he's hitting me",
+                 "she's beating me"):
+        assert safety.is_safety(text), text
+
+
+def test_factor_lists_are_not_phone_numbers():
+    """A phone number is 7+ digits in groups of 2 or more ("98765 43210"), or said one by one ("9 8 7 6 5 4 3").
+    A list that mixes 1-digit and longer numbers, like the factor pairs of 12, is maths."""
+    for text in ("1 12 2 6 3 4", "1 40 2 20 4 10 5 8", "1 132 2 66 3 44 4 33 6 22 11 12"):
+        assert not safety.is_safety(text), text
+    for text in ("91 98765 43210", "011 2345 6789", "987-654-3210", "9876543210", "9 8 7 6 5 4 3"):
+        assert safety.is_safety(text), text
+    assert safety.is_safety("11-10-2026")        # a false alarm DESIGN.md owns up to: a date looks like a phone number

@@ -57,10 +57,11 @@ def test_understand_order_and_negations(cur):
     assert understand(cur, "2 and 3", phase="teaching").type == "unclear"  # answers are read only while checking
 
 
-def test_my_number_is_an_answer_and_beats_me_is_dont_know(cur):
+def test_my_number_is_an_answer_and_beats_me_is_unclear(cur):
     said = understand(cur, "My number is seven.", "sf2")                  # graded like any other answer
-    assert (said.type, said.answer, said.safety) == ("answer", "7", False)
-    assert understand(cur, "Beats me.", "sf2").type == "dont_know"        # "beats me" means "I don't know"
+    assert (said.type, said.answer) == ("answer", "7")
+    # Asked again, never hinted: a disclosure the safety check misses can end in "beats me" too.
+    assert understand(cur, "Beats me.", "sf2").type == "unclear"
 
 
 def test_scripted_answer_odd_formats(cur):

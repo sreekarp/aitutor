@@ -29,7 +29,7 @@ def db_engine():
 
 
 class FakeLLM:
-    """Stands in for llm.Client (Tasks 15-16): chat_json's replies come from a queue per role, no network.
+    """Stands in for llm.Client: chat_json's replies come from a queue per role, no network.
 
     A queued dict is the model's JSON and goes through `validate` like the real client's: a rejected
     output gets one retry with the next queued reply. A queued exception (e.g. ProviderError) is recorded
@@ -56,7 +56,7 @@ class FakeLLM:
                     raise BadOutputError(str(err)) from None
 
 
-# ---------- web tests (Tasks 17-18) ----------
+# ---------- web tests ----------
 def make_settings(**changes) -> Settings:
     """Settings for web tests: scripted mode, in-memory database. Change fields by name, e.g. https_only=True."""
     values = dict(openrouter_api_key="", access_code="letmein", session_secret="test-secret",

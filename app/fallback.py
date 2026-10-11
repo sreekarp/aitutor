@@ -32,9 +32,10 @@ def _whole_reply(*phrases: str) -> re.Pattern:
 NEXT = _whole_reply("ok", "okay", "next", "go on", "continue", "yes", "haan", "han", "haan ji", "theek hai",
                     "thik hai", "accha")
 SAY_AGAIN = _whole_reply("say again", "repeat", "repeat please", "phir se", "phir se bolo", "dobara", "once more")
+# Not "beats me": a disclosure the safety check misses ("He gets drunk. Beats me.") must never get a hint.
 DONT_KNOW = phrases("dont know", "no idea", "just tell me", "hint", "help", "dont get it", "didnt get it",
                     "dont understand", "didnt understand", "not understood", "havent understood", "pata nahi",
-                    "nahi pata", "samajh nahi", "beats me")
+                    "nahi pata", "samajh nahi")
 GET_IT = phrases("get it", "got it", "understood", "samajh gaya", "samajh gayi")
 QUESTION_START = re.compile(r"\s*(?:why|how|what|kyun|kaise)\b")
 # Method words, by their start: "factor" also finds "factorise" and "factorised".

@@ -320,7 +320,7 @@ def test_safety_turn_keeps_pending_and_flags_review(tutor, db_engine, cur):
     student_id = new_student(db_engine, cur)
     to_first_question(tutor, cur, student_id)
     before = progress_of(db_engine, cur, student_id)
-    for text in (PHONE, "my dad gets drunk and beats me"):       # "beats me" alone means "I don't know"
+    for text in (PHONE, "my dad gets drunk and beats me", "my dad... beats me"):   # a person, then "beats me"
         result = tutor.turn(student_id, text)
         assert result.decision.rule == "R10" and result.grade is None, text
         assert "safety_review" in result.issues, text
