@@ -30,4 +30,4 @@ def test_evals_without_key_runs_layer1_only(monkeypatch, capsys):
     assert evals_main.main() == 3                             # Layer 1's exit code is passed through
     assert len(commands) == 1 and commands[0][-3:] == ["-m", "pytest", "-q"]
     out = capsys.readouterr().out
-    assert "Layer 2 needs OPENROUTER_API_KEY" in out and "Task 16" not in out
+    assert "Layer 2 needs OPENROUTER_API_KEY" in out

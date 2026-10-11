@@ -1,6 +1,6 @@
-"""Checks the maths on the whiteboard before a student sees it (spec §6.3 rule 3).
+"""Checks the maths on the whiteboard before a student sees it (reply rule 3 in board.py).
 
-Your prototype, proposal/equation_check.py, hardened after two reviews: it never runs the LLM's code,
+It grew out of an equation_check.py prototype, hardened after two reviews: it never runs the LLM's code,
 never crashes or hangs, and refuses any line it can't fully check. A board line is a dict with "latex"
 (what the student sees), "check" (the same maths in SymPy syntax) and "relation": "equiv" (the default:
 same roots as the line before), "select" (keeps some of those roots) or "new" (a fresh start).

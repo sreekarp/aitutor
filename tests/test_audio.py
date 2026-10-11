@@ -1,4 +1,4 @@
-"""Voice: the audio turn route, speech-to-text failures and the text-to-speech cache (spec §7.2, §8.1-§8.2)."""
+"""Voice: the audio turn route, speech-to-text failures and the text-to-speech cache."""
 import hashlib
 
 import pytest

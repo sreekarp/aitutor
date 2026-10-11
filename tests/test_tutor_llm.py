@@ -1,4 +1,4 @@
-"""app/tutor.py with the LLM (spec §5.2, §6.1, §7.2): a fake client plays UNDERSTAND and RESPOND."""
+"""app/tutor.py and app/llm_steps.py with the LLM: a fake client plays UNDERSTAND and RESPOND."""
 from conftest import FakeLLM
 
 from app import curriculum, db

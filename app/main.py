@@ -1,4 +1,4 @@
-"""The web app: the sign-in cookie, the JSON routes the page calls, and the page's own files (spec §8.3, §10)."""
+"""The web app: the sign-in cookie, the JSON routes the page calls, and the page's own files."""
 from __future__ import annotations
 
 import logging
@@ -29,7 +29,7 @@ class LoginForm(BaseModel):
 
 
 class TextTurn(BaseModel):
-    """A reply typed in the text box, plus the last voice reply's stop-click-to-first-audio time (spec §8.5)."""
+    """A reply typed in the text box, plus the last voice reply's stop-click-to-first-audio time."""
     text: str
     prev_first_audio_ms: int | None = None
 
@@ -64,7 +64,7 @@ def create_app(settings: Settings | None = None, *, llm=None, cur: Curriculum | 
             raise HTTPException(status_code=403, detail="That access code isn't right.")
         with db_engine.begin() as conn:
             student = db.get_or_create_student(conn, form.username, form.first_name)
-        request.session["student_id"] = student["id"]   # only ever read from the signed cookie (spec §10)
+        request.session["student_id"] = student["id"]   # only ever read from the signed cookie
         return {"first_name": student["first_name"]}
 
     @app.post("/api/logout", dependencies=[Depends(signed_in)])
@@ -117,7 +117,7 @@ def create_app(settings: Settings | None = None, *, llm=None, cur: Curriculum | 
     return app
 
 
-# The tutor's JSON log lines (one per turn, spec §11) go to stdout. Other libraries stay at WARNING:
+# The tutor's JSON log lines (one per turn) go to stdout. Other libraries stay at WARNING:
 # at INFO, httpx and SQLAlchemy would add a line for every request and every SQL statement.
 logging.basicConfig(format="%(message)s", stream=sys.stdout)
 logging.getLogger("app").setLevel(logging.INFO)

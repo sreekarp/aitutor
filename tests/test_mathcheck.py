@@ -61,7 +61,7 @@ def statuses(lines, anchor=None):
     return [status for status, _ in report(lines, anchor)]
 
 
-# Your prototype's seven cases, now with the hardened checker's exact messages.
+# The equation_check.py prototype's seven cases, now with the hardened checker's exact messages.
 CASE_A = [L(r"x(x+1) + 8 = (x+2)(x-2)", "Eq(x*(x+1) + 8, (x+2)*(x-2))"),
           L(r"x^2 + x + 8 = x^2 - 4", "Eq(x**2 + x + 8, x**2 - 4)"),
           L(r"x + 12 = 0", "Eq(x + 12, 0)")]

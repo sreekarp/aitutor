@@ -1,4 +1,4 @@
-"""The whiteboard: board state and checks on every LLM reply before it is shown (spec §6.2-§6.4)."""
+"""The whiteboard: board state and checks on every LLM reply before it is shown."""
 from __future__ import annotations
 
 import re
@@ -32,7 +32,7 @@ class ReplyContext:
     formulas: dict[str, str]
 
 
-# ---------- board state (spec §6.4) ----------
+# ---------- board state ----------
 def apply(board: list[BoardLine], segments: list[Segment], formulas: dict[str, str]) -> list[BoardLine]:
     """The board after these segments' commands; the input list is not changed. Highlights change nothing."""
     lines = list(board)
@@ -60,9 +60,12 @@ def _write(lines: list[BoardLine], cmd: BoardCommand, formulas: dict[str, str]) 
     return lines
 
 
-# ---------- checking an LLM reply (spec §6.3) ----------
+# ---------- checking an LLM reply ----------
 def validate_reply(segments: list[Segment], ctx: ReplyContext) -> list[str]:
-    """Spec §6.3 rules 1-8 for an LLM reply. Each problem is one readable line; [] means it can be shown."""
+    """The 8 rules an LLM reply must pass: 1 its shape, 2 speech without LaTeX and at most 60 words, 3 every
+    maths line passes mathcheck, 4 word lines without digits or "=", 5 highlights KaTeX can draw, 6 no answer
+    given away, 7 no lesson question as a reteach example, 8 no reused line id. Each problem is one readable
+    line; [] means the reply can be shown."""
     problems = []
     if not 1 <= len(segments) <= MAX_SEGMENTS:
         problems.append(f"a reply needs 1 to {MAX_SEGMENTS} segments, not {len(segments)}")
@@ -144,7 +147,7 @@ def _answer_problems(segments: list[Segment], maths: list[dict], ctx: ReplyConte
     return [reveal] if reveal else []
 
 
-# ---------- does a reply give the answer away? (spec §6.3 rule 6) ----------
+# ---------- does a reply give the answer away? (rule 6) ----------
 def reveals_answer(segments: list[Segment], key: AnswerKey | None, student_answer: str) -> str | None:
     """Why this reply gives the answer away, or None. Word answers (yes/no, nature) can't be checked."""
     if key is None or not key.values:

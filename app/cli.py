@@ -1,4 +1,4 @@
-"""Type to the tutor in a terminal (spec §14): uv run python -m app.cli [--username NAME].
+"""Type to the tutor in a terminal: uv run python -m app.cli [--username NAME].
 
 The same text path as the web page. It uses its own database, data/cli.db, unless DATABASE_URL is set."""
 from __future__ import annotations

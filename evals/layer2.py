@@ -1,4 +1,4 @@
-"""Layer 2 evals (spec §12): tutor scenarios against the real LLM, each run several times, scored by majority.
+"""Layer 2 evals: tutor scenarios against the real LLM, each run several times, scored by majority.
 
 A run fails if its expectations aren't met, or if the first output of UNDERSTAND or RESPOND was rejected
 (read from the turn's issues; this wins over provider trouble). A run hit by provider trouble (a provider
@@ -33,7 +33,7 @@ EXPECT_KEYS = {"type", "rule", "action", "mistake", "points", "unchanged", "chec
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    """The evals command's flags (spec §12). No argv means no flags."""
+    """The evals command's flags. No argv means no flags."""
     parser = argparse.ArgumentParser(prog="python -m evals", description="Layer 1 tests, then Layer 2 scenarios.")
     parser.add_argument("--runs", type=int, default=3, help="runs per scenario (at least 2; default 3)")
     parser.add_argument("--only", metavar="ID", help="run just this scenario")

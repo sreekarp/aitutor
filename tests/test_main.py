@@ -1,4 +1,4 @@
-"""Web routes in scripted mode: sign-in, the cookie, sessions and text turns (spec §8.3, §10).
+"""Web routes in scripted mode: sign-in, the cookie, sessions and text turns.
 
 Importing app.main also builds the module-level app from your settings (it creates data/tutor.db if missing).
 Each test below builds its own app instead, with an in-memory database."""

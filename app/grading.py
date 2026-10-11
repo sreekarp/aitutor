@@ -1,4 +1,4 @@
-"""Answer keys, reading answers and grading, all done by SymPy (spec §3.2, §5.3, §5.4)."""
+"""Answer keys, reading answers and grading, all done by SymPy."""
 from __future__ import annotations
 
 import re
@@ -8,7 +8,7 @@ from sympy import Eq, Expr, Poly, S, expand, simplify, solveset, sstr
 from app.mathcheck import parse_check, x
 from app.models import WORD_KINDS, AnswerKey, Check, Grade
 
-# ---------- reading an answer (spec §5.3) ----------
+# ---------- reading an answer ----------
 
 MAX_VALUE_CHARS = 60     # one value, e.g. "2 + sqrt(3)"
 MAX_VALUES = 10          # an answer with more values than this isn't read
@@ -104,7 +104,7 @@ def _read_word(text, kind):
     return None
 
 
-# ---------- answer keys (spec §3.2) ----------
+# ---------- answer keys ----------
 
 KEY_WORDS = {
     "is_quadratic": {"yes": "Yes, it is a quadratic equation", "no": "No, it is not a quadratic equation"},
@@ -198,7 +198,7 @@ def _show(value):
     return sstr(value, order="none")
 
 
-# ---------- grading (spec §5.4) ----------
+# ---------- grading ----------
 
 def grade(check: Check, answer: str) -> Grade:
     """Grade one answer: correct, wrong, partial or unsure, plus the known mistake (trap) it matches."""
@@ -219,7 +219,7 @@ def grade(check: Check, answer: str) -> Grade:
 
 
 def _grade_roots(given, key):
-    """The §5.4 table. S = given, T = key.values, T_all = key.all_roots. Returns (verdict, detail)."""
+    """A roots answer, compared with the key as sets of values. Returns (verdict, detail)."""
     if _same_set(given, key.values):
         return "correct", ""
     if not given:
@@ -239,7 +239,7 @@ def _grade_one_number(given, key):
 
 
 def _matching_trap(check, given):
-    """The mistake whose trap answer equals the student's answer, by value (spec §5.4 step 1)."""
+    """The mistake whose trap answer equals the student's answer, by value."""
     if check.kind in WORD_KINDS:
         return None                            # traps are numbers; word answers have none
     for mistake, trap_text in check.traps.items():

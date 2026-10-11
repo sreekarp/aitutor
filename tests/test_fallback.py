@@ -1,4 +1,4 @@
-"""Tests for app/fallback.py: scripted understanding and every scripted reply (spec §5.1, §7.3, §10)."""
+"""Tests for app/fallback.py: scripted understanding and every scripted reply."""
 import re
 
 from conftest import fresh_progress
@@ -7,7 +7,7 @@ from app import fallback, grading, mathcheck
 from app.models import ACTIONS, Check, ConceptState, Decision, Grade, Segment
 
 LATEX_CHARS = set("\\^{}$_")
-SPEC_SAFETY_TEXT = ("Thank you for telling me. If something is worrying you, please talk to a parent, a teacher or "
+EXPECTED_SAFETY_TEXT = ("Thank you for telling me. If something is worrying you, please talk to a parent, a teacher or "
                     "another adult you trust. And please don't share personal details like your phone number or "
                     "address here.")
 
@@ -30,14 +30,14 @@ def spoken(cur, action, check=None, cid=None, progress=None, grade=None, **field
     return [segment.say for segment in segments]
 
 
-# ---------- fast paths (spec §5.1) ----------
+# ---------- fast paths ----------
 def test_safety_words_and_phone_not_decimals(cur):
     for text in ("I want to die", "sometimes I hurt myself", "self-harm", "my dad hits me",
                  "my number is nine eight seven", "call me on 9876543210", "marna chahta hoon"):
         assert fallback.is_safety(text), text
     for text in ("x = 0.3333333", "1/3 is about 0.33333333", "x is 1234567.5", "123456", "2 and 3", "हाँ"):
         assert not fallback.is_safety(text), text
-    assert spoken(cur, "safety") == [SPEC_SAFETY_TEXT]                    # the spec §10 words, exactly
+    assert spoken(cur, "safety") == [EXPECTED_SAFETY_TEXT]                    # the exact safety words
 
 
 def test_keyword_whole_reply_only():
@@ -50,7 +50,7 @@ def test_keyword_whole_reply_only():
     assert fallback.keyword("ok", "checking") is None                     # while checking, "ok" isn't "next"
 
 
-# ---------- scripted understanding (spec §7.3) ----------
+# ---------- scripted understanding ----------
 def test_understand_order_and_negations(cur):
     teaching = {"I don't get it": "dont_know", "I haven't understood": "dont_know", "samajh nahi aaya": "dont_know",
                 "just tell me": "dont_know", "I get it": "claims_understanding", "samajh gaya": "claims_understanding",
@@ -118,7 +118,7 @@ def test_understand_non_latin_and_long(cur):
     assert said.type == "answer" and grading.grade(check_of(cur, "fa1"), said.answer).verdict == "unsure"
 
 
-# ---------- scripted replies (spec §4.7, §7.3) ----------
+# ---------- scripted replies ----------
 def test_templates_have_no_latex_and_no_keys(cur):
     """Every action's words are plain short speech; while a question is open they hold no numbers at all."""
     progress = fresh_progress(cur)

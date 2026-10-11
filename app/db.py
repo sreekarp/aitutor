@@ -1,4 +1,4 @@
-"""The 5 tables (spec §9) and small read/write helpers. SQLAlchemy Core: plain tables, no ORM classes.
+"""The 5 tables and small read/write helpers. SQLAlchemy Core: plain tables, no ORM classes.
 
 Every helper takes an open connection, so the caller decides what goes into one transaction."""
 from __future__ import annotations
@@ -254,7 +254,7 @@ def recent_decisions(conn, student_id: str, limit: int = 5) -> list[dict]:
 
 
 def turns_today(conn) -> int:
-    """Turns since midnight UTC, across all students (the daily limit, spec §10)."""
+    """Turns since midnight UTC, across all students (the daily limit)."""
     midnight = _now().replace(hour=0, minute=0, second=0, microsecond=0)
     return conn.execute(select(func.count()).select_from(turns_table)
                         .where(turns_table.c.created_at >= midnight)).scalar()

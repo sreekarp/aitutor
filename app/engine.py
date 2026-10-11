@@ -1,4 +1,4 @@
-"""The teaching rules (spec §4): which move comes next, and why. Pure functions: no I/O, inputs never changed."""
+"""The teaching rules: which move comes next, and why. Pure functions: no I/O, inputs never changed."""
 from __future__ import annotations
 
 import copy
@@ -14,7 +14,7 @@ REPEAT_CAUSE = {"next": "That reply didn't answer the question", "say_again": "Y
 
 
 def current_concept(progress: Progress, cur: Curriculum) -> str | None:
-    """The first concept being taught or checked, else the first not started, else None (spec §4.5)."""
+    """The first concept being taught or checked, else the first not started, else None."""
     for cid in cur.order:
         if progress[cid].status in ("teaching", "checking"):
             return cid
@@ -26,7 +26,7 @@ def current_concept(progress: Progress, cur: Curriculum) -> str | None:
 
 def decide(progress: Progress, cur: Curriculum, understood: Understood,
            grade: Grade | None) -> tuple[Decision, Progress]:
-    """Pick exactly one rule for this reply (spec §4.3, §4.4); return it with the new progress."""
+    """Pick exactly one rule for this reply; return it with the new progress."""
     after = copy.deepcopy(progress)               # all changes happen on this copy
     cid = current_concept(after, cur)
     state = after[cid] if cid is not None else None
@@ -46,7 +46,7 @@ def decide(progress: Progress, cur: Curriculum, understood: Understood,
 
 
 def start(progress: Progress, cur: Curriculum, *, new_session: bool) -> tuple[Decision, Progress]:
-    """S0 (a new session) or S1 (carry on): resume the current concept where it stands (spec §4.4, §4.5)."""
+    """S0 (a new session) or S1 (carry on): resume the current concept where it stands."""
     after = copy.deepcopy(progress)
     if new_session:                                  # S0: every concept marked for review starts again
         for cid in cur.order:
@@ -64,7 +64,7 @@ def start(progress: Progress, cur: Curriculum, *, new_session: bool) -> tuple[De
 
 
 def reconcile(progress: Progress, cur: Curriculum) -> tuple[Progress, list[str], bool]:
-    """Spec §4.4: move students off removed steps and questions. Returns (progress, issues, question replaced)."""
+    """Move students off removed steps and questions. Returns (progress, issues, question replaced)."""
     after, changed, replaced = copy.deepcopy(progress), False, False      # points are always kept
     current = current_concept(after, cur)
     for cid in cur.order:
@@ -97,7 +97,7 @@ def end_decision() -> Decision:
                     reason="Every concept is mastered or marked for review, so this session's lessons are done.")
 
 
-# ---------- the two columns of the §4.3 table ----------
+# ---------- the rules while teaching, and while checking ----------
 def _teaching(state: ConceptState, concept: Concept, understood: Understood) -> Decision:
     kind, total = understood.type, len(concept.steps)
     if kind in ("next", "answer"):
@@ -136,7 +136,7 @@ def _checking(after: Progress, cur: Curriculum, state: ConceptState, understood:
                  ask_check_id=check_id)
 
 
-# ---------- answers while checking (the order of checks in §4.4) ----------
+# ---------- answers while checking ----------
 def _answer(after: Progress, cur: Curriculum, state: ConceptState, understood: Understood,
             grade: Grade | None) -> Decision:
     pending, concept = state.pending, cur.concepts[state.concept_id]
@@ -174,7 +174,7 @@ def _answer(after: Progress, cur: Curriculum, state: ConceptState, understood: U
 
 
 def _mistake(concept: Concept, understood: Understood, grade: Grade) -> str | None:
-    """Spec §5.4: a trap answer is certain; otherwise the LLM's suggestion, if it's listed."""
+    """The mistake made: a trap answer is certain; otherwise the LLM's suggestion, if it's listed."""
     if grade.trap:
         return grade.trap
     listed = {mistake.id for mistake in concept.mistakes}
@@ -214,7 +214,7 @@ def _credit(after: Progress, cur: Curriculum, state: ConceptState, cause: str) -
                  resume_concept_id=_resume_next(after, cur), clear_board=True)
 
 
-# ---------- reteaching (spec §4.4 R3, R4, R9; §4.6) ----------
+# ---------- reteaching (R3, R4, R9) ----------
 def _reteach(after: Progress, cur: Curriculum, state: ConceptState, rule: str, cause: str,
              mistake: str | None, wrong_values: bool) -> Decision:
     """R3, or R4 after the last hint: reteach, then the next question. R9 instead after 3 reteaches."""
@@ -235,7 +235,7 @@ def _reteach(after: Progress, cur: Curriculum, state: ConceptState, rule: str, c
 
 
 def pick_strategy(concept: Concept, state: ConceptState, wrong_values: bool) -> str:
-    """Spec §4.6: the first eligible strategy not tried in this pass, else the first eligible one."""
+    """The first eligible strategy not tried in this pass, else the first eligible one."""
     # substitute_back needs wrong values to put back in, so never after "I don't know".
     # The loader insists on worked_example, so there is always an eligible strategy.
     eligible = [s for s in concept.strategies if s != "substitute_back" or wrong_values]
@@ -255,14 +255,14 @@ def replay_instead(decision: Decision, before: Progress, after: Progress) -> tup
 
 # ---------- small shared helpers ----------
 def _ask_next(state: ConceptState, concept: Concept, rule: str, action: str, reason: str, **extra) -> Decision:
-    """Ask the next question (spec §4.2). Asking any question starts a fresh pending."""
+    """Ask the next question. Asking any question starts a fresh pending."""
     check_id = next_check_id(concept, state.last_check_id)
     state.status, state.pending, state.last_check_id = "checking", Pending(check_id), check_id
     return _make(rule, action, state, reason, ask_check_id=check_id, **extra)
 
 
 def _resume_next(after: Progress, cur: Curriculum) -> str | None:
-    """The concept to resume (spec §4.5); one not started yet begins at its first step."""
+    """The concept to resume; one not started yet begins at its first step."""
     cid = current_concept(after, cur)
     if cid is not None and after[cid].status == "not_started":
         after[cid].status = "teaching"

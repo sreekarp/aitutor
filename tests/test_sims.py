@@ -1,4 +1,4 @@
-"""Simulations (spec §13). The tutor runs in scripted mode; a FakeLLM plays the student model."""
+"""Simulations. The tutor runs in scripted mode; a FakeLLM plays the student model."""
 import dataclasses
 import json
 import re
@@ -14,9 +14,9 @@ from sims.__main__ import (check_reply, load_personas, save_run, simulate, stude
 SCRIPTED = make_settings()
 PERSONAS = load_personas()
 
-# The roots concept (spec §3.3): rt1 "is -2 a root of x² + x - 2 = 0?" -> yes; rt2 "is -1 a root of
+# The roots concept: rt1 "is -2 a root of x² + x - 2 = 0?" -> yes; rt2 "is -1 a root of
 # x² - 3x + 2 = 0?" -> no; rt3 "is 3/2 a root of 2x² - x - 3 = 0?" -> yes. Scripted mode reads the
-# answer from the words before "because", and "because" counts as working (spec §7.3).
+# answer from the words before "because", and "because" counts as working.
 RT1_RIGHT = "yes, because 4 - 2 - 2 = 0"
 RT1_WRONG = "no, because -2 squared is -4"
 RT2_RIGHT = "no, because 1 + 3 + 2 = 6"

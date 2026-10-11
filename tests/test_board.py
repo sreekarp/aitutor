@@ -1,4 +1,4 @@
-"""Tests for app/board.py: board state and the checks on every LLM reply (spec §6.2-§6.4)."""
+"""Tests for app/board.py: board state and the checks on every LLM reply."""
 from app import board, grading
 from app.models import BoardCommand, BoardLine, Check, Segment
 
@@ -33,7 +33,7 @@ def problems(*board_commands: BoardCommand, say: str = "Look at the board.", **f
     return board.validate_reply([Segment(say=say, board=list(board_commands))], context(**fields))
 
 
-# ---------- board state (spec §6.4) ----------
+# ---------- board state ----------
 def test_apply_replace_in_place_and_pins():
     start = QUESTION + [BoardLine("r1", latex="x = 1", check="Eq(x, 1)")]
     segments = [Segment(say="One.", board=[write("r1", "x = 2", "Eq(x, 2)"), write("r2", text="Roots")]),
@@ -56,7 +56,7 @@ def test_apply_cap_keeps_question_lines():
     assert [line.id for line in after] == ["q-label", "q-eq", "r3", "r4", "r5", "n0", "n1", "n2"]
 
 
-# ---------- checking a reply (spec §6.3) ----------
+# ---------- checking a reply ----------
 def test_say_rules():
     for say in (r"So \frac{1}{2}.", "x^2 is nine.", "Use {a, b}.", "It costs $5.", "Call it x_1."):
         assert any("LaTeX" in p for p in problems(say=say)), say

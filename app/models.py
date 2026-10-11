@@ -94,7 +94,7 @@ class Understood(BaseModel):
     type: ReplyType
     answer: str = ""                 # "" means no answer was given
     showed_working: bool = False
-    mistake: str | None = None       # a suggestion; only used as §5.4 allows
+    mistake: str | None = None       # a suggestion, used only if it names a listed mistake
     safety: bool = False             # distress or personal information
 
 
@@ -167,7 +167,7 @@ class Decision:
     mistake: str | None = None       # the mistake this move targets
     play_step_id: str | None = None        # play this step of concept_id after the words
     ask_check_id: str | None = None        # ask this question of concept_id after the words
-    resume_concept_id: str | None = None   # resume this concept after the words (§4.5)
+    resume_concept_id: str | None = None   # resume this concept after the words
     clear_board: bool = False              # clear the board before resuming / playing
     reask: bool = False                    # add the short scripted re-ask after the words
 

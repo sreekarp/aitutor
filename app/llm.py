@@ -1,4 +1,4 @@
-"""OpenRouter client: chat that returns JSON, speech-to-text and text-to-speech (spec §7.2, §7.5).
+"""OpenRouter client: chat that returns JSON, speech-to-text and text-to-speech.
 
 Two failure rules. A provider problem (timeout, connection error, HTTP error, an error body or an
 empty reply) tries the role's backup model once. A bad output (not JSON, or `validate` rejects it)

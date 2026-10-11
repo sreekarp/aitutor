@@ -1,4 +1,4 @@
-"""Tests for app/curriculum.py and the lesson files (spec §3.1-§3.3)."""
+"""Tests for app/curriculum.py and the lesson files."""
 import re
 
 import pytest
@@ -218,7 +218,7 @@ def test_fresh_progress_starts_every_concept(cur):
     assert all(state.status == "not_started" and state.pending is None for state in progress.values())
 
 
-FACTORISATION = {   # spec §3.3 concept 3: check -> (answer key, {mistake: (trap, verdict)})
+FACTORISATION = {   # concept 3: check -> (answer key, {mistake: (trap, verdict)})
     "fa1": ([2, 3], {"sign_flip": ("-2, -3", "wrong")}),
     "fa2": ([Rational(-1, 3), 2], {"sign_flip": ("1/3, -2", "wrong")}),
     "fa3": ([2, -3], {"sign_flip": ("-2, 3", "wrong")}),
@@ -238,7 +238,7 @@ def test_factorisation_keys_and_traps(cur):
 
 # ---------- concepts 1 and 2 ----------
 
-STANDARD_FORM = {   # spec §3.3 concept 1
+STANDARD_FORM = {   # concept 1
     "sf1": ("no", {}),
     "sf2": ([-7], {"sign_when_moving": ("7", "wrong")}),
     "sf3": ("yes", {}),
@@ -302,7 +302,7 @@ def board_numbers(cmd: BoardCommand) -> list:
 
 def test_mistake_fixes_reveal_no_answers(cur):
     """Fixes and the reteach step are spoken just before the next question and never run through the
-    "reveals the answer" check (spec §3.1), so none of their numbers may answer a check in the concept."""
+    "reveals the answer" check, so none of their numbers may answer a check in the concept."""
     for concept in cur.concepts.values():
         answers = [value for check in concept.checks for value in grading.answer_key(check).values or []]
         found = [(f"mistake {mistake.id}", spoken_numbers(mistake.fix)) for mistake in concept.mistakes]
@@ -322,7 +322,7 @@ def writes(concept: Concept, step_id: str) -> list[BoardCommand]:
     return [cmd for segment in step.segments for cmd in segment.board if cmd.op == "write"]
 
 
-FORMULA = {   # spec §3.3 concept 4
+FORMULA = {   # concept 4
     "qf1": ([2, Rational(-1, 2)], {"minus_b": ("1/2, -2", "wrong"), "divide_by_2_not_2a": ("4, -1", "wrong"),
                                    "sign_in_D": ("none", "wrong")}),
     "qf2": ([2 + sqrt(3), 2 - sqrt(3)], {"minus_b": ("-2 + sqrt(3), -2 - sqrt(3)", "wrong")}),
@@ -342,7 +342,7 @@ def test_formula_keys_and_traps(cur):
     assert concept.reteach_step == "careful_minus_b"
 
 
-DISCRIMINANT = {   # spec §3.3 concept 5
+DISCRIMINANT = {   # concept 5
     "di1": ([25], {"sign_in_D": ("-7", "wrong")}),
     "di2": ("equal", {}),
     "di3": ("none", {}),
@@ -366,7 +366,7 @@ def test_discriminant_keys_and_traps(cur):
         assert len(values) == 1 and grading.same_value(values[0][0], d), step_id
 
 
-WORD_PROBLEMS = {   # spec §3.3 concept 6: the impossible root kept grades partial
+WORD_PROBLEMS = {   # concept 6: the impossible root kept grades partial
     "wp1": ([5], {"kept_impossible_root": ("5, -8", "partial")}),
     "wp2": ("no", {}),
     "wp3": ([11], {"kept_impossible_root": ("11, -12", "partial")}),
@@ -409,7 +409,7 @@ def skill(check: Check) -> tuple:
 
 
 def test_first_two_checks_differ_in_skill(cur):
-    """A strong student masters a concept on two answers, so those two must test different skills (spec §3.2).
+    """A strong student masters a concept on two answers, so those two must test different skills.
     A rough guard only: the real review is by eye."""
     for concept in cur.concepts.values():
         first, second = concept.checks[:2]

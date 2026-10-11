@@ -26,7 +26,7 @@ function make(tag, text = "", className = "") {
 let board = [];   // the lines on the board, kept like the server's: [{id, latex, formula, text}]
 
 // Draws a line's LaTeX. With `part`, that exact snippet is highlighted; if KaTeX can't draw the
-// snippet on its own, the whole line is highlighted instead (spec §6.4).
+// snippet on its own, the whole line is highlighted instead.
 function renderLine(el, latex, part) {
   const i = part ? latex.indexOf(part) : -1;
   if (i >= 0) {

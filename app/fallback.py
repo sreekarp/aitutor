@@ -1,4 +1,4 @@
-"""Scripted mode (spec §5.1, §7.3, §10): keyword lists, scripted understanding and every scripted reply.
+"""Scripted mode: keyword lists, scripted understanding and every scripted reply.
 
 Used when there is no API key, in tests, and whenever the LLM fails. All matching is by whole words,
 so the "d" in "and" is never the letter D.
@@ -57,7 +57,7 @@ WORD_CHOICES = {"is_quadratic": grading.YES_NO_WORDS, "is_root": grading.YES_NO_
                 "has_real_roots": grading.YES_NO_WORDS, "nature": grading.NATURE_WORDS,
                 "roots": {"none": grading.NONE_PHRASES}}
 
-# ---------- scripted texts (spec §4.4, §4.7, §7.3, §10) ----------
+# ---------- scripted texts ----------
 SAFETY_REPLY = ("Thank you for telling me. If something is worrying you, please talk to a parent, a teacher or "
                 "another adult you trust. And please don't share personal details like your phone number or "
                 "address here.")
@@ -77,7 +77,7 @@ REASK = {"roots": "So, what are the roots?", "discriminant": "So, what is the di
 REVIEW_LATER = "This one needs more practice, so we'll come back to this next time."   # R9, after the worked answer
 
 
-# ---------- fast paths (spec §5.1) ----------
+# ---------- fast paths ----------
 def is_safety(text: str) -> bool:
     """True for a distress phrase, personal details, or a phone-like run of 7+ digits."""
     return bool(SAFETY.search(text.lower()) or PHONE.search(text))
@@ -93,7 +93,7 @@ def keyword(text: str, phase: str) -> str | None:
     return None
 
 
-# ---------- scripted understanding (spec §7.3) ----------
+# ---------- scripted understanding ----------
 def spoken_maths(text: str) -> str:
     """Lower-cases text and writes spoken maths as symbols: "minus half" -> "-1/2", "root 3" -> "sqrt(3)"."""
     text = text.lower().replace("'", "").replace("’", "")
@@ -110,7 +110,7 @@ def spoken_maths(text: str) -> str:
 
 
 def understand(text: str, *, phase: str, check: Check | None, awaiting_working: bool) -> Understood:
-    """Scripted understanding: the first list that matches gives the reply's type (spec §7.3)."""
+    """Scripted understanding: the first list that matches gives the reply's type."""
     clean = spoken_maths(text[:MAX_INPUT_CHARS])
     working = _showed_working(_drop_names(clean, check))
     answer = _answer(clean, check) if phase == "checking" and check else ""
@@ -170,7 +170,7 @@ def _numbers(text: str) -> str:
     return ", ".join(values)
 
 
-# ---------- scripted replies (spec §4.7, §7.3) ----------
+# ---------- scripted replies ----------
 def words(decision: Decision, *, cur: Curriculum, progress: Progress, check: Check | None,
           grade: Grade | None, first_name: str) -> list[Segment]:
     """Scripted words for a decision's action. Compose adds any step, question or re-ask afterwards."""
@@ -210,7 +210,7 @@ def words(decision: Decision, *, cur: Curriculum, progress: Progress, check: Che
 
 
 def reask(check: Check, awaiting_working: bool) -> Segment:
-    """The short re-ask after a hint, follow-up or explanation (spec §4.7)."""
+    """The short re-ask after a hint, follow-up or explanation."""
     if awaiting_working:
         return Segment(say="So, how did you get your answer?")
     if check.kind == "coefficient":

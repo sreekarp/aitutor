@@ -1,4 +1,4 @@
-"""Simulated students (spec §13): an LLM plays a student with a hidden profile and talks to the tutor
+"""Simulated students: an LLM plays a student with a hidden profile and talks to the tutor
 through the same text path a real student uses. Needs OPENROUTER_API_KEY. Each run is saved to sims/runs/.
 
     uv run python -m sims [--persona sign_flipper] [--concept quadratic_formula] [--turns 40]

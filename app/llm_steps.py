@@ -1,5 +1,5 @@
-"""The turn's two LLM steps, UNDERSTAND and RESPOND: the LLM first, the scripted version when it fails
-(spec §7.2, §7.3). A fallback is noted in ctx.issues, and after a failed UNDERSTAND the rest of the turn is scripted."""
+"""The turn's two LLM steps, UNDERSTAND and RESPOND: the LLM first, the scripted version when it fails.
+A fallback is noted in ctx.issues, and after a failed UNDERSTAND the rest of the turn is scripted."""
 from __future__ import annotations
 
 from app import board, curriculum, engine, fallback, grading, prompts
@@ -39,7 +39,7 @@ def respond(llm, cur: Curriculum, ctx: TurnContext, decision: Decision, after: P
 
 
 def _llm_understand(llm, ctx: TurnContext, pending: Pending | None) -> Understood:
-    """UNDERSTAND (spec §5.2). A rejected output is recorded as an issue; the client asks once more."""
+    """UNDERSTAND. A rejected output is recorded as an issue; the client asks once more."""
     messages = prompts.understand_messages(
         concept=ctx.concept, phase=ctx.phase, check=ctx.check,
         previous_answer=pending.last_answer if pending else "",
@@ -58,7 +58,7 @@ def _llm_understand(llm, ctx: TurnContext, pending: Pending | None) -> Understoo
 
 def _llm_respond(llm, cur: Curriculum, ctx: TurnContext, decision: Decision, understood: Understood,
                  grade: Grade | None) -> list[Segment]:
-    """RESPOND (spec §6.1). The reply is checked (§6.3) against the question pending before decide()."""
+    """RESPOND. Its reply is checked (board.py) against the question pending before decide()."""
     concept, check = ctx.concept, ctx.check
     next_check = curriculum.get_check(concept, decision.ask_check_id) if decision.action == "reteach" else None
     key = grading.answer_key(check) if check else None
@@ -86,6 +86,6 @@ def _llm_respond(llm, cur: Curriculum, ctx: TurnContext, decision: Decision, und
 
     words = llm.chat_json("respond", messages, "reply", prompts.RESPOND_SCHEMA, validate,
                           deadline=ctx.deadline, calls=ctx.calls)
-    if decision.action == "needs_review":            # spec §4.7: the worked answer, then this scripted line
+    if decision.action == "needs_review":            # the worked answer, then this scripted line
         words = words + [Segment(say=fallback.REVIEW_LATER)]
     return words

@@ -94,7 +94,7 @@ function playAudio(audio, onStart) {
   });
 }
 
-// ---------- latency: stop click -> first audio (spec §8.5) ----------
+// ---------- latency: stop click -> first audio ----------
 let stopClickedAt = 0;     // performance.now() at the last stop click; 0 when nothing is being measured
 let firstAudioMs = null;   // the last measurement, sent with the next turn
 

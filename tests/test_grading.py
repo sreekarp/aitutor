@@ -1,4 +1,4 @@
-"""Tests for app/grading.py: answer keys, answer parsing and grading (spec §3.2, §5.3, §5.4)."""
+"""Tests for app/grading.py: answer keys, answer parsing and grading."""
 import time
 
 import pytest
@@ -24,7 +24,7 @@ def numbers(text):
     return grading.parse_answer(text, "roots")
 
 
-# ---------- reading answers (spec §5.3) ----------
+# ---------- reading answers ----------
 
 def test_by_value():
     pairs = [("2/6", Rational(1, 3)), ("sqrt(2/3)", sqrt(6) / 3), ("0.5", Rational(1, 2)),
@@ -82,9 +82,9 @@ def test_word_kinds_and_synonyms():
     assert grading.parse_answer("", "nature") is None
 
 
-# ---------- answer keys: every check in spec §3.3, in the order asked ----------
+# ---------- answer keys: every check in the lesson files, in the order asked ----------
 
-SPEC_KEYS = [
+EXPECTED_KEYS = [
     # 1. standard_form
     (make("sf1", "is_quadratic", "Eq((x + 3)*(x - 3), x**2 + 2*x)"), "no"),
     (make("sf2", "coefficient", "Eq(5 + 2*x**2, 7*x)", which="b", traps={"sign_when_moving": "7"}), [-7]),
@@ -133,13 +133,13 @@ SPEC_KEYS = [
     (make("wp5", "roots", "Eq(x**2 + (x + 2)**2, 100)", keep="positive", show_equation=False,
           traps={"kept_impossible_root": "6, -8"}), [6]),
 ]
-SPEC = {check.id: check for check, _ in SPEC_KEYS}
+CHECKS = {check.id: check for check, _ in EXPECTED_KEYS}
 ALL_ROOTS = {"wp1": [-8, 5], "wp3": [-12, 11], "wp4": [-4, 7], "wp5": [-8, 6]}   # before keep: positive
 
 
 def test_answer_keys_all_34_checks():
-    assert len(SPEC) == 34
-    for check, expected in SPEC_KEYS:
+    assert len(CHECKS) == 34
+    for check, expected in EXPECTED_KEYS:
         key = grading.answer_key(check)
         assert key.kind == check.kind, check.id
         if check.kind in WORD_KINDS:
@@ -151,7 +151,7 @@ def test_answer_keys_all_34_checks():
 
 
 def test_coefficient_positive_x_squared():
-    assert same_values(grading.answer_key(SPEC["sf2"]).values, [-7])   # 5 + 2x² = 7x -> 2x² - 7x + 5 = 0
+    assert same_values(grading.answer_key(CHECKS["sf2"]).values, [-7])   # 5 + 2x² = 7x -> 2x² - 7x + 5 = 0
     rearranged = {
         ("Eq(-3*x**2 + 4*x + 2, 0)", "b"): -4,     # times -1: 3x² - 4x - 2 = 0
         ("Eq(4*x - 3*x**2 + 2, 0)", "a"): 3,
@@ -201,65 +201,65 @@ def test_key_text():
         "wp2": "No, it is not possible: the equation has no real roots",
     }
     for check_id, text in expected.items():
-        assert grading.key_text(SPEC[check_id]) == text, check_id
+        assert grading.key_text(CHECKS[check_id]) == text, check_id
     assert grading.key_text(make("n", "roots", "Eq(x**2 + x + 1, 0)")) == "No real roots"
-    for check, _ in SPEC_KEYS:                     # it may be spoken, so no LaTeX characters
+    for check, _ in EXPECTED_KEYS:                     # it may be spoken, so no LaTeX characters
         assert not set(grading.key_text(check)) & set(r"\^{}$_"), check.id
 
 
-# ---------- grading (spec §5.4) ----------
+# ---------- grading ----------
 
 def test_verdict_table():
     x2_5x_6 = make("v1", "roots", "Eq(x**2 - 5*x, 6)")      # roots 6 and -1
     no_real = make("v2", "roots", "Eq(x**2 + x + 1, 0)")     # no real roots
     table = [
         # (check, answer, verdict, detail)
-        (SPEC["fa1"], "2, 3", "correct", ""),
-        (SPEC["fa1"], "3 and 2", "correct", ""),
-        (SPEC["fa2"], "-2/6, 2", "correct", ""),            # compared by value
-        (SPEC["di6"], "1/3, 1/3", "correct", ""),           # the equal root said twice
+        (CHECKS["fa1"], "2, 3", "correct", ""),
+        (CHECKS["fa1"], "3 and 2", "correct", ""),
+        (CHECKS["fa2"], "-2/6, 2", "correct", ""),            # compared by value
+        (CHECKS["di6"], "1/3, 1/3", "correct", ""),           # the equal root said twice
         (no_real, "none", "correct", ""),
-        (SPEC["fa1"], "none", "wrong", "empty"),            # "none", but real roots exist
+        (CHECKS["fa1"], "none", "wrong", "empty"),            # "none", but real roots exist
         (x2_5x_6, "6, 11", "wrong", "not_a_root"),
         (no_real, "1", "wrong", "not_a_root"),
-        (SPEC["fa1"], "2", "partial", "missing"),
-        (SPEC["fa6"], "3", "partial", "missing"),           # x² = 3x divided by x loses the root 0
-        (SPEC["wp4"], "7, -4", "partial", "extra"),         # kept the impossible age -4
-        (SPEC["wp4"], "-4", "partial", "extra"),
-        (SPEC["wp4"], "7", "correct", ""),
-        (SPEC["sf2"], "-7", "correct", ""),
-        (SPEC["sf2"], "7", "wrong", ""),
-        (SPEC["sf2"], "-7, 7", "unsure", ""),               # two numbers for one coefficient
-        (SPEC["di1"], "none", "unsure", ""),                # D is always a number
-        (SPEC["rt1"], "yes", "correct", ""),
-        (SPEC["rt1"], "nahi", "wrong", ""),
-        (SPEC["di3"], "no real roots", "correct", ""),
-        (SPEC["di3"], "equal", "wrong", ""),
-        (SPEC["fa1"], "banana", "unsure", ""),
+        (CHECKS["fa1"], "2", "partial", "missing"),
+        (CHECKS["fa6"], "3", "partial", "missing"),           # x² = 3x divided by x loses the root 0
+        (CHECKS["wp4"], "7, -4", "partial", "extra"),         # kept the impossible age -4
+        (CHECKS["wp4"], "-4", "partial", "extra"),
+        (CHECKS["wp4"], "7", "correct", ""),
+        (CHECKS["sf2"], "-7", "correct", ""),
+        (CHECKS["sf2"], "7", "wrong", ""),
+        (CHECKS["sf2"], "-7, 7", "unsure", ""),               # two numbers for one coefficient
+        (CHECKS["di1"], "none", "unsure", ""),                # D is always a number
+        (CHECKS["rt1"], "yes", "correct", ""),
+        (CHECKS["rt1"], "nahi", "wrong", ""),
+        (CHECKS["di3"], "no real roots", "correct", ""),
+        (CHECKS["di3"], "equal", "wrong", ""),
+        (CHECKS["fa1"], "banana", "unsure", ""),
     ]
     for check, answer, verdict, detail in table:
         result = grading.grade(check, answer)
         assert (result.verdict, result.detail) == (verdict, detail), (check.id, answer)
         assert result.student == answer
     assert grading.grade(x2_5x_6, "6, 11").wrong_values is True        # 11 isn't a root: substitute it back
-    assert grading.grade(SPEC["wp4"], "7, -4").wrong_values is False   # -4 is a root, just not an age
+    assert grading.grade(CHECKS["wp4"], "7, -4").wrong_values is False   # -4 is a root, just not an age
 
 
 def test_traps_match_by_value():
-    qf1 = SPEC["qf1"]                                                 # 2x² - 3x - 2 = 0: roots 2 and -1/2
+    qf1 = CHECKS["qf1"]                                                 # 2x² - 3x - 2 = 0: roots 2 and -1/2
     assert grading.grade(qf1, "0.5, -2").trap == "minus_b"            # trap "1/2, -2"
     assert grading.grade(qf1, "-2, 1/2").trap == "minus_b"            # in any order
     assert grading.grade(qf1, "4 and -1").trap == "divide_by_2_not_2a"
     assert grading.grade(qf1, "no real roots").trap == "sign_in_D"    # trap "none"
     assert grading.grade(qf1, "1/2, -3").trap is None                 # wrong, but no known mistake
     assert grading.grade(qf1, "2, -0.5").trap is None                 # a right answer never has a trap
-    assert grading.grade(SPEC["qf2"], "\u22122 ± √3").trap == "minus_b"   # trap "-2 + sqrt(3), -2 - sqrt(3)"
-    assert grading.grade(SPEC["fa2"], "2/6, -2").trap == "sign_flip"      # trap "1/3, -2"
-    assert grading.grade(SPEC["sf2"], "7.0").trap == "sign_when_moving"   # trap "7"
+    assert grading.grade(CHECKS["qf2"], "\u22122 ± √3").trap == "minus_b"   # trap "-2 + sqrt(3), -2 - sqrt(3)"
+    assert grading.grade(CHECKS["fa2"], "2/6, -2").trap == "sign_flip"      # trap "1/3, -2"
+    assert grading.grade(CHECKS["sf2"], "7.0").trap == "sign_when_moving"   # trap "7"
 
 
 def test_every_spec_trap_is_caught_and_never_correct():
-    for check, _ in SPEC_KEYS:
+    for check, _ in EXPECTED_KEYS:
         for mistake, trap in check.traps.items():
             result = grading.grade(check, trap)
             assert result.verdict in ("wrong", "partial"), (check.id, trap)
@@ -269,9 +269,9 @@ def test_every_spec_trap_is_caught_and_never_correct():
 def test_unreadable_is_unsure():
     garbage = ["", "   ", "banana", "2x = 6", "x", "sqrt(-1)", "1/0", "9**9**9", "__import__('os')",
                "1" * 61, "हाँ", "😀", "x" * 2000]
-    for check in (SPEC["fa1"], SPEC["sf2"], SPEC["di1"]):
+    for check in (CHECKS["fa1"], CHECKS["sf2"], CHECKS["di1"]):
         for answer in garbage:
             result = grading.grade(check, answer)
             assert (result.verdict, result.detail, result.trap) == ("unsure", "", None), (check.id, answer)
-    for check, answer in [(SPEC["rt1"], "maybe"), (SPEC["rt1"], "equal"), (SPEC["di2"], "yes"), (SPEC["wp2"], "")]:
+    for check, answer in [(CHECKS["rt1"], "maybe"), (CHECKS["rt1"], "equal"), (CHECKS["di2"], "yes"), (CHECKS["wp2"], "")]:
         assert grading.grade(check, answer).verdict == "unsure", (check.id, answer)

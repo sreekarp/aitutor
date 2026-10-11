@@ -1,4 +1,4 @@
-"""Voice (spec §8.2): a recording becomes the same turn as a typed reply through speech-to-text, and each
+"""Voice: a recording becomes the same turn as a typed reply through speech-to-text, and each
 segment of a reply becomes MP3 through text-to-speech, cached on disk. In scripted mode the routes answer 503 first."""
 from __future__ import annotations
 

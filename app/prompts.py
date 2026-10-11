@@ -1,4 +1,4 @@
-"""The two LLM prompts (spec §5.2, §6.1): their files, strict JSON schemas, the per-turn messages, and the
+"""The two LLM prompts: their files, strict JSON schemas, the per-turn messages, and the
 checks on what comes back.
 
 The prompt files hold the instructions; this module only adds the facts of the turn. Prompt files are read
@@ -101,7 +101,7 @@ def load_prompt(name: str) -> str:
 
 
 def working_hint(kind: str) -> str:
-    """What counts as showing working for this kind of question (spec §5.2)."""
+    """What counts as showing working for this kind of question."""
     return WORKING[kind]
 
 
@@ -129,7 +129,7 @@ def respond_messages(*, decision: Decision, concept: Concept, step: Step | None,
                      understood: Understood, grade: Grade | None, mistake: Mistake | None,
                      hint_text: str | None, board: list[BoardLine], check_equations: list[str],
                      formulas: dict[str, str], previous_reason: str, student_text: str = "") -> list[dict]:
-    """The system prompt plus this turn's facts for RESPOND. The student's words come last (spec §6.1)."""
+    """The system prompt plus this turn's facts for RESPOND. The student's words come last."""
     lines = [f"ACTION: {decision.action}", f"ENGINE'S REASON: {decision.reason}",
              f"LAST DECISION'S REASON: {previous_reason or 'none'}", f"CONCEPT: {concept.title}"]
     if step is not None:
@@ -163,7 +163,7 @@ def respond_messages(*, decision: Decision, concept: Concept, step: Step | None,
 
 # ---------- checking what comes back (the tutor's `validate` for chat_json) ----------
 def read_understood(data: dict, check: Check | None) -> tuple[Understood | None, list[str]]:
-    """UNDERSTAND's JSON as an Understood, or the problems with it. An answer must fit the question (spec §5.2)."""
+    """UNDERSTAND's JSON as an Understood, or the problems with it. An answer must fit the question."""
     try:
         understood = Understood.model_validate(data)
     except ValidationError as err:
@@ -175,7 +175,7 @@ def read_understood(data: dict, check: Check | None) -> tuple[Understood | None,
 
 
 def read_reply(data: dict, ctx: ReplyContext) -> tuple[list[Segment], list[str]]:
-    """RESPOND's JSON as segments, and every §6.3 problem with them ([] means it can be shown)."""
+    """RESPOND's JSON as segments, and every problem board.py finds with them ([] means it can be shown)."""
     try:
         segments = Reply.model_validate(data).segments
     except ValidationError as err:

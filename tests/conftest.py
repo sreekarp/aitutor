@@ -1,4 +1,4 @@
-"""Shared test fixtures and helpers. Task 4 starts this file; later tasks only append to it."""
+"""Shared test fixtures and helpers."""
 import pytest
 
 from app import curriculum, db
@@ -22,7 +22,7 @@ def fresh_progress(cur: Curriculum) -> Progress:
 
 @pytest.fixture
 def db_engine():
-    """A fresh, empty in-memory database for each test (Task 11)."""
+    """A fresh, empty in-memory database for each test."""
     engine = db.connect("sqlite://")
     yield engine
     engine.dispose()

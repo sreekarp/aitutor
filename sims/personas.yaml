@@ -1,4 +1,4 @@
-# Simulated students for `uv run python -m sims` (spec §13).
+# Simulated students for `uv run python -m sims`.
 # Only the student model sees these profiles; the tutor never does.
 # `mistakes` are what the student believes at the start. Every turn the student model says whether it still
 # holds any of them (still_has_mistake). A point given while it does is a "false advance".

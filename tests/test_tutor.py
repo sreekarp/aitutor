@@ -240,7 +240,7 @@ def test_payload_shape(tutor, db_engine, cur):
     for _ in cur.concepts["factorisation"].steps:
         tutor.turn(student_id, "ok")
     check = cur.concepts["factorisation"].checks[0]
-    result = tutor.turn(student_id, check.traps["sign_flip"])   # a wrong answer: a reteach, as in the plan's JSON
+    result = tutor.turn(student_id, check.traps["sign_flip"])   # a wrong answer: a reteach
     data = page.payload(tutor, student_id, result)
 
     assert set(data) == {"turn_id", "transcript", "segments", "decision", "progress", "why", "board", "input_hint"}

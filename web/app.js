@@ -3,7 +3,7 @@
 "use strict";
 
 // ---------- settings ----------
-const REPLY_TIMEOUT_MS = 17000;   // stop waiting for the server after ~17 s (spec §7.2)
+const REPLY_TIMEOUT_MS = 17000;   // stop waiting for the server after ~17 s
 const TOO_LONG = "That took too long — try again or type it";
 
 const startButton = $("start"), sayForm = $("say-form"), textBox = $("text-box");

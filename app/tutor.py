@@ -1,4 +1,4 @@
-"""One student turn, end to end (spec §2.2): fast paths, understand, grade, decide, words, compose, save."""
+"""One student turn, end to end: fast paths, understand, grade, decide, words, compose, save."""
 from __future__ import annotations
 
 import json
@@ -82,7 +82,7 @@ class Tutor:
 
     def _run(self, ctx: TurnContext, replaced: bool, over_limit: bool, input_mode: str,
              stt_failed: bool) -> TurnResult:
-        """The order of checks (spec §4.4): LIMIT, safety, curriculum change, fast paths, understanding."""
+        """The order of checks: LIMIT, safety, curriculum change, fast paths, understanding."""
         understood = grade = None
         if over_limit:
             decision, after = engine.limit_decision(), ctx.before
@@ -103,7 +103,7 @@ class Tutor:
 
     def _context(self, student_id: str, session: dict, text: str, started: float, calls: list,
                  latency: dict) -> tuple[TurnContext, bool]:
-        """Read what the turn needs; reconcile() moves the student if the lesson files changed (spec §4.4)."""
+        """Read what the turn needs; reconcile() moves the student if the lesson files changed."""
         with self.db_engine.connect() as conn:
             student = db.get_student(conn, student_id)
             saved = db.load_progress(conn, student_id, self.cur)
@@ -123,7 +123,7 @@ class Tutor:
         return ctx, replaced
 
     def _read(self, ctx: TurnContext, stt_failed: bool) -> Understood:
-        """The fast paths first (spec §5.1, no LLM), then understanding."""
+        """The fast paths first (no LLM), then understanding."""
         if fallback.is_safety(ctx.text):
             return Understood(type="unclear", safety=True)
         if stt_failed or not ctx.text or ctx.concept is None:       # nothing to read, or nothing left to teach
@@ -133,7 +133,7 @@ class Tutor:
 
     # ---------- compose and save ----------
     def _compose(self, ctx: TurnContext, decision: Decision, after: Progress) -> list[Segment]:
-        """The scripted parts after the words (spec §4.7): a step, a question, the next concept, a re-ask."""
+        """The scripted parts after the words: a step, a question, the next concept, a re-ask."""
         concept = self.cur.concepts.get(decision.concept_id or "")
         parts: list[Segment] = []
         if decision.play_step_id:
@@ -154,7 +154,7 @@ class Tutor:
         return parts
 
     def _resume(self, concept_id: str, after: Progress) -> list[Segment]:
-        """Pick a concept up where it stands (spec §4.5): its pending question, else its step (step 1 if none)."""
+        """Pick a concept up where it stands: its pending question, else its step (step 1 if none)."""
         concept, state = self.cur.concepts[concept_id], after[concept_id]
         if state.pending:
             check = curriculum.get_check(concept, state.pending.check_id)
@@ -219,7 +219,7 @@ def _input_hint(decision: Decision, understood: Understood | None, stt_failed: b
 
 
 def _log_turn(ctx: TurnContext, turn_id: str, row: dict, decision: Decision) -> None:
-    """One JSON log line per turn (spec §11), and a warning when a safety review is needed."""
+    """One JSON log line per turn, and a warning when a safety review is needed."""
     line = {"turn_id": turn_id, "rule": decision.rule, "reason": decision.reason,
             "session_versions": {"curriculum": ctx.session["curriculum_version"], **ctx.session["prompt_versions"]},
             **{key: row[key] for key in LOG_FIELDS}}

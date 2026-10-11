@@ -1,4 +1,4 @@
-# Layer 2 scenarios (spec §12): uv run python -m evals (needs OPENROUTER_API_KEY).
+# Layer 2 scenarios: uv run python -m evals (needs OPENROUTER_API_KEY).
 # Each scenario puts a new student in a state, presses Start, gives one reply, and checks the result.
 #
 # setup:  concept, status (teaching or checking), step (teaching) or check (checking); optional points,

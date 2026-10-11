@@ -1,4 +1,4 @@
-"""uv run python -m evals (spec §12): Layer 1 runs the tests; Layer 2 runs tutor scenarios with the real LLM.
+"""uv run python -m evals: Layer 1 runs the tests; Layer 2 runs tutor scenarios with the real LLM.
 
 Flags (Layer 2): --runs N, --only ID, --model-understand ID, --model-respond ID, --prompt-respond NAME.
 """

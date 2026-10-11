@@ -1,4 +1,4 @@
-"""Loads the lesson files and checks every one of them at startup (spec §3.1-§3.3).
+"""Loads the lesson files and checks every one of them at startup.
 
 If anything is wrong the app refuses to start, so a slip in a lesson file never reaches a student.
 """
@@ -69,7 +69,7 @@ def _build(model, data: dict, where: str):
         raise CurriculumError(f"{where}: {fields}") from None
 
 
-# ---------- validation (spec §3.2's startup list) ----------
+# ---------- validation at startup ----------
 
 def validate(cur: Curriculum) -> list[str]:
     """Every problem in the curriculum, one readable line each. An empty list means all is well."""
@@ -140,7 +140,7 @@ def _write_problems(cmd: BoardCommand, formulas: dict[str, str]) -> list[str]:
 
 
 def _highlight_problems(cmd: BoardCommand, latex_of: dict[str, str]) -> list[str]:
-    """A lesson highlight points at a line written earlier in its step, and passes rule 5."""
+    """A lesson highlight points at a line written earlier in its step, and passes reply rule 5."""
     if cmd.target not in latex_of:
         return [f"highlight target {cmd.target} isn't written earlier in this step"]
     problem = highlight_problem(latex_of[cmd.target], cmd.part)
@@ -148,7 +148,7 @@ def _highlight_problems(cmd: BoardCommand, latex_of: dict[str, str]) -> list[str
 
 
 def highlight_problem(latex: str, part: str | None) -> str | None:
-    """Spec §6.3 rule 5: why `part` can't be highlighted inside `latex`, or None when it can.
+    """Reply rule 5 (board.py): why `part` can't be highlighted inside `latex`, or None when it can.
 
     No part means the whole line, which is always fine."""
     if not part:

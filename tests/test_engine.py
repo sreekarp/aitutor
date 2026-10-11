@@ -1,4 +1,4 @@
-"""Tests for app/engine.py, the teaching rules (spec §4).
+"""Tests for app/engine.py, the teaching rules.
 
 The engine runs on a tiny curriculum built in this file, so these tests don't change when the
 lesson files do. Every decision goes through turn() or check_decision(), which also check two
@@ -139,7 +139,7 @@ def turn(progress: Progress, understood: Understood, grade: Grade | None = None,
     return check_decision(decision), after
 
 
-# ---------- the current concept (spec §4.5) ----------
+# ---------- the current concept ----------
 def test_current_concept_prefers_work_in_progress():
     assert engine.current_concept(progress_with(), CUR) == "alpha"
     assert engine.current_concept(progress_with(mastered("alpha"), asking("g1", cid="gamma")), CUR) == "gamma"
@@ -148,7 +148,7 @@ def test_current_concept_prefers_work_in_progress():
     assert engine.current_concept(done, CUR) is None
 
 
-# ---------- teaching (spec §4.3, first column) ----------
+# ---------- teaching ----------
 def test_teaching_ok_plays_next_step():
     decision, after = turn(progress_with(teaching_at("a_intro")), said("next"))
     assert (decision.rule, decision.action, decision.play_step_id) == ("R0", "next_step", "a_method")
@@ -164,7 +164,7 @@ def test_last_step_starts_checking_with_fresh_pending():
     assert (decision.rule, decision.action, decision.ask_check_id) == ("R0", "start_check", "a1")
     state = after["alpha"]
     assert state.status == "checking" and state.pending == Pending("a1") and state.last_check_id == "a1"
-    # a later pass carries on after the last question asked (§4.2)
+    # a later pass carries on after the last question asked
     decision, after = turn(progress_with(teaching_at("a_check", last_check_id="a2")), said("next"))
     assert decision.ask_check_id == "a3" and after["alpha"].pending == Pending("a3")
 
@@ -365,7 +365,7 @@ def test_decide_does_not_mutate_input():
     assert CUR == tiny_curriculum()                                # the curriculum is untouched too
 
 
-# ---------- reteaching and needs review (spec §4.4 R3, R4, R9; §4.6) ----------
+# ---------- reteaching and needs review (R3, R4, R9) ----------
 TRAP = graded("wrong", "-7, -11", detail="not_a_root", trap="sign_flip", wrong_values=True)   # a1's trap
 
 
@@ -453,7 +453,7 @@ def test_fourth_reteach_is_needs_review():
     assert engine.current_concept(after, CUR) is None
 
 
-# ---------- session start (spec §4.4 S0, S1; §4.5) ----------
+# ---------- session start (S0, S1) ----------
 def needs_review(cid: str, step_id: str, last_check_id: str) -> ConceptState:
     """A concept whose 3 reteaches ran out partway through a pass."""
     return ConceptState(cid, status="needs_review", step_id=step_id, points=1.5, last_check_id=last_check_id,
@@ -498,7 +498,7 @@ def test_s0_with_everything_final_resumes_none():
     assert (decision.rule, decision.resume_concept_id) == ("S1", None) and after == final
 
 
-# ---------- lesson files edited between turns (spec §4.4 curriculum change) ----------
+# ---------- lesson files edited between turns ----------
 def edited(cid: str, step: str | None = None, check: str | None = None) -> Curriculum:
     """A copy of CUR with one step or one check removed, as if the lesson file was edited."""
     cur = CUR.model_copy(deep=True)
