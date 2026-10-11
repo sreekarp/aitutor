@@ -200,3 +200,24 @@ class TurnResult:
     latency_ms: dict
     calls: list[dict]
     input_hint: str | None = None    # "type" when the tutor suggests typing, else None
+
+
+# ---------- one turn in progress (tutor.py builds it, llm_steps.py reads and adds to it) ----------
+@dataclass
+class TurnContext:
+    """Everything one turn needs; built by Tutor.turn() before understanding."""
+    student: dict
+    session: dict
+    concept: Concept | None            # current concept (None at END)
+    phase: str                         # "teaching" | "checking"
+    before: Progress                   # progress before decide()
+    check: Check | None                # the pending question before decide() (None while teaching)
+    text: str                          # the student's words, cut to MAX_INPUT_CHARS
+    last_speech: list[Segment]         # what the tutor said last turn, without its board commands
+    previous_reason: str               # reason of the previous turn's decision ("" if none)
+    board: list[BoardLine]             # the session board before this turn
+    deadline: float                    # time.monotonic() + TURN_DEADLINE_S, set at turn start
+    calls: list[dict]                  # model calls made so far this turn
+    issues: list[str]
+    latency: dict
+    scripted: bool = False             # no LLM for the rest of this turn (scripted mode, or UNDERSTAND failed)

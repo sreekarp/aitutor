@@ -10,11 +10,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.middleware.sessions import SessionMiddleware
 
-from app import curriculum, db
+from app import curriculum, db, page, voice
 from app.config import WEB_DIR, Settings, load_settings
 from app.llm import Client
 from app.models import Curriculum
-from app.tutor import NoSession, NotFound, Tutor
+from app.tutor import NoSession, Tutor
 
 COOKIE_MAX_AGE = 30 * 24 * 60 * 60   # the sign-in cookie lasts 30 days (in seconds)
 MAX_AUDIO_BYTES = 2 * 1024 * 1024    # 2 MB: a 30-second recording is under 1 MB, and speech-to-text is paid
@@ -74,11 +74,11 @@ def create_app(settings: Settings | None = None, *, llm=None, cur: Curriculum | 
 
     @app.get("/api/state")
     def state(student_id: str = Depends(signed_in)) -> dict:
-        return tutor.state(student_id)
+        return page.state(tutor, student_id)
 
     @app.post("/api/session")
     def start_session(student_id: str = Depends(signed_in)) -> dict:
-        return tutor.payload(student_id, tutor.start(student_id))
+        return page.payload(tutor, student_id, tutor.start(student_id))
 
     @app.post("/api/turn")
     def text_turn(body: TextTurn, student_id: str = Depends(signed_in)) -> dict:
@@ -86,7 +86,7 @@ def create_app(settings: Settings | None = None, *, llm=None, cur: Curriculum | 
             result = tutor.turn(student_id, body.text, prev_first_audio_ms=body.prev_first_audio_ms)
         except NoSession:
             raise HTTPException(status_code=409, detail="Press Start first.") from None
-        return tutor.payload(student_id, result)
+        return page.payload(tutor, student_id, result)
 
     @app.post("/api/turn/audio")
     def audio_turn(audio: UploadFile, prev_first_audio_ms: int | None = Form(None),
@@ -97,17 +97,17 @@ def create_app(settings: Settings | None = None, *, llm=None, cur: Curriculum | 
         if len(data) > MAX_AUDIO_BYTES:
             raise HTTPException(status_code=413, detail="That recording is too long.")
         try:
-            result = tutor.turn_audio(student_id, data, audio.content_type or "",
+            result = voice.turn_audio(tutor, student_id, data, audio.content_type or "",
                                       prev_first_audio_ms=prev_first_audio_ms)
         except NoSession:
             raise HTTPException(status_code=409, detail="Press Start first.") from None
-        return tutor.payload(student_id, result)
+        return page.payload(tutor, student_id, result)
 
     @app.get("/api/tts/{turn_id}/{index}")
     def tts(turn_id: str, index: int, student_id: str = Depends(signed_in)) -> Response:
         try:
-            audio = tutor.speech(student_id, turn_id, index)
-        except NotFound:
+            audio = voice.speech(tutor, student_id, turn_id, index)
+        except voice.NotFound:
             raise HTTPException(status_code=404, detail="No such turn.") from None
         if audio is None:
             raise HTTPException(status_code=503, detail="No server voice right now; the browser voice reads it.")

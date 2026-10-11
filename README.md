@@ -149,13 +149,15 @@ docker run -p 8000:8000 --env-file .env -v aitutor-data:/app/data aitutor
 | Path | What it holds |
 | --- | --- |
 | `app/tutor.py` | One turn, end to end: understand → grade → decide → respond → save |
+| `app/llm_steps.py` | The turn's two LLM steps (UNDERSTAND, RESPOND), each with its scripted fallback |
+| `app/voice.py`, `app/page.py` | Speech-to-text turns and the cached text-to-speech; the JSON the page gets |
 | `app/engine.py` | The teaching rules and their reasons (pure functions) |
 | `app/mathcheck.py`, `app/grading.py` | SymPy: board-line checks, answer keys, grading |
 | `app/board.py`, `app/fallback.py` | Reply checks and the board; scripted mode |
 | `app/llm.py`, `app/prompts.py`, `app/prompts/` | OpenRouter (backups, retries, time limits) and the two versioned prompts |
 | `app/db.py`, `app/main.py`, `app/cli.py` | The five tables; the web routes and sign-in; the terminal tutor |
 | `curriculum/ch4/` | The six lesson files, and `index.yaml` (order, version, the four formulas) |
-| `web/` | The page: `index.html`, `app.js`, `style.css` |
+| `web/` | The page: `index.html`, `style.css`, and its scripts in load order: `board.js` (whiteboard and panels), `voice.js` (sound and the mic), `app.js` (sign-in and turns) |
 | `evals/`, `sims/`, `tests/` | Evals, simulated students, tests |
 
 `data/`, `evals/results/`, `sims/runs/` and `.env` are git-ignored.

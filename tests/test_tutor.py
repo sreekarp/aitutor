@@ -1,11 +1,11 @@
-"""Tests for app/tutor.py in scripted mode: whole turns against the real lesson files and an in-memory database."""
+"""Scripted-mode tests of app/tutor.py and app/page.py: whole turns, real lesson files, an in-memory database."""
 import json
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app import curriculum, db, engine, grading
+from app import curriculum, db, engine, grading, page
 from app.config import MAX_INPUT_CHARS, POINTS_TO_MASTER, SESSION_GAP_MIN, Settings
 from app.models import BoardCommand, Pending, Segment
 from app.tutor import DIDNT_CATCH, NoSession, Tutor
@@ -233,15 +233,15 @@ def test_stt_failed_turn_asks_to_type(tutor, db_engine, cur):
 
 def test_payload_shape(tutor, db_engine, cur):
     student_id = new_student(db_engine, cur)
-    assert tutor.state(student_id)["board"] == [] and tutor.state(student_id)["why"] == []
+    assert page.state(tutor, student_id)["board"] == [] and page.state(tutor, student_id)["why"] == []
     tutor.start(student_id)
-    teaching = {row["concept_id"]: row for row in tutor.state(student_id)["progress"]}["factorisation"]
+    teaching = {row["concept_id"]: row for row in page.state(tutor, student_id)["progress"]}["factorisation"]
     assert (teaching["status"], teaching["step_index"], teaching["current"]) == ("teaching", 0, True)
     for _ in cur.concepts["factorisation"].steps:
         tutor.turn(student_id, "ok")
     check = cur.concepts["factorisation"].checks[0]
     result = tutor.turn(student_id, check.traps["sign_flip"])   # a wrong answer: a reteach, as in the plan's JSON
-    data = tutor.payload(student_id, result)
+    data = page.payload(tutor, student_id, result)
 
     assert set(data) == {"turn_id", "transcript", "segments", "decision", "progress", "why", "board", "input_hint"}
     assert (data["turn_id"], data["transcript"], data["input_hint"]) == (result.turn_id, check.traps["sign_flip"], None)
@@ -267,7 +267,7 @@ def test_payload_shape(tutor, db_engine, cur):
     assert grading.key_text(check) not in text and grading.key_text(asked) not in text
 
     formula = Segment(say="Here is the formula.", board=[BoardCommand(op="write", id="f1", formula="discriminant")])
-    cmd = tutor.payload(student_id, replace(result, segments=[formula]))["segments"][0]["board"][0]
+    cmd = page.payload(tutor, student_id, replace(result, segments=[formula]))["segments"][0]["board"][0]
     assert (cmd["formula"], cmd["latex"]) == ("discriminant", cur.formulas["discriminant"])   # LaTeX filled in
 
 

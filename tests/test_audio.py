@@ -5,7 +5,7 @@ import pytest
 from conftest import make_settings, sign_in
 from fastapi.testclient import TestClient
 
-from app import db
+from app import db, voice
 from app.config import MODELS
 from app.llm import ProviderError
 from app.main import create_app
@@ -57,7 +57,7 @@ def upload(client: TestClient, audio: bytes = SPEECH, mime: str = "audio/webm", 
 @pytest.fixture
 def tts_cache(tmp_path, monkeypatch):
     """Keep the text-to-speech cache in a temporary folder for one test."""
-    monkeypatch.setattr("app.tutor.TTS_CACHE_DIR", tmp_path)
+    monkeypatch.setattr("app.voice.TTS_CACHE_DIR", tmp_path)
     return tmp_path
 
 
@@ -67,7 +67,7 @@ def test_turn_audio_transcribes_then_runs_turn(cur, db_engine):
     with db_engine.begin() as conn:
         student_id = db.get_or_create_student(conn, "asha", "Asha")["id"]
     tutor.start(student_id)
-    result = tutor.turn_audio(student_id, SPEECH, "audio/webm;codecs=opus", prev_first_audio_ms=850)
+    result = voice.turn_audio(tutor, student_id, SPEECH, "audio/webm;codecs=opus", prev_first_audio_ms=850)
     assert fake.stt_calls == [("audio/webm;codecs=opus", "en")]   # llm.py turns the MIME type into "webm"
     assert (result.transcript, result.decision.rule) == ("ok", "R0")   # the same turn as typing "ok"
     assert result.calls[0]["role"] == "stt"           # the speech-to-text call is part of the turn's record
