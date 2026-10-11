@@ -1,0 +1,12 @@
+# Kept out of the image: secrets, local data, this machine's virtualenv and caches, notes and the NCERT PDF.
+.env
+.git/
+.venv/
+data/
+evals/results/
+sims/runs/
+_notes/
+proposal/
+*.pdf
+**/__pycache__/
+.pytest_cache/
