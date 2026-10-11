@@ -363,3 +363,211 @@ def test_decide_does_not_mutate_input():
     assert progress == snapshot and progress["alpha"].status == "checking"
     assert after["alpha"] is not progress["alpha"]
     assert CUR == tiny_curriculum()                                # the curriculum is untouched too
+
+
+# ---------- reteaching and needs review (spec §4.4 R3, R4, R9; §4.6) ----------
+TRAP = graded("wrong", "-7, -11", detail="not_a_root", trap="sign_flip", wrong_values=True)   # a1's trap
+
+
+def test_known_mistake_reteaches_with_first_untried_strategy():
+    decision, after = turn(progress_with(asking("a1")), said("answer", "-7, -11"), TRAP)
+    assert (decision.rule, decision.action, decision.mistake) == ("R3", "reteach", "sign_flip")
+    assert (decision.strategy, decision.reteach_count, decision.ask_check_id) == ("worked_example", 1, "a2")
+    state = after["alpha"]
+    assert state.pending == Pending("a2") and state.last_check_id == "a2"       # the next question, fresh
+    assert state.strategies_tried == ["worked_example"] and state.reteach_count == 1
+    # the next reteach in this pass takes the first strategy not tried yet
+    progress = progress_with(asking("a2", reteach_count=1, tried=("worked_example",)))
+    decision, after = turn(progress, said("answer", "-11, 7"),
+                           graded("wrong", "-11, 7", trap="sign_flip", wrong_values=True))
+    assert (decision.strategy, decision.reteach_count) == ("substitute_back", 2)
+    assert after["alpha"].strategies_tried == ["worked_example", "substitute_back"]
+
+
+def test_llm_mistake_only_used_when_listed_and_wrong_or_partial():
+    decision, _ = turn(progress_with(asking("a1")), said("answer", "12, 13", mistake="sign_flip"), WRONG)
+    assert (decision.rule, decision.action, decision.mistake) == ("R3", "reteach", "sign_flip")
+    decision, _ = turn(progress_with(asking("a1")), said("answer", "12, 13", mistake="made_up"), WRONG)
+    assert (decision.rule, decision.action, decision.mistake) == ("R4", "hint", None)     # not in the list
+    decision, _ = turn(progress_with(asking("a1")), said("answer", "-7, -11", mistake="sign_when_moving"), TRAP)
+    assert decision.mistake == "sign_flip"                                                # a trap is certain
+    decision, _ = turn(progress_with(asking("a1", followup_used=True)), said("answer", "11", mistake="sign_flip"),
+                       graded("partial", "11", detail="missing"))
+    assert (decision.rule, decision.mistake) == ("R3", "sign_flip")                       # a 2nd partial answer
+    decision, _ = turn(progress_with(asking("a1")), said("answer", "7, 11", working=True, mistake="sign_flip"),
+                       graded("correct", "7, 11"))
+    assert (decision.rule, decision.mistake) == ("R1", None)                              # right: ignored
+    decision, _ = turn(progress_with(asking("a1", followup_used=True)), said("answer", "?", mistake="sign_flip"),
+                       graded("unsure", "?"))
+    assert (decision.rule, decision.mistake) == ("R8", None)                              # unreadable: ignored
+
+
+def test_hints_exhausted_reteach_without_mistake():
+    decision, after = turn(progress_with(asking("a1", hint_level=3)), said("answer", "12, 13"), WRONG)
+    assert (decision.rule, decision.action, decision.mistake) == ("R4", "reteach", None)
+    assert (decision.strategy, decision.ask_check_id) == ("worked_example", "a2")
+    assert after["alpha"].pending == Pending("a2") and after["alpha"].reteach_count == 1
+
+
+def test_substitute_back_skipped_after_dont_know():
+    progress = progress_with(asking("a1", hint_level=3, reteach_count=1, tried=("worked_example",)))
+    decision, _ = turn(progress, said("dont_know"))
+    assert (decision.rule, decision.action, decision.strategy) == ("R4", "reteach", "compare_non_example")
+    decision, _ = turn(progress, said("answer", "12, 13"), WRONG)          # wrong values can be put back in
+    assert decision.strategy == "substitute_back"
+
+
+def test_strategies_wrap_to_first_eligible():
+    alpha = CUR.concepts["alpha"]
+    every = asking("a1", tried=("worked_example", "substitute_back", "compare_non_example"))
+    assert engine.pick_strategy(alpha, every, wrong_values=True) == "worked_example"
+    reordered = alpha.model_copy(update={"strategies": ["substitute_back", "compare_non_example", "worked_example"]})
+    assert engine.pick_strategy(reordered, every, wrong_values=False) == "compare_non_example"   # first eligible
+    two = asking("a1", tried=("worked_example", "compare_non_example"))
+    assert engine.pick_strategy(alpha, two, wrong_values=True) == "substitute_back"
+    assert engine.pick_strategy(alpha, two, wrong_values=False) == "worked_example"
+    # through decide(): a strategy used again isn't listed twice
+    progress = progress_with(asking("a1", hint_level=3, reteach_count=2,
+                                    tried=("worked_example", "compare_non_example")))
+    decision, after = turn(progress, said("dont_know"))
+    assert (decision.strategy, decision.reteach_count) == ("worked_example", 3)
+    assert after["alpha"].strategies_tried == ["worked_example", "compare_non_example"]
+    assert "not tried yet" not in decision.reason
+
+
+def test_fourth_reteach_is_needs_review():
+    progress = progress_with(asking("a1", points=1.5, reteach_count=3,
+                                    tried=("worked_example", "substitute_back", "compare_non_example")))
+    decision, after = turn(progress, said("answer", "-7, -11"), TRAP)
+    assert (decision.rule, decision.action, decision.concept_id) == ("R9", "needs_review", "alpha")
+    assert (decision.resume_concept_id, decision.clear_board, decision.ask_check_id) == ("beta", True, None)
+    assert (decision.strategy, decision.mistake) == (None, "sign_flip")
+    state = after["alpha"]
+    assert (state.status, state.pending, state.points, state.reteach_count) == ("needs_review", None, 1.5, 3)
+    assert after["beta"].status == "teaching" and after["beta"].step_id == "b_what"
+    # the same gate after hint 3 (the R4 route); on the last concept nothing is left to resume
+    progress = progress_with(mastered("alpha"), mastered("beta"),
+                             asking("g1", cid="gamma", hint_level=3, reteach_count=3))
+    decision, after = turn(progress, said("dont_know"))
+    assert (decision.rule, decision.resume_concept_id) == ("R9", None)
+    assert engine.current_concept(after, CUR) is None
+
+
+# ---------- session start (spec §4.4 S0, S1; §4.5) ----------
+def needs_review(cid: str, step_id: str, last_check_id: str) -> ConceptState:
+    """A concept whose 3 reteaches ran out partway through a pass."""
+    return ConceptState(cid, status="needs_review", step_id=step_id, points=1.5, last_check_id=last_check_id,
+                        reteach_count=3, strategies_tried=["worked_example", "compare_non_example"])
+
+
+def test_s0_resets_every_needs_review_and_keeps_last_check():
+    progress = progress_with(mastered("alpha"), needs_review("beta", "b_cases", "b2"),
+                             needs_review("gamma", "g_example", "g1"))
+    before = copy.deepcopy(progress)
+    decision, after = engine.start(progress, CUR, new_session=True)
+    check_decision(decision)
+    assert (decision.rule, decision.action, decision.concept_id) == ("S0", "greet", "beta")
+    assert (decision.resume_concept_id, decision.clear_board) == ("beta", True)
+    assert after["beta"] == ConceptState("beta", status="teaching", step_id="b_what", last_check_id="b2")
+    assert after["gamma"] == ConceptState("gamma", status="teaching", step_id="g_plan", last_check_id="g1")
+    assert after["alpha"] == before["alpha"] and progress == before         # input unchanged
+    # a brand-new student starts the first concept at step 1
+    decision, after = engine.start(progress_with(), CUR, new_session=True)
+    assert decision.resume_concept_id == "alpha"
+    assert after["alpha"] == ConceptState("alpha", status="teaching", step_id="a_intro")
+
+
+def test_s1_continues_without_clear():
+    progress = progress_with(mastered("alpha"), needs_review("beta", "b_cases", "b2"),
+                             asking("g2", cid="gamma", points=1.0, hint_level=2))
+    decision, after = engine.start(progress, CUR, new_session=False)
+    check_decision(decision)
+    assert (decision.rule, decision.action, decision.resume_concept_id, decision.clear_board) == \
+        ("S1", "resume", "gamma", False)
+    assert decision.hint_level == 2 and after == progress     # nothing reset, not even the review
+
+
+def test_s0_with_everything_final_resumes_none():
+    done = progress_with(mastered("alpha"), mastered("beta"), mastered("gamma"))
+    decision, after = engine.start(done, CUR, new_session=True)
+    check_decision(decision)
+    assert (decision.rule, decision.concept_id, decision.resume_concept_id) == ("S0", None, None)
+    assert after == done
+    final = progress_with(mastered("alpha"), needs_review("beta", "b_cases", "b2"), mastered("gamma"))
+    decision, after = engine.start(final, CUR, new_session=False)          # S1 never resets a review
+    assert (decision.rule, decision.resume_concept_id) == ("S1", None) and after == final
+
+
+# ---------- lesson files edited between turns (spec §4.4 curriculum change) ----------
+def edited(cid: str, step: str | None = None, check: str | None = None) -> Curriculum:
+    """A copy of CUR with one step or one check removed, as if the lesson file was edited."""
+    cur = CUR.model_copy(deep=True)
+    concept = cur.concepts[cid]
+    concept.steps = [s for s in concept.steps if s.id != step]
+    concept.checks = [c for c in concept.checks if c.id != check]
+    return cur
+
+
+def test_reconcile_missing_step_while_teaching():
+    progress = progress_with(teaching_at("a_method", last_check_id="a1"))
+    after, issues, replaced = engine.reconcile(progress, edited("alpha", step="a_method"))
+    assert (after["alpha"].step_id, issues, replaced) == ("a_intro", ["curriculum_changed"], False)
+    assert after["alpha"].last_check_id == "a1" and progress["alpha"].step_id == "a_method"
+    checking = asking("a1")
+    checking.step_id = "a_method"                                  # a step only matters while teaching
+    progress = progress_with(checking)
+    assert engine.reconcile(progress, edited("alpha", step="a_method")) == (progress, [], False)
+
+
+def test_reconcile_missing_pending_check_asks_next_fresh():
+    progress = progress_with(asking("a2", points=1.0, hint_level=2, followup_used=True, last_answer="12"))
+    cur = edited("alpha", check="a2")
+    after, issues, replaced = engine.reconcile(progress, cur)
+    assert (issues, replaced) == (["curriculum_changed"], True)
+    state = after["alpha"]
+    assert state.pending == Pending("a1") and state.last_check_id == "a1"        # a fresh pending
+    assert state.status == "checking" and state.points == 1.0                    # points are kept
+    decision = check_decision(engine.lesson_changed(after, cur))
+    assert (decision.rule, decision.action, decision.concept_id, decision.ask_check_id) == \
+        ("R8", "lesson_changed", "alpha", "a1")
+    assert "lesson changed" in decision.reason
+    assert engine.reconcile(after, cur) == (after, [], False)                   # a second pass finds nothing
+    # another concept's question is fixed too, but this turn's reply is still marked
+    progress = progress_with(teaching_at("a_method"), asking("g2", cid="gamma"))
+    after, issues, replaced = engine.reconcile(progress, edited("gamma", check="g2"))
+    assert (after["gamma"].pending, issues, replaced) == (Pending("g1"), ["curriculum_changed"], False)
+
+
+def test_reconcile_unknown_last_check_falls_back_to_first():
+    cur = edited("alpha", check="a3")
+    after, _, replaced = engine.reconcile(progress_with(asking("a3", hint_level=1)), cur)
+    assert replaced and after["alpha"].pending == Pending("a1")       # check 1, not the one after a3's old place
+    # while teaching, an unknown last question needs no fix: the first question asked is check 1
+    after, issues, _ = engine.reconcile(progress_with(teaching_at("a_check", last_check_id="a3")), cur)
+    assert issues == []
+    decision, after = turn(after, said("next"), cur=cur)
+    assert decision.ask_check_id == "a1" and after["alpha"].pending == Pending("a1")
+
+
+def test_replay_instead_undoes_strategy():
+    before = progress_with(asking("a1", reteach_count=1, tried=("worked_example",)))
+    decision, after = turn(before, said("answer", "-7, -11"), TRAP)
+    assert decision.strategy == "substitute_back"
+    snapshot = copy.deepcopy((decision, after))
+    replayed, replayed_after = engine.replay_instead(decision, before, after)
+    check_decision(replayed)
+    assert (replayed.rule, replayed.action, replayed.strategy) == ("R3", "reteach", "replay")
+    assert (replayed.reteach_count, replayed.ask_check_id, replayed.mistake) == (2, "a2", "sign_flip")
+    assert "replayed" in replayed.reason and "substitute_back" not in replayed.reason
+    state = replayed_after["alpha"]
+    assert state.strategies_tried == ["worked_example"]                  # no strategy used up
+    assert state.reteach_count == 2 and state.pending == Pending("a2")  # still a reteach; next question asked
+    assert (decision, after) == snapshot                                 # inputs unchanged
+
+
+def test_limit_and_end_decisions():
+    for decision, rule, action in ((engine.limit_decision(), "LIMIT", "limit"),
+                                   (engine.end_decision(), "END", "end")):
+        check_decision(decision)
+        assert (decision.rule, decision.action, decision.concept_id) == (rule, action, None)
+        assert (decision.resume_concept_id, decision.ask_check_id, decision.play_step_id) == (None, None, None)

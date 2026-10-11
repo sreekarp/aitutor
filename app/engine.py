@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import copy
+from dataclasses import replace
 
-from app.config import MAX_HINTS, POINTS_TO_MASTER
-from app.curriculum import next_check_id, next_step_id
+from app.config import MAX_HINTS, MAX_RETEACHES, POINTS_TO_MASTER, SESSION_GAP_MIN
+from app.curriculum import get_check, get_step, next_check_id, next_step_id
 from app.models import Concept, ConceptState, Curriculum, Decision, Grade, Pending, Progress, Understood
 
 # How R8's reason starts, by reply type.
@@ -42,6 +43,52 @@ def decide(progress: Progress, cur: Curriculum, understood: Understood,
     # the facts behind the decision, for the decisions table (the turn row keeps the full reply and grade)
     decision.evidence.update(check_id=asked, type=understood.type, verdict=grade.verdict if grade else None)
     return decision, after
+
+
+def start(progress: Progress, cur: Curriculum, *, new_session: bool) -> tuple[Decision, Progress]:
+    """S0 (a new session) or S1 (carry on): resume the current concept where it stands (spec §4.4, §4.5)."""
+    after = copy.deepcopy(progress)
+    if new_session:                                  # S0: every concept marked for review starts again
+        for cid in cur.order:
+            if after[cid].status == "needs_review":  # points, reteaches, strategies reset; last question kept
+                after[cid] = ConceptState(cid, status="teaching", step_id=next_step_id(cur.concepts[cid], None),
+                                          last_check_id=after[cid].last_check_id)
+    cid = _resume_next(after, cur)
+    state = after[cid] if cid else None
+    where = "we carry on where you left off" if cid else "every concept is mastered or marked for review"
+    if new_session:
+        return _make("S0", "greet", state, f"New session: concepts marked for review start again from step 1, "
+                     f"and {where}.", resume_concept_id=cid, clear_board=True), after
+    return _make("S1", "resume", state, f"You're back within {SESSION_GAP_MIN} minutes, so {where}.",
+                 resume_concept_id=cid), after
+
+
+def reconcile(progress: Progress, cur: Curriculum) -> tuple[Progress, list[str], bool]:
+    """Spec §4.4: move students off removed steps and questions. Returns (progress, issues, question replaced)."""
+    after, changed, replaced = copy.deepcopy(progress), False, False      # points are always kept
+    current = current_concept(after, cur)
+    for cid in cur.order:
+        state, concept = after[cid], cur.concepts[cid]
+        if state.status == "teaching" and get_step(concept, state.step_id) is None:
+            state.step_id, changed = next_step_id(concept, None), True       # back to the first step
+        if state.pending and get_check(concept, state.pending.check_id) is None:
+            check_id = next_check_id(concept, state.last_check_id)          # check 1 if that id is gone too
+            state.pending, state.last_check_id = Pending(check_id), check_id
+            changed, replaced = True, replaced or cid == current
+    return after, ["curriculum_changed"] if changed else [], replaced
+
+
+def lesson_changed(progress: Progress, cur: Curriculum) -> Decision:
+    """R8 after reconcile() replaced the current question: this reply isn't marked; the new question is asked."""
+    state = progress[current_concept(progress, cur)]
+    return _make("R8", "lesson_changed", state, "The lesson changed, so your reply isn't marked and a new "
+                 "question is asked. Points are kept.", ask_check_id=state.pending.check_id)
+
+
+def limit_decision() -> Decision:
+    """LIMIT: today's turn limit is reached; nothing else changes."""
+    return Decision(rule="LIMIT", action="limit", concept_id=None,
+                    reason="Today's turn limit is reached, so the lesson continues tomorrow.")
 
 
 def end_decision() -> Decision:
@@ -167,10 +214,43 @@ def _credit(after: Progress, cur: Curriculum, state: ConceptState, cause: str) -
                  resume_concept_id=_resume_next(after, cur), clear_board=True)
 
 
+# ---------- reteaching (spec §4.4 R3, R4, R9; §4.6) ----------
 def _reteach(after: Progress, cur: Curriculum, state: ConceptState, rule: str, cause: str,
              mistake: str | None, wrong_values: bool) -> Decision:
-    """R3, or R4 after the last hint: reteach, then the next question. Task 8 writes it."""
-    raise NotImplementedError("reteaching is added in Task 8")
+    """R3, or R4 after the last hint: reteach, then the next question. R9 instead after 3 reteaches."""
+    if state.reteach_count >= MAX_RETEACHES:                 # R9: marked for review, on to the next concept
+        state.status, state.pending = "needs_review", None
+        return _make("R9", "needs_review", state, f"{cause} Already {MAX_RETEACHES} reteaches, so this concept "
+                     "is marked for review next session.", mistake=mistake,
+                     resume_concept_id=_resume_next(after, cur), clear_board=True)
+    concept = cur.concepts[state.concept_id]
+    strategy = pick_strategy(concept, state, wrong_values)
+    untried = strategy not in state.strategies_tried
+    if untried:
+        state.strategies_tried.append(strategy)
+    state.reteach_count += 1
+    reason = f"{cause} Reteach {state.reteach_count} of {MAX_RETEACHES} using {strategy}"
+    return _ask_next(state, concept, rule, "reteach", reason + (" (not tried yet)." if untried else "."),
+                     strategy=strategy, mistake=mistake, evidence={"cause": cause})
+
+
+def pick_strategy(concept: Concept, state: ConceptState, wrong_values: bool) -> str:
+    """Spec §4.6: the first eligible strategy not tried in this pass, else the first eligible one."""
+    # substitute_back needs wrong values to put back in, so never after "I don't know".
+    # The loader insists on worked_example, so there is always an eligible strategy.
+    eligible = [s for s in concept.strategies if s != "substitute_back" or wrong_values]
+    untried = [s for s in eligible if s not in state.strategies_tried]
+    return (untried or eligible)[0]
+
+
+def replay_instead(decision: Decision, before: Progress, after: Progress) -> tuple[Decision, Progress]:
+    """A scripted reteach replays the lesson's reteach step: strategy "replay", which uses up no strategy."""
+    after = copy.deepcopy(after)
+    cid = decision.concept_id
+    after[cid].strategies_tried = list(before[cid].strategies_tried)    # undo the strategy decide() added
+    reason = (f"{decision.evidence['cause']} Reteach {decision.reteach_count} of {MAX_RETEACHES}: "
+              "the lesson step is replayed (scripted).")
+    return replace(decision, strategy="replay", reason=reason), after
 
 
 # ---------- small shared helpers ----------
