@@ -13,6 +13,7 @@ def test_cli_session_scripted(monkeypatch, capsys):
     cli.main(["--username", "asha"])
     out = capsys.readouterr().out
     assert "tutor: Hi Asha!" in out                           # the S0 greeting, by first name
+    assert "  choices: Teach me | Test me first" in out       # the buttons, as words to type
     assert "why: R0 (next_step)" in out                       # "ok" moved on a step
     assert "q-label" not in out and "board:" in out           # still teaching: lesson lines, no question yet
     assert next(replies, None) is None                        # it stopped at "quit"

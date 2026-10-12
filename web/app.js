@@ -116,6 +116,7 @@ async function runTurn(send) {   // send() makes the request and resolves to the
   try {
     const reply = await send();
     drawPanels(reply);
+    drawChoices(reply);
     if (reply.decision.action === "mastered") celebrate();
     await playReply(reply);
     typeIt = reply.input_hint === "type";
@@ -144,6 +145,7 @@ function showTutor(state) {   // after sign-in or a reload: the saved board and 
   drawBoard();
   setCaption("");
   drawPanels(state);
+  drawChoices(state);
   startButton.textContent = state.progress.some((row) => row.status !== "not_started") ? "Continue" : "Start";
   startButton.hidden = false;
   sayForm.hidden = true;
@@ -191,14 +193,35 @@ function onPickTopic(event) {   // a topic in the panel: the tutor pauses this o
   runTurn(() => postJSON("/api/jump", { concept_id: topic.dataset.concept }));
 }
 
+function sendText(text) {   // a typed reply, or a choice button's words: the same turn either way
+  addTranscript("you", text);
+  setCaption(`You: ${text}`, "you");
+  runTurn(() => postJSON("/api/turn", { text, prev_first_audio_ms: takeFirstAudioMs() }));
+}
+
 function onSend(event) {
   event.preventDefault();
   const text = textBox.value.trim();
   if (!text) return;
   textBox.value = "";
-  addTranscript("you", text);
-  setCaption(`You: ${text}`, "you");
-  runTurn(() => postJSON("/api/turn", { text, prev_first_audio_ms: takeFirstAudioMs() }));
+  sendText(text);
+}
+
+// ---------- choice buttons ----------
+function drawChoices(data) {   // the buttons for the next reply; they sit in the say form, so setBusy turns them off
+  $("choices").replaceChildren(...(data.choices || []).map((choice) => {
+    const button = make("button", choice.label, "choice");
+    button.type = "button";   // not a submit button: a click sends the choice, not the text box
+    button.dataset.say = choice.say;
+    button.disabled = busy;   // drawn mid-turn: on when the turn ends
+    return button;
+  }));
+}
+
+function onChoice(event) {
+  const button = event.target.closest("button.choice");
+  if (!button || busy) return;
+  sendText(button.dataset.say);
 }
 
 $("signin-form").addEventListener("submit", onSignIn);
@@ -206,6 +229,7 @@ $("signout").addEventListener("click", onSignOut);
 startButton.addEventListener("click", onStart);
 $("progress").addEventListener("click", onPickTopic);
 sayForm.addEventListener("submit", onSend);
+$("choices").addEventListener("click", onChoice);
 micButton.addEventListener("click", onMic);
 if (canSpeak) speechSynthesis.onvoiceschanged = chooseVoice;
 if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {   // not https (or localhost): no mic

@@ -42,6 +42,8 @@ def show(result: TurnResult) -> None:
         if segment.say:
             print(f"tutor: {segment.say}")
     print(f"  why: {result.decision.rule} ({result.decision.action}) {result.decision.reason}")
+    if result.choices:                               # the page's buttons; type the words instead
+        print("  choices: " + " | ".join(choice.label for choice in result.choices))
     print("  board:" + ("" if result.board else " (empty)"))
     for line in result.board:
         print(f"    {line.id}: {line.text or line.latex}")

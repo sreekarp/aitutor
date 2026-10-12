@@ -2,7 +2,7 @@
 import pytest
 from conftest import FakeLLM, new_question, new_student
 
-from app import curriculum, db
+from app import curriculum, db, replies
 from app.config import POINTS_TO_MASTER, Settings
 from app.llm import ProviderError
 from app.replies import REVIEW_LATER, SAFETY_REPLY
@@ -228,19 +228,20 @@ def test_llm_needs_review_on_the_last_topic_says_we_come_back_once(cur, db_engin
 
 
 def test_after_a_topic_start_understand_still_reads_the_real_last_line(cur, db_engine):
-    """Right after Start, UNDERSTAND gets the tutor's real last line (the end of the intro: step 1 waits), and a
-    reply it finds unclear says the start again: no step is played yet."""
+    """Right after Start, UNDERSTAND gets the tutor's real last line (the offer: step 1 waits), and a reply it finds
+    unclear says the intro and the offer again: no step is played yet."""
     fake = FakeLLM(understand=[understood("unclear")])
     tutor = Tutor(cur, db_engine, SETTINGS, llm=fake)
     with db_engine.begin() as conn:
         student_id = db.get_or_create_student(conn, "asha", "Asha")["id"]
-    first = tutor.start(student_id)                       # standard form: greeting, intro
+    first = tutor.start(student_id)                       # standard form: greeting, intro, the offer
     result = tutor.turn(student_id, "hmm, which one")
     assert roles(fake) == ["understand"]
-    assert f"TUTOR'S LAST LINE: {first.segments[-1].say}" in fake.asked[0][1][1]["content"]
+    offer = replies.cue_line("offer", "standard_form")
+    assert first.segments[-1].say == offer
+    assert f"TUTOR'S LAST LINE: {offer}" in fake.asked[0][1][1]["content"]
     assert (result.decision.rule, result.decision.action) == ("R8", "repeat")
-    step_1 = {segment.say for segment in cur.concepts["standard_form"].steps[0].segments}
-    assert step_1.isdisjoint(segment.say for segment in result.segments)
+    assert [segment.say for segment in result.segments] == [cur.concepts["standard_form"].intro, offer]
 
 
 def test_got_it_test_me_not_sure_and_move_on_need_no_understand_call(cur, db_engine):
@@ -288,7 +289,8 @@ def test_spoken_off_topic_reply_while_teaching_still_replays_the_step(cur, db_en
     student_id = new_student(db_engine, cur)
     tutor.start(student_id)                               # greeting, intro
     tutor.turn(student_id, "ok")                          # step 1 ("ok" is a fast path: no LLM call)
-    step_1 = [segment.say for segment in cur.concepts["factorisation"].steps[0].segments]
+    step = cur.concepts["factorisation"].steps[0]
+    step_1 = [segment.say for segment in step.segments] + [replies.cue_line("step", step.id)]
     heard = tutor.turn(student_id, "Experience is the best teacher.", input_mode="voice")
     again = tutor.turn(student_id, "say again")
     assert heard.decision.rule == "R8"

@@ -188,6 +188,13 @@ class BoardLine:
 
 # ---------- one finished turn ----------
 @dataclass
+class Choice:
+    """A button under the text box: its label, and the words it sends as the student's reply."""
+    label: str
+    say: str
+
+
+@dataclass
 class TurnResult:
     turn_id: str
     session_id: str
@@ -201,6 +208,7 @@ class TurnResult:
     latency_ms: dict
     calls: list[dict]
     input_hint: str | None = None    # "type" when the tutor suggests typing, else None
+    choices: list[Choice] = field(default_factory=list)   # the buttons for the student's next reply
 
 
 # ---------- one turn in progress (tutor.py builds it, llm_steps.py reads and adds to it) ----------
@@ -216,7 +224,8 @@ class TurnContext:
     text: str                          # the student's words, cut to MAX_INPUT_CHARS
     last_speech: list[Segment]         # what R8 replays: last turn's speech, without its board commands
                                        # (right after a topic start or move-on, or a lone "didn't catch that":
-                                       # just the current step's speech)
+                                       # just the current step's speech and its cue; at the topic start, the
+                                       # concept's intro and the offer)
     previous_reason: str               # reason of the previous turn's decision ("" if none)
     board: list[BoardLine]             # the session board before this turn
     deadline: float                    # time.monotonic() + TURN_DEADLINE_S, set at turn start

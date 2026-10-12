@@ -1,15 +1,15 @@
-"""The scripted parts of a reply that come after its words: a step, a question, the concept picked up next, the
-END summary, a short re-ask. Pure functions, like engine.py: no I/O, inputs never changed."""
+"""The scripted parts of a reply after its words: a step, a question, the next concept, a re-ask, then the cue
+that ends a teaching turn ("Shall we go on?") and the buttons that answer it. Pure functions."""
 from __future__ import annotations
 
 from app import curriculum, engine, replies
-from app.models import BoardCommand, Curriculum, Decision, Progress, Segment, TurnContext
+from app.models import BoardCommand, Choice, Curriculum, Decision, Progress, Segment, TurnContext
 
 RESUMING = ("greet", "resume", "mastered", "needs_review", "jump")    # actions that go on to the current concept
 
 
 def compose(cur: Curriculum, ctx: TurnContext, decision: Decision, after: Progress) -> list[Segment]:
-    """The scripted parts after the words: a step, a question, the next concept, a re-ask."""
+    """The scripted parts after the words: a step, a question, the next concept, a re-ask, then the cue."""
     concept = cur.concepts.get(decision.concept_id or "")
     parts: list[Segment] = []
     if decision.play_step_id:
@@ -29,6 +29,9 @@ def compose(cur: Curriculum, ctx: TurnContext, decision: Decision, after: Progre
         parts.append(replies.reask(asked, pending.awaiting_working, hint_level))
     if decision.clear_board and parts:                # wipe the board just before the new part plays
         parts[0] = Segment(say=parts[0].say, board=[BoardCommand(op="clear"), *parts[0].board])
+    cue, _ = cue_for(cur, after, shown_action(ctx, decision))
+    if cue and decision.rule not in NO_CUE and not _replays_a_cue(ctx, decision):
+        parts.append(cue)                             # the turn ends on a cue: never a dead end
     return parts
 
 
@@ -43,3 +46,48 @@ def resume(cur: Curriculum, concept_id: str, after: Progress, action: str) -> li
         check = curriculum.get_check(concept, state.pending.check_id)
         return opening + [curriculum.ask_segment(check, cur.formulas)]
     return opening + (list(step.segments) if step else [])
+
+
+# ---------- the cue and the buttons ----------
+NO_CUE = ("R10", "LIMIT", "END")          # safety, the daily limit and the end: no cue line and no buttons
+NOT_SURE = Choice("Not sure", "not sure")
+CHOICES = {"offer": (Choice("Teach me", "teach me"), Choice("Test me first", "test me")),
+           "step": (Choice("Yes, go on", "yes go on"), NOT_SURE),
+           "last_step": (Choice("Yes, quiz me", "yes quiz me"), NOT_SURE),
+           "example": (Choice("Go on", "go on"), Choice("Another example", "another example"))}
+
+
+def cue_for(cur: Curriculum, progress: Progress, last_action: str | None) -> tuple[Segment | None, list[Choice]]:
+    """The cue line and the buttons for where a turn ends, in the current concept. A question open: no cue line (the
+    question is the cue), just "Not sure". Every topic done: nothing."""
+    cid = engine.current_concept(progress, cur)
+    if cid is None:
+        return None, []
+    concept, state = cur.concepts[cid], progress[cid]
+    if state.pending:
+        return None, [NOT_SURE]
+    if state.step_id is None:
+        kind = "offer"                                 # the topic start: teach it, or test me first
+    elif last_action == "example":
+        kind = "example"
+    elif state.step_id == concept.steps[-1].id:
+        kind = "last_step"
+    else:
+        kind = "step"
+    return Segment(say=replies.cue_line(kind, state.step_id or cid)), list(CHOICES[kind])
+
+
+def shown_action(ctx: TurnContext, decision: Decision) -> str:
+    """The action whose cue the student last heard: a replay (R8) of a solved example keeps the example's cue and
+    buttons, so they still match what is said."""
+    said = ctx.last_speech
+    replayed_example = decision.action == "repeat" and bool(said) and said[-1].say in replies.CUES["example"]
+    return "example" if replayed_example else decision.action
+
+
+def _replays_a_cue(ctx: TurnContext, decision: Decision) -> bool:
+    """R8 while teaching says the last turn's speech again (llm_steps.respond), which already ends on its cue.
+    (A lone "didn't catch that" takes its place and asks for the reply itself, so it gets no cue either.)"""
+    said = ctx.last_speech
+    cues = {line for lines in replies.CUES.values() for line in lines}
+    return decision.action == "repeat" and ctx.phase == "teaching" and bool(said) and said[-1].say in cues

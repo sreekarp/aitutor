@@ -28,6 +28,15 @@ REASK = {"roots": "So, what are the roots?", "discriminant": "So, what is the di
          "nature": "So, what is the nature of the roots?", "is_quadratic": "So, is it a quadratic equation?",
          "is_root": "So, is it a root?", "has_real_roots": "So, is it possible?"}
 REVIEW_LATER = "This one needs more practice, so we'll come back to this next time."   # R9, after the worked answer
+# The cue that ends a teaching turn, by where the student is (compose.cue_for picks which): at the topic start, on
+# a step, on the last step, after a solved example. Each place always gets the same phrasing (cue_line).
+CUES = {"offer": ("Shall I teach it? Or say 'test me' if you already know it.",
+                  "Shall I teach you this one? Or say 'test me' if you already know it."),
+        "step": ("Did that make sense? Shall we go on?", "Does that make sense so far? Shall we go on?",
+                 "Is that clear? Shall we go on?"),
+        "last_step": ("Ready for a question?", "Ready to try a question?", "Shall we try a question now?"),
+        "example": ("Shall we go on, or shall I do another example?",
+                    "Shall we go on, or would you like another example?")}
 
 
 # ---------- scripted replies ----------
@@ -93,6 +102,13 @@ def reask(check: Check, awaiting_working: bool, hint_level: int = 0) -> Segment:
     if check.kind == "roots" and not check.show_equation:
         return Segment(say="So, what is your answer?")       # word problems ask for one quantity
     return Segment(say=REASK[check.kind])
+
+
+def cue_line(kind: str, key: str) -> str:
+    """One phrasing of a cue, picked by a step or topic id: the same place always says the same words (so its audio
+    is cached), and the steps of a topic don't all end alike."""
+    lines = CUES[kind]
+    return lines[sum(map(ord, key)) % len(lines)]
 
 
 def opening(concept: Concept, action: str, from_top: bool) -> list[Segment]:

@@ -55,6 +55,8 @@
           <input id="text-box" aria-label="Your answer or question" maxlength="500" autocomplete="off"
                  placeholder="Type your answer or question">
           <button id="send" type="submit" class="primary">Send</button>
+          <!-- the reply's buttons ("Yes, go on", "Not sure"): each one sends its words, like typing them -->
+          <div id="choices" class="choices"></div>
         </form>
         <p id="mic-note" class="hint" hidden>The microphone needs https (or localhost), so please type your answers.</p>
         <div id="transcript" class="transcript" aria-live="polite"></div>

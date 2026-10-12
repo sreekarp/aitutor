@@ -2,13 +2,14 @@
 carries a decision's evidence or any SymPy check text."""
 from __future__ import annotations
 
-from app import db, engine
-from app.models import BoardCommand, Concept, ConceptState, TurnResult
+from app import compose, db, engine
+from app.models import BoardCommand, Concept, ConceptState, Progress, TurnResult
 from app.tutor import Tutor
 
 
 def state(tutor: Tutor, student_id: str) -> dict:
-    """GET /api/state: progress per concept, the last 5 decisions (rule, action, reason) and the board."""
+    """GET /api/state: progress per concept, the last 5 decisions (rule, action, reason), the board and the
+    buttons for the next reply."""
     with tutor.db_engine.connect() as conn:
         progress = db.load_progress(conn, student_id, tutor.cur)
         session = db.latest_session(conn, student_id)
@@ -18,7 +19,7 @@ def state(tutor: Tutor, student_id: str) -> dict:
     rows = [_progress_row(tutor.cur.concepts[cid], progress[cid], cid == current) for cid in tutor.cur.order]
     why = [{"rule": d["rule"], "action": d["action"], "reason": d["reason"]} for d in recent]
     shown = [{"id": line.id, "latex": line.latex, "formula": line.formula, "text": line.text} for line in lines]
-    return {"progress": rows, "why": why, "board": shown}
+    return {"progress": rows, "why": why, "board": shown, "choices": _saved_choices(tutor, progress, recent)}
 
 
 def payload(tutor: Tutor, student_id: str, result: TurnResult) -> dict:
@@ -28,7 +29,18 @@ def payload(tutor: Tutor, student_id: str, result: TurnResult) -> dict:
                 for segment in result.segments]
     return {"turn_id": result.turn_id, "transcript": result.transcript, "segments": segments,
             "decision": {"rule": decision.rule, "action": decision.action, "reason": decision.reason},
-            **state(tutor, student_id), "input_hint": result.input_hint}
+            **state(tutor, student_id), "input_hint": result.input_hint,
+            "choices": [{"label": choice.label, "say": choice.say} for choice in result.choices]}
+
+
+def _saved_choices(tutor: Tutor, progress: Progress, recent: list[dict]) -> list[dict]:
+    """The buttons after a reload: rebuilt from the saved progress and the newest decisions, as the turn chose them
+    (a "say again" shows the buttons of the cue it replays, so the newest decision that isn't one decides)."""
+    if not recent or recent[0]["rule"] in compose.NO_CUE:
+        return []                                    # before the first Start, or after safety, the limit or the end
+    action = next((decision["action"] for decision in recent if decision["action"] != "repeat"), recent[0]["action"])
+    _, choices = compose.cue_for(tutor.cur, progress, action)
+    return [{"label": choice.label, "say": choice.say} for choice in choices]
 
 
 def _progress_row(concept: Concept, concept_state: ConceptState, current: bool) -> dict:

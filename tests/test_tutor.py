@@ -6,9 +6,9 @@ from dataclasses import replace
 import pytest
 from conftest import new_question, new_student, progress_of, said_with_working
 
-from app import curriculum, db, engine, grading, page
+from app import curriculum, db, engine, grading, page, replies
 from app.config import MAX_INPUT_CHARS, Settings
-from app.models import BoardCommand, Pending, Segment
+from app.models import BoardCommand, Choice, Pending, Segment
 from app.tutor import DIDNT_CATCH, NoSession, Tutor
 
 SETTINGS = Settings(openrouter_api_key="", access_code="test", session_secret="test", database_url="sqlite://",
@@ -64,6 +64,8 @@ def test_full_pass_through_factorisation_scripted(tutor, db_engine, cur):
     says = [segment.say for segment in result.segments]
     assert says[0].endswith("! You've mastered solving by factorisation.")
     assert says[1] == f"Now let's move on to the quadratic formula. {cur.concepts[following].intro}"
+    assert says[2:] == [replies.cue_line("offer", following)]                # teach it, or test me first
+    assert result.choices == [Choice("Teach me", "teach me"), Choice("Test me first", "test me")]
     assert "q-eq" not in [line.id for line in result.board]     # the board was cleared for the new concept
     assert result.calls == []
     step_1 = tutor.turn(student_id, "ok")                       # "ok" at its start: step 1
@@ -195,15 +197,17 @@ def test_stt_failed_turn_asks_to_type(tutor, db_engine, cur):
 
 
 def test_say_again_after_didnt_catch_replays_the_step(tutor, db_engine, cur):
-    """While teaching, "say again" right after a lone "didn't catch that" replays the step, not the apology."""
+    """While teaching, "say again" right after a lone "didn't catch that" replays the step and its cue, not the
+    apology."""
     student_id = new_student(db_engine, cur)
     tutor.start(student_id)                                      # greeting, intro
     tutor.turn(student_id, "ok")                                 # step 1
     sorry = tutor.turn(student_id, "", input_mode="voice", stt_failed=True)
     assert [segment.say for segment in sorry.segments] == [DIDNT_CATCH]
     again = tutor.turn(student_id, "say again")
-    step_1 = cur.concepts["factorisation"].steps[0].segments
-    assert [segment.say for segment in again.segments] == [segment.say for segment in step_1]
+    step_1 = cur.concepts["factorisation"].steps[0]
+    assert [segment.say for segment in again.segments] == [*[segment.say for segment in step_1.segments],
+                                                           replies.cue_line("step", step_1.id)]
 
 
 def test_payload_shape(tutor, db_engine, cur):
@@ -219,7 +223,9 @@ def test_payload_shape(tutor, db_engine, cur):
     result = tutor.turn(student_id, check.traps["sign_flip"])   # a wrong answer: a reteach
     data = page.payload(tutor, student_id, result)
 
-    assert set(data) == {"turn_id", "transcript", "segments", "decision", "progress", "why", "board", "input_hint"}
+    assert set(data) == {"turn_id", "transcript", "segments", "decision", "progress", "why", "board", "input_hint",
+                         "choices"}
+    assert data["choices"] == [{"label": "Not sure", "say": "not sure"}]    # a question is open
     assert (data["turn_id"], data["transcript"], data["input_hint"]) == (result.turn_id, check.traps["sign_flip"], None)
     assert data["decision"] == {"rule": "R3", "action": "reteach", "reason": result.decision.reason}
     assert data["why"][0] == data["decision"] and len(data["why"]) == 5     # newest first, the last 5

@@ -133,14 +133,16 @@ class Tutor:
         concept = self.cur.concepts[concept_id] if concept_id else None
         pending = before[concept_id].pending if concept_id else None
         said = [Segment(say=seg["say"]) for seg in last["tutor_output"]["segments"] if seg["say"]] if last else []
-        step = curriculum.get_step(concept, before[concept_id].step_id) if concept and not pending else None
         apology_only = [segment.say for segment in said] == [DIDNT_CATCH]
-        if step and last and (last["action"] in compose.RESUMING or apology_only):
-            # After a topic start or move-on, "say again" replays just the step: not the greeting, intro or praise.
-            # After a lone "didn't catch that", the step too, not the apology. (MISHEARD is never alone: it is only
-            # said while a question is open, and the question always follows it.)
-            # Either way UNDERSTAND's "tutor's last line" is the step's last line: the line being answered.
-            said = [Segment(say=segment.say) for segment in step.segments]
+        if concept and not pending and last and (last["action"] in compose.RESUMING or apology_only):
+            # After a topic start or move-on, "say again" replays just the step and its cue (at the topic start: the
+            # intro and the offer): not the greeting or praise. After a lone "didn't catch that", the same, not the
+            # apology. (MISHEARD is never alone: it is only said while a question is open, and the question always
+            # follows it.) Either way UNDERSTAND's "tutor's last line" is the cue: the line being answered.
+            step = curriculum.get_step(concept, before[concept_id].step_id)
+            cue, _ = compose.cue_for(self.cur, before, last["action"])
+            lesson = step.segments if step else [Segment(say=concept.intro)]
+            said = [Segment(say=segment.say) for segment in lesson] + [cue]
         ctx = TurnContext(
             student=student, session=session, concept=concept, phase="checking" if pending else "teaching",
             before=before, check=curriculum.get_check(concept, pending.check_id) if pending else None,
@@ -164,6 +166,8 @@ class Tutor:
                 input_hint: str | None = None) -> TurnResult:
         """Compose, update the board, then save progress, turn, decision and board in one transaction."""
         segments = words + compose.compose(self.cur, ctx, decision, after)
+        shown = compose.shown_action(ctx, decision)       # a replay keeps the buttons of the cue it replays
+        choices = [] if decision.rule in compose.NO_CUE else compose.cue_for(self.cur, after, shown)[1]
         new_board = board.apply(ctx.board, segments, self.cur.formulas)
         if decision.rule == "R10":
             ctx.issues.append("safety_review")
@@ -185,7 +189,7 @@ class Tutor:
         return TurnResult(turn_id=turn_id, session_id=ctx.session["id"], transcript=ctx.text,
                           understood=understood, grade=grade, decision=decision, segments=segments,
                           board=new_board, issues=ctx.issues, latency_ms=ctx.latency, calls=ctx.calls,
-                          input_hint=input_hint)
+                          input_hint=input_hint, choices=choices)
 
     def _sorry(self, session: dict, text: str) -> TurnResult:
         """After an unexpected error: a scripted apology, nothing saved, progress unchanged (the log has the error)."""

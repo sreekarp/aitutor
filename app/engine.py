@@ -81,7 +81,8 @@ def _teaching(state: ConceptState, concept: Concept, understood: Understood) -> 
         return make_decision("R7", "explain", state, "You asked a question, so it is answered. Same step.")
     if kind == "dont_know":
         return make_decision("R7", "explain", state, "You said you don't follow, so this step is explained again.")
-    # "it": the last reply, or just the step after a topic start or a lone apology (tutor._context picks which)
+    # "it": the last reply; or after a topic start, a move-on or a lone apology, just the step and its cue (at the
+    # topic start: the intro and the offer). tutor._context picks which.
     return make_decision("R8", "repeat", state, f"{REPEAT_CAUSE[kind]}, so it is said again. Nothing changes.")
 
 
