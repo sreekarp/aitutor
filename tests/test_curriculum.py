@@ -94,6 +94,9 @@ BROKEN = [  # (what is broken, how to break it, words the problem must contain)
     ("minus sign in a hint", lambda c: setattr(c.checks[0], "hints", ["One.", "Two.", "Try -3."]),
      "'=' or a minus sign"),
     ("file id differs", lambda c: setattr(c, "id", "other"), "the file's id is other"),
+    ("alias not lower case", lambda c: setattr(c, "aliases", ["Tiny"]), "alias 'Tiny' must be lower-case words"),
+    ("alias with symbols", lambda c: setattr(c, "aliases", ["x = 2"]), "alias 'x = 2' must be lower-case words"),
+    ("alias used twice", lambda c: setattr(c, "aliases", ["tiny", "tiny"]), "alias 'tiny' is used twice"),
 ]
 
 
@@ -107,6 +110,15 @@ def test_each_validation_rule_fires(what, breaks, expected):
     breaks(concept)
     problems = curriculum.validate(tiny_curriculum(concept))
     assert any(expected in problem for problem in problems), problems
+
+
+def test_an_alias_names_one_topic_only():
+    """"Skip to tiny" must lead to one topic, so two lesson files can't share an alias."""
+    first = tiny_concept().model_copy(update={"aliases": ["tiny"]})
+    other = tiny_concept().model_copy(update={"id": "other", "aliases": ["tiny"]})
+    cur = Curriculum(version="test", order=["tiny", "other"], formulas={"standard_form": STANDARD_FORM_LATEX},
+                     concepts={"tiny": first, "other": other})
+    assert curriculum.validate(cur) == ["alias 'tiny' is used twice"]
 
 
 def test_next_check_id_wraps_and_handles_unknown():
@@ -212,7 +224,7 @@ def assert_keys_and_traps(concept: Concept, expected: dict) -> None:
 
 
 def test_load_real_curriculum(cur):
-    assert cur.version == "2026.10.3"
+    assert cur.version == "2026.10.4"
     assert set(cur.formulas) == {"standard_form", "quadratic_formula", "discriminant", "nature_cases"}
     concept = cur.concepts["factorisation"]
     assert concept.title == "Solving by factorisation"
@@ -232,6 +244,24 @@ def test_fresh_progress_starts_every_concept(cur):
 def test_intros_are_short(cur):
     for concept in cur.concepts.values():
         assert len(concept.intro.split()) <= 35, concept.id                 # one or two short sentences
+
+
+def test_every_topic_has_names_a_student_can_say(cur):
+    """A student can ask for any topic by name ("Can we skip to the factorization topic?")."""
+    assert {concept_id: cur.concepts[concept_id].aliases[0] for concept_id in cur.order} == {
+        "standard_form": "standard form", "roots": "roots", "factorisation": "factorisation",
+        "quadratic_formula": "quadratic formula", "discriminant": "discriminant", "word_problems": "word problems"}
+    assert "factorization" in cur.concepts["factorisation"].aliases          # the spelling in the session log
+
+
+def test_no_step_asks_the_student_something(cur):
+    """A step explains; the cue after it ("Shall we go on?") is the only question. A step that asked something and
+    answered it itself gave the student no turn to answer ("Now try x equals 2", "Can two numbers add up to 10...?")."""
+    for concept in cur.concepts.values():
+        for step in concept.steps:
+            for segment in step.segments:
+                assert "?" not in segment.say, (concept.id, step.id)
+                assert not re.search(r"(?:^|[.!] )(?:Now )?[Tt]ry\b", segment.say), (concept.id, step.id)
 
 
 # Steps that talk about a line from an earlier step: (concept, step) -> that line's id.

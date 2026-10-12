@@ -20,6 +20,7 @@ LATEX_CHARS = "\\^{}$_"               # never allowed in spoken text
 # and "x 2". Any dash counts ("–2" too), except inside a word ("self-check", "two-step"). Say "equals", "minus".
 SPOKEN_SYMBOLS = re.compile(r"=|(?<![A-Za-z]{2})[-‐‑‒–−﹣－]\s*(?:[\d.√½¼¾]|root\b|sqrt\b|[a-z]\b)")
 COMMAND = re.compile(r"\\[A-Za-z]+")  # a LaTeX command name, e.g. \frac
+ALIAS = re.compile(r"[a-z0-9]+(?: [a-z0-9]+)*")   # a topic's alias: lower-case words, as a reply is read
 LABEL_ID, EQUATION_ID = PINNED_IDS    # "q-label" and "q-eq": the question's two pinned board lines
 
 
@@ -87,6 +88,8 @@ def validate(cur: Curriculum) -> list[str]:
         if concept.id != concept_id:
             problems.append(f"{concept_id}: the file's id is {concept.id}")
         problems += [f"{concept_id}: {p}" for p in _concept_problems(concept, cur.formulas)]
+    aliases = [alias for concept in cur.concepts.values() for alias in concept.aliases]
+    problems += [f"alias {alias!r} is used twice" for alias in sorted(set(aliases)) if aliases.count(alias) > 1]
     return problems
 
 
@@ -109,6 +112,8 @@ def _concept_problems(concept: Concept, formulas: dict[str, str]) -> list[str]:
         problems += [f"check {check.id}: {p}" for p in _check_problems(check, mistake_ids)]
     for mistake in concept.mistakes:
         problems += [f"mistake {mistake.id}: {p}" for p in _speech_problems(mistake.fix)]
+    problems += [f"alias {alias!r} must be lower-case words, like 'nature of roots'"
+                 for alias in concept.aliases if not ALIAS.fullmatch(alias)]
     spoken = (("intro", concept.intro), ("title", concept.title))       # the title is said in greetings and moves
     return problems + [f"{name}: {p}" for name, text in spoken for p in _speech_problems(text)]
 

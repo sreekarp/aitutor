@@ -100,12 +100,14 @@ class Tutor:
 
     def _run(self, ctx: TurnContext, replaced: bool, over_limit: bool, input_mode: str,
              stt_failed: bool) -> TurnResult:
-        """The order of checks: LIMIT, safety, curriculum change, fast paths, understanding."""
+        """The order of checks: LIMIT, safety, curriculum change, a topic asked for, fast paths, understanding."""
         understood = grade = None
         if over_limit:
             decision, after = sessions.limit_decision(), ctx.before
         elif replaced and not safety.is_safety(ctx.text):
             decision, after = sessions.lesson_changed(ctx.before, self.cur), ctx.before
+        elif picked := _topic_asked_for(ctx, self.cur):     # S2, just as if the student clicked that topic
+            decision, after = sessions.jump(ctx.before, self.cur, picked)
         else:
             understood = _timed(ctx, "understand", self._read, ctx, stt_failed)
             if ctx.check and understood.answer and not understood.safety:    # grade answers while checking
@@ -230,6 +232,15 @@ def _grade(ctx: TurnContext, understood: Understood) -> tuple[Understood, Grade]
 def _recent(turn: dict | None) -> bool:
     """True when this turn happened less than SESSION_GAP_MIN minutes ago."""
     return turn is not None and datetime.now(timezone.utc) - turn["created_at"] < timedelta(minutes=SESSION_GAP_MIN)
+
+
+def _topic_asked_for(ctx: TurnContext, cur: Curriculum) -> str | None:
+    """Another topic the student asked for by name ("Can we skip to the factorization topic?"), read without the
+    LLM; else None. Never for a reply the safety check flags: the safety reply comes first."""
+    if safety.is_safety(ctx.text):
+        return None
+    picked = fallback.topic_request(ctx.text, {cid: cur.concepts[cid].aliases for cid in cur.order})
+    return picked if picked != (ctx.concept.id if ctx.concept else None) else None
 
 
 def _misheard(ctx: TurnContext, input_mode: str, understood: Understood | None, decision: Decision) -> bool:

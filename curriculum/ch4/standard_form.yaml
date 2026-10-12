@@ -4,6 +4,7 @@ id: standard_form
 title: Standard form and recognising a quadratic
 ncert: "4.1–4.2, Examples 1–2"
 intro: "Many real problems, like finding a length from an area, lead to a quadratic equation. We'll learn to spot one, even in disguise, and to write it in standard form."
+aliases: [standard form]
 
 steps:
   - id: hook

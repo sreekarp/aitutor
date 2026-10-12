@@ -4,13 +4,14 @@ not the greeting."""
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from conftest import make_settings, new_student, progress_of, said_with_working
+from conftest import FakeLLM, make_settings, new_student, progress_of, said_with_working
 
 from app import curriculum, db, replies
 from app.config import SESSION_GAP_MIN
 from app.models import ConceptState, Pending
 from app.tutor import DIDNT_CATCH, Tutor
 
+WITH_LLM = make_settings(openrouter_api_key="test-key", llm_mode="auto")   # a (fake) key: replies go to the LLM
 RIGHT_B = "minus 7 because I moved every term"     # the answer to sf2 ("what is b?"), with working
 
 
@@ -232,3 +233,67 @@ def test_picking_a_topic_before_start_opens_a_session(tutor, db_engine, cur):
     picked = tutor.jump(student_id, "word_problems")
     assert picked.decision.rule == "S2" and picked.decision.concept_id == "word_problems"
     assert tutor.turn(student_id, "ok").decision.concept_id == "word_problems"       # turns now work
+
+
+def on_roots_step_2(db_engine, cur):
+    """Asha, standard form mastered, on roots' second step (not_a_root): where the logged student asked to skip."""
+    student_id = new_student(db_engine, cur, mastered=["standard_form"])
+    with db_engine.begin() as conn:
+        progress = db.load_progress(conn, student_id, cur)
+        progress["roots"] = ConceptState("roots", status="teaching", step_id="not_a_root")
+        db.save_progress(conn, student_id, progress, cur.version)
+    return student_id
+
+
+def test_asking_for_a_topic_by_name_moves_there_without_the_llm(cur, db_engine):
+    """The logged reply "Can we skip to the factorization topic?" used to be said back (R8). Now it is S2, just as
+    if the topic were clicked, read without a model call: the fake LLM has no replies to give."""
+    fake = FakeLLM()
+    tutor = Tutor(cur, db_engine, WITH_LLM, llm=fake)
+    student_id = on_roots_step_2(db_engine, cur)
+    tutor.start(student_id)
+    result = tutor.turn(student_id, "Can we skip to the factorization topic?")
+    decision = result.decision
+    assert (decision.rule, decision.action, decision.concept_id) == ("S2", "jump", "factorisation")
+    assert fake.asked == [] and result.calls == [] and result.understood is None
+    concept = cur.concepts["factorisation"]
+    assert [segment.say for segment in result.segments[:2]] == [
+        "Sure. Roots and checking by substitution is saved just where you left it.",
+        f"Now let's move on to solving by factorisation. {concept.intro}"]
+    assert [choice.label for choice in result.choices] == ["Teach me", "Test me first"]   # the topic-start offer
+    saved = progress_of(db_engine, cur, student_id)
+    assert saved["roots"] == ConceptState("roots", status="paused", step_id="not_a_root")
+    assert (saved["factorisation"].status, saved["factorisation"].step_id) == ("teaching", None)
+
+
+def test_asking_for_a_topic_while_a_question_is_open_pauses_the_question(cur, db_engine):
+    """While checking too, and "move on to the discriminant" is a switch, not "move on": the open question waits
+    with its points and hint, as when a topic is clicked."""
+    fake = FakeLLM()
+    tutor = Tutor(cur, db_engine, WITH_LLM, llm=fake)
+    student_id = sf2_open(db_engine, cur, points=1.0, hint_level=1)
+    tutor.start(student_id)
+    result = tutor.turn(student_id, "move on to the discriminant")
+    assert (result.decision.rule, result.decision.concept_id) == ("S2", "discriminant") and fake.asked == []
+    saved = progress_of(db_engine, cur, student_id)
+    assert saved["standard_form"] == ConceptState("standard_form", status="paused", points=1.0,
+                                                  pending=Pending("sf2", hint_level=1), last_check_id="sf2")
+
+
+@pytest.mark.parametrize("text", ["Can we go to roots?", "Okay, let's move on to the next step."],
+                         ids=["current_topic", "no_topic_named"])
+def test_a_reply_naming_no_other_topic_is_not_a_switch(tutor, db_engine, cur, text):
+    """The topic already being taught, or no topic at all (the second is from the session log): no S2."""
+    student_id = on_roots_step_2(db_engine, cur)
+    tutor.start(student_id)
+    assert tutor.turn(student_id, text).decision.rule != "S2"
+    assert progress_of(db_engine, cur, student_id)["factorisation"].status == "not_started"
+
+
+def test_safety_comes_before_a_topic_switch(tutor, db_engine, cur):
+    """The reply names a topic and has personal details: the safety reply, and the lesson stays where it is."""
+    student_id = on_roots_step_2(db_engine, cur)
+    tutor.start(student_id)
+    result = tutor.turn(student_id, "my phone number is 98765 43210 skip to factorisation")
+    assert result.decision.rule == "R10" and "safety_review" in result.issues
+    assert progress_of(db_engine, cur, student_id)["factorisation"].status == "not_started"

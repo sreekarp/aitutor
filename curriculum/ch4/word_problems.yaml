@@ -6,6 +6,7 @@ id: word_problems
 title: Word problems
 ncert: "Examples 1, 6, 8; Exercises 4.1 Q2, 4.2 Q2–6, 4.3 Q3–5"
 intro: "It's time to use everything so far on everyday problems about lengths, areas, ages and numbers. The new skill is turning each story into an equation."
+aliases: [word problems, word problem]
 
 steps:
   - id: plan
@@ -29,12 +30,12 @@ steps:
 
   - id: is_it_possible
     segments:
-      - say: "Some questions ask if something is possible. Can two numbers add up to 10 and multiply to 30? Call one number x, so the other is 10 minus x."
+      - say: "Some questions ask if something is possible, like two numbers that add up to 10 and multiply to 30. Let's find out. Call one number x, so the other is 10 minus x."
         board:
           - {op: write, id: ip1, text: "Two numbers add up to 10 and multiply to 30. Possible?"}
           - {op: write, id: ip2, latex: 'x(10-x) = 30', check: "Eq(x*(10-x), 30)"}
           - {op: write, id: ip3, latex: 'x^2 - 10x + 30 = 0', check: "Eq(x**2 - 10*x + 30, 0)"}
-      - say: "Before solving, work out D. It is 100 minus 120, which is minus 20. D is negative, so there are no real roots, and it is not possible."
+      - say: "Before solving, let's work out D. It is 100 minus 120, which is minus 20. D is negative, so there are no real roots, and it is not possible."
         board:
           - {op: write, id: ip4, latex: '(-10)^2 - 4 \cdot 1 \cdot 30 = -20', check: "Eq((-10)**2 - 4*1*30, -20)"}
 

@@ -4,6 +4,7 @@ id: roots
 title: Roots and checking by substitution
 ncert: "4.3, opening"
 intro: "Solving an equation means finding its roots. We'll learn what a root is, and a quick way to check whether any number is one."
+aliases: [roots, checking by substitution, substitution]
 
 steps:
   - id: definition
@@ -18,7 +19,7 @@ steps:
 
   - id: not_a_root
     segments:
-      - say: "Now try x equals 2 in the same equation."
+      - say: "Now let's put in x equals 2."
         board:
           - {op: write, id: rd1, latex: '2x^2 - 3x + 1 = 0', check: "Eq(2*x**2 - 3*x + 1, 0)"}
           - {op: write, id: rn1, latex: '2(2)^2 - 3(2) + 1 = 3', check: "Eq(2*2**2 - 3*2 + 1, 3)"}

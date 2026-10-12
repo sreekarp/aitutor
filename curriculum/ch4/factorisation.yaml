@@ -4,6 +4,7 @@ id: factorisation
 title: Solving by factorisation
 ncert: "4.3, Examples 3–6"
 intro: "Factorising lets us find the roots ourselves: we write the quadratic as two brackets multiplied together, and each bracket gives a root. It's often the quickest way to solve."
+aliases: [factorisation, factorization, factorising, factorizing, factoring]
 
 steps:
   - id: zero_product

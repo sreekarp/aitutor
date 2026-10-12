@@ -60,6 +60,32 @@ def test_pardon_sorry_what_and_come_again_ask_to_hear_it_again():
         assert fallback.keyword(text, "checking") is None, text
 
 
+# ---------- a topic asked for by name ----------
+def aliases(cur) -> dict[str, list[str]]:
+    """Each topic's aliases, from the real lesson files."""
+    return {concept_id: cur.concepts[concept_id].aliases for concept_id in cur.order}
+
+
+def test_topic_request_reads_a_move_to_a_named_topic(cur):
+    asked = {"Can we skip to the factorization topic?": "factorisation",      # from the session log
+             "move on to the discriminant": "discriminant", "Go back to roots, please": "roots",
+             "take me to the quadratic formula": "quadratic_formula", "Let's go to the formula": "quadratic_formula",
+             "switch to word problems": "word_problems", "jump to nature of the roots": "discriminant",
+             "can we change to standard form now": "standard_form", "Skip to Factorising!": "factorisation"}
+    for text, concept_id in asked.items():
+        assert fallback.topic_request(text, aliases(cur)) == concept_id, text
+
+
+def test_topic_request_needs_a_move_to_and_a_name_at_the_end(cur):
+    """No move verb and "to", no topic's name, more words after the name (working, not a request), or a long
+    reply: not a request. The first is from the session log."""
+    for text in ("Okay, let's move on to the next step.", "move on", "skip to", "factorisation",
+                 "I want to learn factorisation", "move to standard form, then factorise",
+                 "go to roots first then factorise", "I used the formula",
+                 "can we please " + "please " * 8 + "skip to roots"):
+        assert fallback.topic_request(text, aliases(cur)) is None, text
+
+
 # ---------- scripted understanding ----------
 def test_understand_order_and_negations(cur):
     teaching = {"I don't get it": "dont_know", "I haven't understood": "dont_know", "samajh nahi aaya": "dont_know",

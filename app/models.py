@@ -71,6 +71,7 @@ class Concept(BaseModel):
     title: str
     ncert: str
     intro: str = Field(min_length=1)   # said before step 1: what we'll learn and why it's useful
+    aliases: list[str] = Field(default_factory=list)   # names a student says to go here: "skip to factorization"
     steps: list[Step]
     checks: list[Check]
     mistakes: list[Mistake]

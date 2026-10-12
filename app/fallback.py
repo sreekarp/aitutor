@@ -89,6 +89,14 @@ WORD_CHOICES = {"is_quadratic": grading.YES_NO_WORDS, "is_root": grading.YES_NO_
                 "roots": {"none": grading.NONE_PHRASES}}
 
 
+# A topic asked for by name: a move verb, maybe "on" or "back", then "to" ("can we skip to", "move on to", "take me
+# back to"). Only words like "topic" or "please" may follow the topic's name, so working such as "move to standard
+# form, then factorise" isn't a request; nor is a reply longer than TOPIC_REQUEST_WORDS words.
+MOVE_TO = re.compile(r"\b(?:skip|go|move|jump|switch|change|take me)(?: (?:on|back|over|ahead|straight))? to ")
+TOPIC_TAIL = r"(?: (?:topic|chapter|lesson|section|part|please|now|instead|again))*"
+TOPIC_REQUEST_WORDS = 12
+
+
 # ---------- fast paths ----------
 def keyword(text: str, phase: str) -> str | None:
     """A reply type when the WHOLE reply is listed phrases ("ok next", "got it", "not sure"); anything longer goes
@@ -103,6 +111,20 @@ def keyword(text: str, phase: str) -> str | None:
     for pattern, kind in lists + [(MOVE_ON, "move_on"), (TEST_ME, "test_me")]:
         if pattern.fullmatch(clean):
             return kind
+    return None
+
+
+def topic_request(text: str, aliases: dict[str, list[str]]) -> str | None:
+    """The topic a short reply asks to go to, named by one of its aliases (concept id -> aliases, from the lesson
+    files): "Can we skip to the factorization topic?" -> "factorisation". None when it names no topic."""
+    clean = " ".join(re.sub(r"[^a-z0-9]+", " ", text.lower()).split())
+    found = MOVE_TO.search(clean)
+    if not found or len(clean.split()) > TOPIC_REQUEST_WORDS:
+        return None
+    rest = clean[found.end():]                                # e.g. "the factorization topic"
+    for concept_id, names in aliases.items():
+        if any(re.fullmatch(rf"(?:the )?{re.escape(name)}{TOPIC_TAIL}", rest) for name in names):
+            return concept_id
     return None
 
 

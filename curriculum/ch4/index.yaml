@@ -1,5 +1,6 @@
 # NCERT Class 10, Chapter 4: Quadratic Equations. The lessons, in teaching order.
-version: "2026.10.3"
+# Each lesson's aliases are the names a student can say to go to it ("Can we skip to the factorization topic?").
+version: "2026.10.4"
 
 order:
   - standard_form
