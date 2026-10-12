@@ -45,7 +45,7 @@ def trouble() -> FakeLLM:
 
 def test_scenarios_file_valid(cur):
     scenarios = layer2.load_scenarios()
-    assert len(scenarios) == 18 and len({s["id"] for s in scenarios}) == 18
+    assert len(scenarios) == 19 and len({s["id"] for s in scenarios}) == 19
     for s in scenarios:
         setup, expect = s["setup"], s["expect"]
         assert set(setup) <= layer2.SETUP_KEYS and set(expect) <= layer2.EXPECT_KEYS, s["id"]
@@ -68,6 +68,22 @@ def test_every_scenario_setup_runs(cur):
     for s in layer2.load_scenarios():
         run = layer2.run_once(s, cur, SETTINGS, trouble())
         assert run["outcome"] == "not scored" and "internal_error" not in run["issues"], s["id"]
+
+
+def test_not_sure_while_teaching_needs_a_checked_example(cur):
+    """The scenario fits the code: "not sure" on a step is R7 example, and it passes only when RESPOND solves an
+    example on the board (a SymPy-checked line of its own), not when it just talks."""
+    solved = {"segments": [{"say": "Here's another one. Minus 4 and minus 5 multiply to 20 and add to minus 9.",
+                            "board": [{"op": "write", "id": "e1", "latex": "x^2 - 9x + 20 = 0",
+                                       "check": "Eq(x**2 - 9*x + 20, 0)", "relation": "new"},
+                                      {"op": "write", "id": "e2", "latex": "(x-4)(x-5) = 0",
+                                       "check": "Eq((x-4)*(x-5), 0)"}]}]}
+    talks = {"segments": [{"say": "Let's look at it again, slowly.", "board": []}]}
+    not_sure = scenario("not_sure_while_teaching")
+    run = layer2.run_once(not_sure, cur, SETTINGS, FakeLLM(understand=[understood("not_sure")], respond=[solved]))
+    assert (run["outcome"], run["rule"], run["action"]) == ("pass", "R7", "example"), run["problems"]
+    run = layer2.run_once(not_sure, cur, SETTINGS, FakeLLM(understand=[understood("not_sure")], respond=[talks]))
+    assert run["problems"] == ["the reply wrote no checked line of its own"]
 
 
 def test_run_rules_majority_and_not_scored():

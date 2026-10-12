@@ -204,15 +204,6 @@ def test_test_me_skips_the_steps_from_the_topic_start_or_any_step():
         assert (state.status, state.pending, state.last_check_id, state.points) == ("checking", Pending("a1"), "a1", 0)
 
 
-def test_not_sure_while_teaching_explains_the_step_again():
-    progress = progress_with(teaching_at("a_method"))
-    decision, after = turn(progress, said("not_sure"))
-    assert (decision.rule, decision.action, decision.reask) == ("R7", "explain", False)
-    assert "weren't sure" in decision.reason and after == progress
-    decision, _ = turn(progress_with(teaching_at(None)), said("not_sure"))     # at the topic start: step 1 itself
-    assert (decision.rule, decision.play_step_id) == ("R0", "a_intro")
-
-
 def test_test_me_not_sure_and_move_on_while_checking():
     """While a question is open, "test me" is "show me", "not sure" gets the next hint as "I don't know" does, and
     "move on" asks the question again: moving on comes after it."""
@@ -296,6 +287,20 @@ def test_at_the_topic_start_a_reply_begins_step_1():
     for kind in ("say_again", "unclear"):
         decision, after = turn(start, said(kind))
         assert (decision.rule, decision.action, after) == ("R8", "repeat", start), kind
+
+
+def test_not_sure_on_a_step_is_a_solved_example():
+    """"Not sure" on a step (the last one too): R7 example, the same step. It changes nothing, so it is never a
+    reteach. At the topic start there is no step to be unsure of yet, so it starts step 1."""
+    for step_id in ("a_method", "a_check"):
+        progress = progress_with(teaching_at(step_id))
+        decision, after = turn(progress, said("not_sure"))
+        assert (decision.rule, decision.action, decision.play_step_id, decision.ask_check_id) == \
+            ("R7", "example", None, None), step_id
+        assert decision.reason == "You weren't sure, so here's a solved example. Same step."
+        assert after == progress
+    decision, after = turn(progress_with(ConceptState("alpha", status="teaching")), said("not_sure"))
+    assert (decision.rule, decision.action, decision.play_step_id) == ("R0", "next_step", "a_intro")
 
 
 # ---------- checking: right answers and the "how did you get that?" probe ----------

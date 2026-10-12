@@ -161,6 +161,22 @@ def test_an_explanation_cannot_use_another_question_as_its_example(cur):
     assert problems(*own, say="Split the middle term, then take out a common factor.", **open_fa2) == []
 
 
+def test_a_solved_example_starts_new_but_never_on_a_lesson_question():
+    """The example action ("not sure" about a step): no question is open, so there is no anchor and no answer key,
+    and the example may say its own roots. Its equation starts with relation new and may never be one of this
+    concept's questions, rearranged, factorised or solved."""
+    teaching = dict(action="example", board=[], anchor=None, key=None)
+    solved = [write("e0", text="Another example"),
+              write("e1", "x^{2}-9x+20=0", "Eq(x**2 - 9*x + 20, 0)", relation="new"),
+              write("e2", "(x-4)(x-5)=0", "Eq((x-4)*(x-5), 0)"),
+              write("e3", r"x = 4 \text{ or } x = 5", "Or(Eq(x, 4), Eq(x, 5))")]
+    assert problems(*solved, say="Here's another one. Its roots are 4 and 5.", **teaching) == []
+    for latex, check in (("x^{2}-5x+6=0", "Eq(x**2 - 5*x + 6, 0)"), ("(x-2)(x-3)=0", "Eq((x-2)*(x-3), 0)"),
+                         ("3x^{2}-5x-2=0", "Eq(3*x**2 - 5*x - 2, 0)")):
+        assert problems(write("e1", latex, check, relation="new"), **teaching) == [
+            "line e1: a solved example can't use this concept's questions as its example"], latex
+
+
 def test_llm_cannot_reuse_id():
     for line_id in ("q-eq", "q-label"):
         assert any("already on the board" in p for p in problems(write(line_id, text="Again"))), line_id

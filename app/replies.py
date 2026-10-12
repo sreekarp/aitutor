@@ -24,6 +24,8 @@ CLARIFY = {"roots": "Say just the numbers, or type them.", "coefficient": "Say j
            "nature": "Two distinct real roots, two equal real roots, or no real roots?"}
 FOLLOW_UP = {"missing": "That's part of it, but a root is missing. Have another look.",
              "extra": "Nearly. One of those values doesn't fit the question. Think about which ones make sense."}
+# While teaching: the line before the step is said again, for an explanation and for a solved example without the AI.
+TEACHING_LEAD = {"explain": "Good question — let's go over it again.", "example": "Let's go over that step again."}
 REASK = {"roots": "So, what are the roots?", "discriminant": "So, what is the discriminant?",
          "nature": "So, what is the nature of the roots?", "is_quadratic": "So, is it a quadratic equation?",
          "is_root": "So, is it a root?", "has_real_roots": "So, is it possible?"}
@@ -71,9 +73,9 @@ def words(decision: Decision, *, cur: Curriculum, progress: Progress, check: Che
         if decision.hint_level == 0:
             return _say("Good question. Here's where to start.") + _say(check.hints[0])
         return _say("Good question. Let's look at the last hint again.") + _say(check.hints[decision.hint_level - 1])
-    if action == "explain":                                  # while teaching: the step again
-        steps = _segments(get_step(concept, progress[concept.id].step_id))
-        return _say("Good question — let's go over it again.") + steps
+    if action in TEACHING_LEAD:                              # while teaching: the step again (for an example, the
+        steps = _segments(get_step(concept, progress[concept.id].step_id))     # AI would have solved a new one)
+        return _say(TEACHING_LEAD[action]) + steps
     if action == "reteach":
         fix = next((m.fix for m in concept.mistakes if m.id == decision.mistake), "")
         lead = _say(f"Let's look at it another way. {fix}".strip())

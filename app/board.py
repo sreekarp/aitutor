@@ -18,6 +18,8 @@ NUMBERS = re.compile(r"(?:sqrt\(\d+\)|[-+*/.±0-9 ])+")
 # "the roots are", "the answer is", followed by the numbers that come straight after.
 ANSWER_PHRASE = re.compile(r"(?:\b[xd]\s*(?:=|\bis\b|\bequals\b)|\broots?\s+(?:is|are)\b|\banswer\s+is\b)"
                            r"((?:sqrt\(\d+\)|[-+*/.±0-9 ])*)")
+# Rule 7: the replies whose own example may never be one of this concept's questions, as their problems name them.
+NO_LESSON_QUESTIONS = {"reteach": "a reteach", "example": "a solved example"}
 
 
 @dataclass
@@ -64,8 +66,8 @@ def _write(lines: list[BoardLine], cmd: BoardCommand, formulas: dict[str, str]) 
 def validate_reply(segments: list[Segment], ctx: ReplyContext) -> list[str]:
     """The 8 rules an LLM reply must pass: 1 its shape, 2 speech without LaTeX and at most 60 words, 3 every
     maths line passes mathcheck, 4 word lines without digits or "=", 5 highlights KaTeX can draw, 6 no answer
-    given away, 7 no lesson question as the example in a reteach (in an explanation, none but the open one),
-    8 no reused line id. Each problem is one readable line; [] means the reply can be shown."""
+    given away, 7 no lesson question as the example in a reteach or a solved example (in an explanation, none
+    but the open one), 8 no reused line id. Each problem is one readable line; [] means the reply can be shown."""
     problems = []
     if not 1 <= len(segments) <= MAX_SEGMENTS:
         problems.append(f"a reply needs 1 to {MAX_SEGMENTS} segments, not {len(segments)}")
@@ -123,8 +125,8 @@ def _command_problems(cmd: BoardCommand, ctx: ReplyContext, latex_of: dict[str, 
         return [f"{line}: unknown formula {cmd.formula}"]
     if cmd.relation == "new" and ctx.action in ("hint", "follow_up"):
         return [f"{line}: hints and follow-ups can't use relation new; stay with the question"]
-    if ctx.action == "reteach" and cmd.check and _uses_check_equation(cmd.check, ctx.check_equations):
-        return [f"{line}: a reteach can't use this concept's questions as its example"]
+    if ctx.action in NO_LESSON_QUESTIONS and cmd.check and _uses_check_equation(cmd.check, ctx.check_equations):
+        return [f"{line}: {NO_LESSON_QUESTIONS[ctx.action]} can't use this concept's questions as its example"]
     if ctx.action == "explain" and cmd.check:      # the open question's own equation is allowed
         others = [equation for equation in ctx.check_equations if equation != ctx.anchor]
         if _uses_check_equation(cmd.check, others):

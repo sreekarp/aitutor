@@ -75,8 +75,8 @@ def _teaching(state: ConceptState, concept: Concept, understood: Understood) -> 
         number = [step.id for step in concept.steps].index(step_id) + 1
         return make_decision("R0", "next_step", state, f"Teaching: you're ready, so step {number} of {total}.",
                              play_step_id=step_id)
-    if kind == "not_sure":
-        return make_decision("R7", "explain", state, "You weren't sure, so this step is explained again.")
+    if kind == "not_sure":                        # a solved example; it changes nothing, so it is never a reteach
+        return make_decision("R7", "example", state, "You weren't sure, so here's a solved example. Same step.")
     if kind == "question":
         return make_decision("R7", "explain", state, "You asked a question, so it is answered. Same step.")
     if kind == "dont_know":

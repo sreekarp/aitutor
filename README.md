@@ -99,7 +99,7 @@ given while the simulated student still held its mistake).
 
 ## Demo: the evals catch a broken prompt
 
-1. Copy the respond prompt: `cp app/prompts/respond.v3.md app/prompts/respond.broken.md`
+1. Copy the respond prompt: `cp app/prompts/respond.v4.md app/prompts/respond.broken.md`
 2. In `respond.broken.md`, replace the hint instruction, the line
    `hint: Give the hint for HINT LEVEL, built on the LESSON'S HINT but aimed at what the student said.`,
    with this one:

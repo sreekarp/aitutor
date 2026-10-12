@@ -86,6 +86,15 @@ def test_explain_while_a_question_is_open_says_a_lesson_hint(cur):
         assert spoken(cur, "explain", fa2, "factorisation", hint_level=level) == [f"Good question. {lead}", hint]
 
 
+def test_scripted_example_goes_over_the_step_again(cur):
+    """Without the AI (no key, or RESPOND rejected twice), "not sure" on a step hears that step again."""
+    progress = fresh_progress(cur)
+    progress["factorisation"].status, progress["factorisation"].step_id = "teaching", "split_middle"
+    step = curriculum.get_step(cur.concepts["factorisation"], "split_middle")
+    assert spoken(cur, "example", None, "factorisation", progress) == (
+        ["Let's go over that step again."] + [segment.say for segment in step.segments])
+
+
 def test_praise_greeting_and_summary(cur):
     assert spoken(cur, "credit", check_of(cur, "di3"), "discriminant")[0].endswith(" — no real roots.")
     assert "two equal real roots" in spoken(cur, "credit", check_of(cur, "di2"), "discriminant")[0]

@@ -150,9 +150,9 @@ Progress = dict[str, ConceptState]   # concept id -> state, one entry per concep
 
 # ---------- decisions ----------
 ACTIONS = ("next_step", "start_check", "credit", "mastered", "probe", "reteach", "hint", "follow_up",
-           "clarify", "explain", "show_me", "repeat", "needs_review", "safety", "greet", "resume",
+           "clarify", "explain", "example", "show_me", "repeat", "needs_review", "safety", "greet", "resume",
            "end", "limit", "lesson_changed", "jump")
-LLM_ACTIONS = frozenset({"hint", "follow_up", "explain", "reteach", "needs_review"})
+LLM_ACTIONS = frozenset({"hint", "follow_up", "explain", "example", "reteach", "needs_review"})
 
 
 @dataclass

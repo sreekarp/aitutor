@@ -128,7 +128,7 @@ def test_the_broken_prompt_demo_edits_a_line_of_the_configured_respond_prompt():
     assert f"cp app/prompts/{respond}.md app/prompts/respond.broken.md" in readme and DEMO_LINE in readme
 
 
-@pytest.mark.parametrize("name", ["respond.v2", "respond.v3"])
+@pytest.mark.parametrize("name", ["respond.v2", "respond.v3", "respond.v4"])
 def test_later_respond_prompts_keep_the_no_reveal_rule(name):
     """Every respond version keeps v1's no-reveal rule word for word."""
     v1, later = prompts.load_prompt("respond.v1").splitlines(), prompts.load_prompt(name).splitlines()
@@ -143,7 +143,7 @@ def _a_times_c(equation: str):
     return poly.coeff_monomial(mathcheck.x**2) * poly.coeff_monomial(1) if poly.degree() == 2 else None
 
 
-@pytest.mark.parametrize("name", ["respond.v2", "respond.v3"])
+@pytest.mark.parametrize("name", ["respond.v2", "respond.v3", "respond.v4"])
 def test_labelled_step_example_passes_the_reply_rules(cur, name):
     """The two-line example (a words line, then its maths line) is a reply board.py accepts. Its product
     is no lesson question's a × c, so a model copying it into a hint can't mix it up with the question's numbers."""
@@ -155,7 +155,7 @@ def test_labelled_step_example_passes_the_reply_rules(cur, name):
     concept = cur.concepts["factorisation"]
     check, next_check = curriculum.get_check(concept, "fa2"), curriculum.get_check(concept, "fa3")
     reply = {"segments": [{"say": "Step one: multiply a by c.", "board": example}]}
-    for action in ("hint", "follow_up", "explain", "reteach"):
+    for action in ("hint", "follow_up", "explain", "reteach", "example"):
         ctx = board.ReplyContext(action=action, board=[], anchor=check.equation, key=grading.answer_key(check),
                                  next_key=grading.answer_key(next_check), student_answer="",
                                  check_equations=[c.equation for c in concept.checks], formulas=cur.formulas)
@@ -182,6 +182,19 @@ def test_understand_v3_knows_every_reply_type_and_that_got_it_goes_on():
     not_sure = text[text.index("- not_sure:"):text.index("- claims_understanding:")]
     for phrase in ('"not sure"', '"another example"', 'While PHASE is teaching, a bare "no" or "nahi" is not_sure'):
         assert phrase in not_sure, phrase
+
+
+def test_respond_v4_adds_the_example_action():
+    """respond.v4 is v3 plus the example action: "not sure" on a step gets a similar but different equation
+    solved on the board, starting with relation new (now allowed for it), never one of the lesson's questions."""
+    v3, v4 = prompts.load_prompt("respond.v3"), prompts.load_prompt("respond.v4")
+    example = " ".join(v4[v4.index("\nexample: "):v4.index("\nreteach: ")].split())
+    for phrase in ("The student wasn't sure about the CURRENT STEP.", "similar but different equation",
+                   "in at most 3 segments", '"relation": "new"', "NEVER USE AS EXAMPLES"):
+        assert phrase in example, phrase
+    assert ('"relation": "new" is only for the actions explain, reteach, example and needs_review.'
+            in " ".join(v4.split()))
+    assert v4.startswith(v3[:v3.index("## Rules for the board")])          # the opening and format are v3's
 
 
 def test_schemas_are_strict():
