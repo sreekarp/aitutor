@@ -56,7 +56,7 @@ def test_llm_turn_uses_two_calls_for_wrong_answer(cur, db_engine):
     assert roles(fake) == ["understand", "respond"]
     assert (result.decision.rule, result.decision.action) == ("R4", "hint")
     assert result.segments[0].say == HINT["segments"][0]["say"]
-    assert result.segments[-1].say == "So, what are the roots?"           # the engine's re-ask follows
+    assert result.segments[-1].say == "Try that step, then tell me the roots."   # the re-ask after hint 1
     assert [call["role"] for call in result.calls] == ["understand", "respond"] and result.issues == []
     facts = fake.asked[1][1][1]["content"]
     assert "HINT LEVEL: 1 of 3" in facts and cur.concepts["factorisation"].checks[0].hints[0] in facts
@@ -108,6 +108,25 @@ def test_respond_rejected_then_scripted_records_issues(cur, db_engine):
     assert result.issues[-1] == "respond_fallback"
     assert result.segments[0].say.startswith("Here's a hint.")             # the scripted hint is shown
     assert "x^2" not in " ".join(segment.say for segment in result.segments)
+
+
+def test_a_question_whose_reply_is_rejected_twice_gets_a_lesson_hint(cur, db_engine):
+    """R7 while a question is open: when RESPOND is rejected twice, the scripted words say where to start (hint 1),
+    or after a hint that last hint again, then the question. R7 adds no hint level, so it stays free."""
+    wrong = {"segments": [{"say": "Look at this.", "board": [write("e1", "3(-2) = 6", "Eq(3*(-2), 6)")]}]}
+    fake = FakeLLM(understand=[understood("question"), understood("dont_know"), understood("question")],
+                   respond=[wrong, wrong, HINT, wrong, wrong])
+    tutor, student_id = at_first_question(cur, db_engine, fake)
+    fa1 = cur.concepts["factorisation"].checks[0]
+    first = tutor.turn(student_id, "why do we split the middle term?")
+    assert (first.decision.rule, first.issues[-1]) == ("R7", "respond_fallback")
+    assert [segment.say for segment in first.segments] == [
+        "Good question. Here's where to start.", fa1.hints[0], "So, what are the roots?"]
+    tutor.turn(student_id, "I'm stuck")                                    # hint 1, written by the AI
+    again = tutor.turn(student_id, "but why split it?")
+    assert [segment.say for segment in again.segments] == [
+        "Good question. Let's look at the last hint again.", fa1.hints[0], "So, what are the roots?"]
+    assert factorisation_state(db_engine, cur, student_id).pending.hint_level == 1
 
 
 def test_reteach_fallback_is_replay(cur, db_engine):

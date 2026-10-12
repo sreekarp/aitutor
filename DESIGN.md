@@ -331,7 +331,9 @@ Known gaps, after the build:
   D = b² − 4ac and the three cases of D) are hand-written LaTeX: SymPy can't check letters a, b, c, D.
 - **Spoken maths isn't checked.** If the voice says "five" and the board says 12, nothing catches it.
 - **"Answer revealed" is only checked for numbers.** For yes/no and nature-of-roots questions, and
-  for "no real roots", a reply that gives the answer away in words isn't caught.
+  for "no real roots", a reply that gives the answer away in words isn't caught. An example can't give
+  another question's answer away: a reteach can't use any of the concept's questions as its example,
+  and an explanation can't use any but the open one.
 - **Working is judged present or absent, not checked.** "Because I factorised it" counts as working
   even if the factorising was wrong.
 - **One trap answer can come from two different slips:** `minus_b` and a sign flip can give the same
@@ -341,10 +343,19 @@ Known gaps, after the build:
   questions the student has already seen.
 - **`select` and `new` board lines are trust points.** SymPy confirms a kept root was a root, not
   that the reason for dropping the other is sound.
+- **Asking for the steps costs half a point.** While a question is open, "explain step by step",
+  "how do I solve this?" or "show me how" asks for help, like "help me solve this": the next hint,
+  one step at a time (after hints 1 and 2 the tutor says "Try that step, then tell me the roots."),
+  and a right answer after any hint earns half a point. "Why …?" questions stay free (R7), so points
+  still depend a little on how a request is worded. Scripted mode reads step requests this way;
+  UNDERSTAND's prompt v1 has no such rule yet, so with the LLM one can still be read as a question.
 - **Scripted mode is cruder than the LLM** (it's the fallback and the mock): it spots mistakes only
   through trap answers, so it hints where the LLM might reteach; any "?" makes a reply a question,
-  even "did India win yesterday?"; a second reply isn't merged with the first ("0 too" after "3");
-  and mixed replies are read roughly. Without a key, students have to say the answer first.
+  even "did India win yesterday?", unless it holds an answer or asks for help ("how do I solve
+  this?"); a question asked while a question is open gets a lesson hint, not an answer to it (where
+  to start, or the last hint again, adding no hint level); a second reply isn't merged with the
+  first ("0 too" after "3"); and mixed replies are read roughly. Without a key, students have to say
+  the answer first.
 - **The keyword safety check has rare false alarms and misses.** `app/safety.py` reads 7 or more
   digits, in groups split by single spaces or hyphens, as a phone number when every group has 2 or
   more digits ("98765 43210", "011 2345 6789") or every group is one digit, as when a number is said

@@ -33,6 +33,10 @@ SAY_AGAIN = _whole_reply("say again", "repeat", "repeat please", "phir se", "phi
 DONT_KNOW = phrases("dont know", "no idea", "just tell me", "hint", "help", "dont get it", "didnt get it",
                     "dont understand", "didnt understand", "not understood", "havent understood", "pata nahi",
                     "nahi pata", "samajh nahi")
+# Asking for the steps of the open question is asking for help: the next hint. Checked after answers, and not while
+# "how did you get that?" waits, so "step by step: 2 and 3" stays an answer and "step by step, I split it" stays
+# working. Not "explain the solution": it may mean the question just solved.
+STEP_ASK = phrases("step by step", "how do i solve", "how to solve", "show me how")
 GET_IT = phrases("get it", "got it", "understood", "samajh gaya", "samajh gayi")
 QUESTION_START = re.compile(r"\s*(?:why|how|what|kyun|kaise)\b")
 # Method words, by their start: "factor" also finds "factorise" and "factorised".
@@ -90,6 +94,8 @@ def understand(text: str, *, phase: str, check: Check | None, awaiting_working: 
         kind = "answer"
     elif GET_IT.search(clean):
         kind = "claims_understanding"
+    elif STEP_ASK.search(clean) and not awaiting_working:
+        kind = "dont_know"                                   # "explain it step by step": the next hint
     elif "?" in clean or QUESTION_START.match(clean):
         kind = "question"
     elif awaiting_working and working:

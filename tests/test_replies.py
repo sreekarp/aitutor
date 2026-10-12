@@ -30,7 +30,7 @@ def test_templates_have_no_latex_and_no_keys(cur):
     """Every action's words are plain short speech; while a question is open they hold no numbers at all."""
     progress = fresh_progress(cur)
     progress["roots"].status, progress["discriminant"].status = "mastered", "needs_review"
-    open_question = {"probe", "show_me", "repeat", "clarify", "follow_up", "explain", "lesson_changed"}
+    open_question = {"probe", "show_me", "repeat", "clarify", "follow_up", "lesson_changed"}   # hint, explain: hints
     grades = (Grade("partial", "", detail="missing"), Grade("partial", "", detail="extra"))
     for cid in cur.order:
         concept = cur.concepts[cid]
@@ -56,7 +56,6 @@ def test_hint_follow_up_clarify_explain_and_reteach(cur):
     assert "missing" in missing[0]
     assert spoken(cur, "clarify", fa1) == ["Say just the numbers, or type them."]
     assert spoken(cur, "clarify", check_of(cur, "rt1")) == ["Just say yes or no."]
-    assert spoken(cur, "explain", fa1, "factorisation") == ["Good question — let's go over it again."]
     progress = fresh_progress(cur)
     progress["factorisation"].step_id = "split_middle"                  # while teaching, the step is replayed
     explained = spoken(cur, "explain", None, "factorisation", progress)
@@ -67,6 +66,16 @@ def test_hint_follow_up_clarify_explain_and_reteach(cur):
     assert retaught[1:] == [s.say for s in concept.steps[0].segments]   # reteach_step zero_product, replayed
     assert spoken(cur, "probe", check_of(cur, "rt1")) == ["Right — how do you know?"]
     assert spoken(cur, "probe", fa1) == ["Right — how did you get that?"]
+
+
+def test_explain_while_a_question_is_open_says_a_lesson_hint(cur):
+    """A question while a question is open, with no key or after RESPOND failed: where to start, or once a hint
+    was given, that last hint again. Never a new hint: R7 adds no hint level, so it stays free."""
+    fa2 = check_of(cur, "fa2")
+    for level, lead, hint in ((0, "Here's where to start.", fa2.hints[0]),
+                              (1, "Let's look at the last hint again.", fa2.hints[0]),
+                              (2, "Let's look at the last hint again.", fa2.hints[1])):
+        assert spoken(cur, "explain", fa2, "factorisation", hint_level=level) == [f"Good question. {lead}", hint]
 
 
 def test_praise_greeting_and_summary(cur):
@@ -168,3 +177,14 @@ def test_reask_per_kind(cur):
         check = check_of(cur, check_id)
         assert replies.reask(check, awaiting_working=False) == Segment(say=say), check_id
         assert replies.reask(check, awaiting_working=True).say == "So, how did you get your answer?"
+
+
+def test_reask_after_hint_1_or_2_asks_for_that_step(cur):
+    """One step at a time: right after hint 1 or 2 the student tries that step first. After hint 3, or words that
+    weren't a hint (0), the usual re-ask; while "how did you get that?" is waiting, that question."""
+    for check_id, what in (("fa2", "the roots"), ("wp1", "the answer"), ("di1", "the answer"), ("rt1", "the answer")):
+        check = check_of(cur, check_id)
+        for level in (1, 2):
+            assert replies.reask(check, False, level) == Segment(say=f"Try that step, then tell me {what}."), check_id
+        assert replies.reask(check, False, 3) == replies.reask(check, False, 0) == replies.reask(check, False)
+        assert replies.reask(check, True, 1).say == "So, how did you get your answer?"

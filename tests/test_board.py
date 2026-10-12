@@ -1,5 +1,5 @@
 """Tests for app/board.py: board state and the checks on every LLM reply."""
-from app import board, grading
+from app import board, curriculum, grading
 from app.models import BoardCommand, BoardLine, Check, Segment
 
 FA1 = "Eq(x**2 - 5*x + 6, 0)"                      # roots 2 and 3
@@ -76,6 +76,15 @@ def test_llm_text_lines_no_digits():
     assert any("clear isn't allowed" in p for p in problems(BoardCommand(op="clear")))
 
 
+def test_a_label_beside_maths_reports_both_word_rules():
+    """A "Step 1" label on a maths line breaks rule 1 (one kind per line) and rule 4 (no digits in words). Both come
+    back at once, each saying how to fix it, because the single retry sends exactly these lines to the model."""
+    found = problems(write("e1", "2(-3) = -6", "Eq(2*(-3), -6)", text="Step 1: a times c"), action="explain")
+    assert found == ["line e1: write exactly one of latex, formula or text; words and maths go on separate lines",
+                     "line e1: a text line can't have digits or '='; write numbers in a words line as words, "
+                     "e.g. 'Step one', and put maths on a checked line"]
+
+
 def test_wrong_factorisation_rejected_with_anchor():
     found = problems(write("h1", "(x-2)(x+3) = 0", "Eq((x-2)*(x+3), 0)"))
     assert any("h1" in p and "loses {3}, adds {-3}" in p for p in found), found
@@ -125,6 +134,24 @@ def test_reteach_cannot_use_check_equation():
         found = problems(write("e1", latex, check, relation="new"), **reteach)
         assert any("questions as its example" in p for p in found), latex
     assert problems(write("e1", "x^{2}-7x+12=0", "Eq(x**2 - 7*x + 12, 0)", relation="new"), **reteach) == []
+
+
+def test_an_explanation_cannot_use_another_question_as_its_example(cur):
+    """Rule 7 for explanations too: while fa2 is open, solving fa7 (a later question) as the example would give
+    fa7's answer away. The open question's own equation stays allowed."""
+    concept = cur.concepts["factorisation"]
+    fa2 = curriculum.get_check(concept, "fa2")                          # 3x^2 - 5x - 2 = 0 is open
+    open_fa2 = dict(action="explain", board=[], anchor=fa2.equation, key=grading.answer_key(fa2),
+                    check_equations=[question.equation for question in concept.checks])
+    solves_fa7 = [write("e1", "2x^2 - 7x + 3 = 0", "Eq(2*x**2 - 7*x + 3, 0)", relation="new"),
+                  write("e2", "(2x - 1)(x - 3) = 0", "Eq((2*x - 1)*(x - 3), 0)"),
+                  write("e3", r"x = 3 \text{ or } x = \frac{1}{2}", "Or(Eq(x, 3), Eq(x, 1/2))")]
+    assert problems(*solves_fa7, say="Here is a similar one.", **open_fa2) == [
+        f"line {line_id}: an explanation can't use another of this concept's questions as its example"
+        for line_id in ("e1", "e2", "e3")]
+    own = [write("e1", "3x^2 - 6x + x - 2 = 0", "Eq(3*x**2 - 6*x + x - 2, 0)"),
+           write("e2", "3x(x - 2) + 1(x - 2) = 0", "Eq(3*x*(x - 2) + 1*(x - 2), 0)")]
+    assert problems(*own, say="Split the middle term, then take out a common factor.", **open_fa2) == []
 
 
 def test_llm_cannot_reuse_id():

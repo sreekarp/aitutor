@@ -92,6 +92,23 @@ def test_wrong_trap_answer_reteaches_and_asks_next(tutor, db_engine, cur):
     assert grading.key_text(check) not in decision.reason
 
 
+def test_asking_for_the_steps_gets_the_next_hint_for_half_a_point(tutor, db_engine, cur):
+    """Asking for the steps of the open question is asking for help: the next hint, one step at a time, and a right
+    answer after it earns half a point, the same as after "help me solve this"."""
+    student_id = new_student(db_engine, cur)
+    to_first_question(tutor, cur, student_id)
+    fa1 = cur.concepts["factorisation"].checks[0]
+    for text, level in (("Explain step by step.", 1), ("show me how", 2)):
+        result = tutor.turn(student_id, text)
+        assert (result.decision.rule, result.decision.action, result.decision.hint_level) == ("R4", "hint", level)
+        assert [segment.say for segment in result.segments] == [
+            f"Here's a hint. {fa1.hints[level - 1]}", "Try that step, then tell me the roots."]
+    last = tutor.turn(student_id, "how do I solve this?")
+    assert [segment.say for segment in last.segments] == [f"Here's a hint. {fa1.hints[2]}", "So, what are the roots?"]
+    solved = tutor.turn(student_id, said_with_working(fa1))
+    assert solved.decision.rule == "R1" and progress_of(db_engine, cur, student_id)["factorisation"].points == 0.5
+
+
 def test_ok_while_teaching_uses_no_llm(tutor, db_engine, cur):
     student_id = new_student(db_engine, cur)
     tutor.start(student_id)

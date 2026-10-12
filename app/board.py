@@ -64,8 +64,8 @@ def _write(lines: list[BoardLine], cmd: BoardCommand, formulas: dict[str, str]) 
 def validate_reply(segments: list[Segment], ctx: ReplyContext) -> list[str]:
     """The 8 rules an LLM reply must pass: 1 its shape, 2 speech without LaTeX and at most 60 words, 3 every
     maths line passes mathcheck, 4 word lines without digits or "=", 5 highlights KaTeX can draw, 6 no answer
-    given away, 7 no lesson question as a reteach example, 8 no reused line id. Each problem is one readable
-    line; [] means the reply can be shown."""
+    given away, 7 no lesson question as the example in a reteach (in an explanation, none but the open one),
+    8 no reused line id. Each problem is one readable line; [] means the reply can be shown."""
     problems = []
     if not 1 <= len(segments) <= MAX_SEGMENTS:
         problems.append(f"a reply needs 1 to {MAX_SEGMENTS} segments, not {len(segments)}")
@@ -107,18 +107,26 @@ def _command_problems(cmd: BoardCommand, ctx: ReplyContext, latex_of: dict[str, 
         return ["a write needs an id"]
     if cmd.id in latex_of:
         return [f"{line}: that id is already on the board; use a new id"]
+    shape = []                                     # rules 1 and 4 together, so the one retry can fix both
     if [cmd.latex, cmd.formula, cmd.text].count(None) != 2:
-        return [f"{line}: write exactly one of latex, formula or text"]
+        shape.append(f"{line}: write exactly one of latex, formula or text; words and maths go on separate lines")
+    if cmd.text and re.search(r"[\d=]", cmd.text):
+        shape.append(f"{line}: a text line can't have digits or '='; write numbers in a words line as words, "
+                     "e.g. 'Step one', and put maths on a checked line")
+    if shape:
+        return shape
     if cmd.latex and not cmd.check:
         return [f"{line}: maths needs a check, so SymPy can test it"]
     if cmd.formula and cmd.formula not in ctx.formulas:
         return [f"{line}: unknown formula {cmd.formula}"]
-    if cmd.text and re.search(r"[\d=]", cmd.text):
-        return [f"{line}: a text line can't have digits or '='; put maths on a checked line"]
     if cmd.relation == "new" and ctx.action in ("hint", "follow_up"):
         return [f"{line}: hints and follow-ups can't use relation new; stay with the question"]
     if ctx.action == "reteach" and cmd.check and _uses_check_equation(cmd.check, ctx.check_equations):
         return [f"{line}: a reteach can't use this concept's questions as its example"]
+    if ctx.action == "explain" and cmd.check:      # the open question's own equation is allowed
+        others = [equation for equation in ctx.check_equations if equation != ctx.anchor]
+        if _uses_check_equation(cmd.check, others):
+            return [f"{line}: an explanation can't use another of this concept's questions as its example"]
     return []
 
 

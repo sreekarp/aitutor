@@ -157,7 +157,9 @@ class Tutor:
                                    first_name=ctx.student["first_name"])
         pending = after[concept.id].pending if concept else None
         if decision.reask and pending:
-            parts.append(replies.reask(curriculum.get_check(concept, pending.check_id), pending.awaiting_working))
+            hint_level = decision.hint_level if decision.action == "hint" else 0     # the hint just given, if any
+            asked = curriculum.get_check(concept, pending.check_id)
+            parts.append(replies.reask(asked, pending.awaiting_working, hint_level))
         if decision.clear_board and parts:                # wipe the board just before the new part plays
             parts[0] = Segment(say=parts[0].say, board=[BoardCommand(op="clear"), *parts[0].board])
         return parts

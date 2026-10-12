@@ -5,6 +5,7 @@ from __future__ import annotations
 from sympy import latex
 
 from app import grading
+from app.config import MAX_HINTS
 from app.curriculum import get_step
 from app.models import (WORD_KINDS, BoardCommand, Check, Concept, Curriculum, Decision, Grade, Progress,
                         Segment, Step)
@@ -55,8 +56,12 @@ def words(decision: Decision, *, cur: Curriculum, progress: Progress, check: Che
         return _say(f"Here's a hint. {check.hints[decision.hint_level - 1]}")
     if action == "follow_up":
         return _say(FOLLOW_UP.get(grade.detail if grade else "", "Nearly. Have another look at your answer."))
-    if action == "explain":                                  # checking: compose re-asks the question
-        steps = [] if check else _segments(get_step(concept, progress[concept.id].step_id))
+    if action == "explain" and check:                        # R7 adds no hint level; compose re-asks the question
+        if decision.hint_level == 0:
+            return _say("Good question. Here's where to start.") + _say(check.hints[0])
+        return _say("Good question. Let's look at the last hint again.") + _say(check.hints[decision.hint_level - 1])
+    if action == "explain":                                  # while teaching: the step again
+        steps = _segments(get_step(concept, progress[concept.id].step_id))
         return _say("Good question — let's go over it again.") + steps
     if action == "reteach":
         fix = next((m.fix for m in concept.mistakes if m.id == decision.mistake), "")
@@ -70,10 +75,14 @@ def words(decision: Decision, *, cur: Curriculum, progress: Progress, check: Che
     raise ValueError(f"no scripted words for action {action!r}")
 
 
-def reask(check: Check, awaiting_working: bool) -> Segment:
-    """The short re-ask after a hint, follow-up or explanation."""
+def reask(check: Check, awaiting_working: bool, hint_level: int = 0) -> Segment:
+    """The short re-ask after a hint, follow-up or explanation. hint_level is the hint just given (0 for none):
+    after hint 1 or 2 the student tries that step first, one step at a time; after the last hint, the question."""
     if awaiting_working:
         return Segment(say="So, how did you get your answer?")
+    if 0 < hint_level < MAX_HINTS:
+        what = "the roots" if check.kind == "roots" and check.show_equation else "the answer"
+        return Segment(say=f"Try that step, then tell me {what}.")
     if check.kind == "coefficient":
         return Segment(say=f"So, what is {check.which}?")
     if check.kind == "roots" and not check.show_equation:

@@ -82,6 +82,21 @@ def test_working_only_reply_while_awaiting(cur):
     assert understand(cur, "I just guessed", "fa1", awaiting_working=True).type == "unclear"
 
 
+def test_asking_for_the_steps_is_asking_for_help(cur):
+    """While a question is open, asking how to do it is a request for help (a hint). It is checked after answers,
+    so a reply with an answer in it is still graded, and working still counts while "how did you get that?" waits."""
+    for text in ("Explain step by step.", "how do I solve this", "show me how to do it", "how to solve it?"):
+        assert understand(cur, text, "fa2").type == "dont_know", text
+    said = understand(cur, "I solved it step by step, the roots are 2 and minus 1 by 3", "fa2")
+    assert (said.type, said.answer) == ("answer", "2, -1/3")
+    said = understand(cur, "2 and -1/3, I did it step by step by splitting the middle term", "fa2")
+    assert (said.type, said.answer, said.showed_working) == ("answer", "2, -1/3", True)
+    said = understand(cur, "step by step, I split the middle term", "fa2", awaiting_working=True)
+    assert (said.type, said.answer, said.showed_working) == ("answer", "", True)
+    assert understand(cur, "explain the solution", "fa2").type == "unclear"    # may mean the question just solved
+    assert understand(cur, "why do we need zero on one side?", phase="teaching").type == "question"
+
+
 def test_understand_non_latin_and_long(cur):
     for text in ("हाँ", "👍👍", "", "a" * 2000):
         for phase in ("teaching", "checking"):
