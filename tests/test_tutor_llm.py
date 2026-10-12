@@ -4,8 +4,8 @@ from conftest import FakeLLM, new_question, new_student
 
 from app import curriculum, db
 from app.config import POINTS_TO_MASTER, Settings
-from app.fallback import REVIEW_LATER, SAFETY_REPLY
 from app.llm import ProviderError
+from app.replies import REVIEW_LATER, SAFETY_REPLY
 from app.tutor import MISHEARD, Tutor
 
 SETTINGS = Settings(openrouter_api_key="test-key", access_code="test", session_secret="test",

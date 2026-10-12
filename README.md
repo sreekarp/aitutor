@@ -156,7 +156,8 @@ docker run -p 8000:8000 --env-file .env -v aitutor-data:/app/data aitutor
 | `app/voice.py`, `app/page.py` | Speech-to-text turns and the cached text-to-speech; the JSON the page gets |
 | `app/engine.py` | The teaching rules and their reasons (pure functions) |
 | `app/mathcheck.py`, `app/grading.py` | SymPy: board-line checks, answer keys, grading |
-| `app/board.py`, `app/fallback.py` | Reply checks and the board; scripted mode |
+| `app/board.py` | Reply checks and the board |
+| `app/fallback.py`, `app/replies.py` | Scripted mode: reading a reply without the AI; every scripted line the tutor says |
 | `app/llm.py`, `app/prompts.py`, `app/prompts/` | OpenRouter (backups, retries, time limits) and the two versioned prompts |
 | `app/db.py`, `app/main.py`, `app/cli.py` | The five tables; the web routes and sign-in; the terminal tutor |
 | `curriculum/ch4/` | The six lesson files, and `index.yaml` (order, version, the four formulas) |

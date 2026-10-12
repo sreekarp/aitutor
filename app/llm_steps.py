@@ -2,7 +2,7 @@
 A fallback is noted in ctx.issues, and after a failed UNDERSTAND the rest of the turn is scripted."""
 from __future__ import annotations
 
-from app import board, curriculum, engine, fallback, grading, prompts
+from app import board, curriculum, engine, fallback, grading, prompts, replies
 from app.llm import BadOutputError, ProviderError
 from app.models import (LLM_ACTIONS, Curriculum, Decision, Grade, Pending, Progress, Segment, TurnContext,
                         Understood)
@@ -33,8 +33,8 @@ def respond(llm, cur: Curriculum, ctx: TurnContext, decision: Decision, after: P
         decision, after = engine.replay_instead(decision, ctx.before, after)
     if decision.action == "repeat" and ctx.phase == "teaching" and ctx.last_speech:
         return ctx.last_speech, decision, after       # R8 while teaching: say last_speech again (see TurnContext)
-    words = fallback.words(decision, cur=cur, progress=after, check=ctx.check, grade=grade,
-                           first_name=ctx.student["first_name"])
+    words = replies.words(decision, cur=cur, progress=after, check=ctx.check, grade=grade,
+                          first_name=ctx.student["first_name"])
     return words, decision, after
 
 
@@ -87,5 +87,5 @@ def _llm_respond(llm, cur: Curriculum, ctx: TurnContext, decision: Decision, und
     words = llm.chat_json("respond", messages, "reply", prompts.RESPOND_SCHEMA, validate,
                           deadline=ctx.deadline, calls=ctx.calls)
     if decision.action == "needs_review":            # the worked answer, then this scripted line
-        words = words + [Segment(say=fallback.REVIEW_LATER)]
+        words = words + [Segment(say=replies.REVIEW_LATER)]
     return words

@@ -4,7 +4,7 @@ import pytest
 from app import curriculum, db, grading
 from app.config import POINTS_TO_MASTER, Settings
 from app.llm import BadOutputError
-from app.models import BoardCommand, ConceptState, Curriculum, Progress, Segment
+from app.models import BoardCommand, Check, ConceptState, Curriculum, Progress, Segment
 
 
 @pytest.fixture(scope="session")
@@ -18,6 +18,11 @@ def cur() -> Curriculum:
 def fresh_progress(cur: Curriculum) -> Progress:
     """Progress for a brand-new student: every concept not started. Use: from conftest import fresh_progress"""
     return {concept_id: ConceptState(concept_id=concept_id) for concept_id in cur.order}
+
+
+def check_of(cur: Curriculum, check_id: str) -> Check:
+    """A check from the real lesson files, by id. Use: from conftest import check_of"""
+    return next(c for concept in cur.concepts.values() for c in concept.checks if c.id == check_id)
 
 
 @pytest.fixture

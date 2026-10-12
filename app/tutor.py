@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import Engine
 
-from app import board, curriculum, db, engine, fallback, grading, llm_steps, safety
+from app import board, curriculum, db, engine, fallback, grading, llm_steps, replies, safety
 from app.config import MAX_INPUT_CHARS, MODELS, PROMPT_VERSIONS, SESSION_GAP_MIN, TURN_DEADLINE_S, Settings
 from app.models import (BoardCommand, Curriculum, Decision, Grade, Progress, Segment, TurnContext, TurnResult,
                         Understood)
@@ -50,8 +50,8 @@ class Tutor:
         try:
             ctx, replaced = self._context(student_id, session, "", started, [], {})
             decision, after = engine.start(ctx.before, self.cur, new_session=new_session, replaced=replaced)
-            words = fallback.words(decision, cur=self.cur, progress=after, check=None, grade=None,
-                                   first_name=ctx.student["first_name"])
+            words = replies.words(decision, cur=self.cur, progress=after, check=None, grade=None,
+                                  first_name=ctx.student["first_name"])
             return self._finish(ctx, "start", None, None, decision, after, words)
         except Exception:
             log.exception("session start failed for student %s", student_id)
@@ -153,21 +153,21 @@ class Tutor:
         if decision.resume_concept_id:
             parts += self._resume(decision.resume_concept_id, after, decision.action)
         elif decision.action in RESUMING:                 # moving on, but nothing is left: the END summary
-            parts += fallback.words(engine.end_decision(), cur=self.cur, progress=after, check=None, grade=None,
-                                    first_name=ctx.student["first_name"])
+            parts += replies.words(engine.end_decision(), cur=self.cur, progress=after, check=None, grade=None,
+                                   first_name=ctx.student["first_name"])
         pending = after[concept.id].pending if concept else None
         if decision.reask and pending:
-            parts.append(fallback.reask(curriculum.get_check(concept, pending.check_id), pending.awaiting_working))
+            parts.append(replies.reask(curriculum.get_check(concept, pending.check_id), pending.awaiting_working))
         if decision.clear_board and parts:                # wipe the board just before the new part plays
             parts[0] = Segment(say=parts[0].say, board=[BoardCommand(op="clear"), *parts[0].board])
         return parts
 
     def _resume(self, concept_id: str, after: Progress, action: str) -> list[Segment]:
-        """Pick a concept up where it stands: its opening (fallback.opening), then its pending question,
+        """Pick a concept up where it stands: its opening (replies.opening), then its pending question,
         else its step (step 1 if none)."""
         concept, state = self.cur.concepts[concept_id], after[concept_id]
         step = curriculum.get_step(concept, state.step_id) or concept.steps[0]
-        opening = fallback.opening(concept, action, from_top=not state.pending and step.id == concept.steps[0].id)
+        opening = replies.opening(concept, action, from_top=not state.pending and step.id == concept.steps[0].id)
         if state.pending:
             check = curriculum.get_check(concept, state.pending.check_id)
             return opening + [curriculum.ask_segment(check, self.cur.formulas)]
