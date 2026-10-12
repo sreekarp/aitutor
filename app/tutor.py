@@ -9,17 +9,15 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import Engine
 
-from app import board, curriculum, db, engine, fallback, grading, llm_steps, replies, safety, sessions
+from app import board, compose, curriculum, db, engine, fallback, grading, llm_steps, replies, safety, sessions
 from app.config import MAX_INPUT_CHARS, MODELS, PROMPT_VERSIONS, SESSION_GAP_MIN, TURN_DEADLINE_S, Settings
-from app.models import (BoardCommand, Curriculum, Decision, Grade, Progress, Segment, TurnContext, TurnResult,
-                        Understood)
+from app.models import Curriculum, Decision, Grade, Progress, Segment, TurnContext, TurnResult, Understood
 
 log = logging.getLogger(__name__)
 
 DIDNT_CATCH = "Sorry, I didn't catch that. Say it again, or type it."
 MISHEARD = "Sorry, I may have misheard you. Say it again, or type it."   # a spoken reply nobody could place
 SORRY = "Sorry, let's try that again."
-RESUMING = ("greet", "resume", "mastered", "needs_review", "jump")    # actions that go on to the current concept
 LOG_FIELDS = ("session_id", "student_id", "versions", "phase", "understood", "grade", "latency_ms", "calls", "issues")
 
 
@@ -137,7 +135,7 @@ class Tutor:
         said = [Segment(say=seg["say"]) for seg in last["tutor_output"]["segments"] if seg["say"]] if last else []
         step = curriculum.get_step(concept, before[concept_id].step_id) if concept and not pending else None
         apology_only = [segment.say for segment in said] == [DIDNT_CATCH]
-        if step and last and (last["action"] in RESUMING or apology_only):
+        if step and last and (last["action"] in compose.RESUMING or apology_only):
             # After a topic start or move-on, "say again" replays just the step: not the greeting, intro or praise.
             # After a lone "didn't catch that", the step too, not the apology. (MISHEARD is never alone: it is only
             # said while a question is open, and the question always follows it.)
@@ -161,45 +159,11 @@ class Tutor:
         return Understood(type=fast) if fast else llm_steps.understand(self.llm, ctx)
 
     # ---------- compose and save ----------
-    def _compose(self, ctx: TurnContext, decision: Decision, after: Progress) -> list[Segment]:
-        """The scripted parts after the words: a step, a question, the next concept, a re-ask."""
-        concept = self.cur.concepts.get(decision.concept_id or "")
-        parts: list[Segment] = []
-        if decision.play_step_id:
-            parts += curriculum.get_step(concept, decision.play_step_id).segments
-        if decision.ask_check_id:
-            check = curriculum.get_check(concept, decision.ask_check_id)
-            parts.append(curriculum.ask_segment(check, self.cur.formulas))
-        if decision.resume_concept_id:
-            parts += self._resume(decision.resume_concept_id, after, decision.action)
-        elif decision.action in RESUMING:                 # moving on, but nothing is left: the END summary
-            parts += replies.words(engine.end_decision(), cur=self.cur, progress=after, check=None, grade=None,
-                                   first_name=ctx.student["first_name"])
-        pending = after[concept.id].pending if concept else None
-        if decision.reask and pending:
-            hint_level = decision.hint_level if decision.action == "hint" else 0     # the hint just given, if any
-            asked = curriculum.get_check(concept, pending.check_id)
-            parts.append(replies.reask(asked, pending.awaiting_working, hint_level))
-        if decision.clear_board and parts:                # wipe the board just before the new part plays
-            parts[0] = Segment(say=parts[0].say, board=[BoardCommand(op="clear"), *parts[0].board])
-        return parts
-
-    def _resume(self, concept_id: str, after: Progress, action: str) -> list[Segment]:
-        """Pick a concept up where it stands: its opening (replies.opening), then its pending question,
-        else its step (step 1 if none)."""
-        concept, state = self.cur.concepts[concept_id], after[concept_id]
-        step = curriculum.get_step(concept, state.step_id) or concept.steps[0]
-        opening = replies.opening(concept, action, from_top=not state.pending and step.id == concept.steps[0].id)
-        if state.pending:
-            check = curriculum.get_check(concept, state.pending.check_id)
-            return opening + [curriculum.ask_segment(check, self.cur.formulas)]
-        return opening + list(step.segments)
-
     def _finish(self, ctx: TurnContext, input_mode: str, understood: Understood | None, grade: Grade | None,
                 decision: Decision, after: Progress, words: list[Segment],
                 input_hint: str | None = None) -> TurnResult:
         """Compose, update the board, then save progress, turn, decision and board in one transaction."""
-        segments = words + self._compose(ctx, decision, after)
+        segments = words + compose.compose(self.cur, ctx, decision, after)
         new_board = board.apply(ctx.board, segments, self.cur.formulas)
         if decision.rule == "R10":
             ctx.issues.append("safety_review")

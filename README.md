@@ -163,6 +163,7 @@ docker run -p 8000:8000 --env-file .env -v aitutor-data:/app/data aitutor
 | Path | What it holds |
 | --- | --- |
 | `app/tutor.py` | One turn, end to end: understand → grade → decide → respond → save |
+| `app/compose.py` | The scripted parts after the tutor's words: a step, a question, the topic picked up next, a re-ask |
 | `app/safety.py` | The keyword safety check, run before anything else reads a student's reply |
 | `app/llm_steps.py` | The turn's two LLM steps (UNDERSTAND, RESPOND), each with its scripted fallback |
 | `app/voice.py`, `app/page.py` | Speech-to-text turns and the cached text-to-speech; the JSON the page gets |
