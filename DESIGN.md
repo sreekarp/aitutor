@@ -17,9 +17,9 @@ reading a tap needs no model call (only a solved example calls RESPOND).
 | Where the student is | They say, or tap | What happens |
 | --- | --- | --- |
 | A topic's start: its intro, then "Shall I teach it? Or say 'test me' if you already know it." | "test me", "quiz me", "I already know this" (**Test me first**) | R6: the questions start now |
-| | Anything else: "teach me", "ok", "no", a question (**Teach me**) | R0: step 1. An unclear reply or a failed recording gets R8: the intro and the offer again |
-| A step, ending "Did that make sense? Shall we go on?" (the last step: "Ready for a question?") | "yes", "ok", "got it", "understood", "move on" (**Yes, go on**, **Yes, quiz me**) | R0: the next step, or after the last one the first question |
-| | "not sure", "no", "didn't get it", "another example" (**Not sure**) | R7 `example`: RESPOND solves a similar equation on the board (SymPy checks each line; never a lesson question), then "Shall we go on, or shall I do another example?" (**Go on**, **Another example**). Scripted: "Let's go over that step again." and the step is replayed |
+| | Anything else: "teach me", "ok", "no", a question (**Teach me**) | R0: step 1. An unclear reply gets R8: the intro and the offer again. A failed recording gets only "Sorry, I didn't catch that..." (with the offer's buttons) |
+| A step, ending "Did that make sense? Shall we go on?" (the last step: "Ready for a question?") | "yes", "yeah", "sure", "go ahead", "ok", "got it", "understood", "move on" (**Yes, go on**, **Yes, quiz me**) | R0: the next step, or after the last one the first question |
+| | "not sure", "no", "nope", "not really", "didn't get it", "another example" (**Not sure**) | R7 `example`: RESPOND solves a similar equation on the board (SymPy checks each line; never a lesson question), then "Shall we go on, or shall I do another example?" (**Go on**, **Another example**). Scripted: "Let's go over that step again." and the step is replayed |
 | | "test me", "skip to the questions" | R6: the questions start now; the other steps are skipped |
 | | A question, "I don't know" | R7: explained; same step |
 | A question is open (**Not sure**) | An answer | SymPy grades it: R1 credit, R2 "how did you get that?", R3 reteach, R4 hint or R5 follow-up |
@@ -27,16 +27,18 @@ reading a tap needs no model call (only a solved example calls RESPOND).
 | | "got it", "test me" | R6: "show me", because points need an answer with working |
 | | "move on" | R8: "Let's get this one first", and the question again |
 | Anywhere | "Can we skip to the factorization topic?", "move on to the discriminant" | S2: that topic, as if it was picked in Topics |
-| | "say again", "pardon?" | R8: the last reply again, check-in included |
+| | "say again", "pardon?" | R8: while teaching, the last reply again, check-in included; while a question is open, "Let me ask that again." and the question |
 
 "Yes", "no", "ok" and "haan" are read this way only while teaching: while a question is open they are
 answers, because several questions are yes or no. A spoken topic switch has to start the reply: only a
 few polite lead-in words (ok, so, please, can we, I want to, let's) may come before a move word (skip, go, move, jump,
-switch, change, take me), then "to" and a topic's name from the `aliases` in its lesson file, at the end
-of the reply (unique, checked at startup). Free text before "go to" ("I'm stuck, skip to roots") goes to
-UNDERSTAND as usual. The switch is read after the safety check, so "move on to the discriminant" switches
-topics instead of moving on. A safety reply, the day's limit and the end of the lessons get no check-in
-and no buttons. A lone "Sorry, I didn't catch that" asks for the reply itself, so it ends on no check-in,
+switch, change, take me), then "to" and a topic's name from the `aliases` in its lesson file (unique,
+checked at startup), at the end of the reply; only a few filler words (topic, chapter, lesson, please, now...;
+`TOPIC_TAIL` in `fallback.py`) may follow the name. Free text before the move word ("I'm stuck, skip to
+roots") goes to UNDERSTAND as usual. The switch is read after the safety check and before the keyword rules
+and UNDERSTAND, so "move on to the discriminant" switches topics instead of moving on. A safety reply, the
+day's limit and the end of the lessons get no check-in and no buttons, and "say again" after a safety reply
+says it again as it was, also with none. A lone "Sorry, I didn't catch that" asks for the reply itself, so it ends on no check-in,
 but it keeps the buttons the student already had. *(Designed)* Fairer passing: two clean answers in a row
 to master a topic, a **Move on** button that passes it with a review question next session, and a
 "test me" slip sending the student to step 1.
@@ -355,7 +357,7 @@ What the student perceives, and what we do about it:
 - **Speak while synthesising:** the audio for every segment is requested at once, so segment 2 is
   being made while segment 1 plays.
 - **Skip work:** short replies made only of listed phrases ("ok", "haan", "not sure", "test me", "say
-  again", "pardon?"; "ok", "haan", "yes" and "no" only while teaching), a spoken topic switch ("skip to
+  again", "pardon?"; "ok", "haan", "yes", "yeah", "sure", "no" and "nope" only while teaching), a spoken topic switch ("skip to
   factorisation") and every button tap (each sends such a phrase) never reach a model, and scripted
   actions (the next step, a new question, praise, "how did you get that?") need no RESPOND. So, while
   teaching, an "ok" uses no model, a right answer one (UNDERSTAND), a tap on **Not sure** while teaching one
