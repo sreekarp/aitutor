@@ -177,6 +177,7 @@ function startIdleTimer() {   // the tutor has finished and it's the student's t
 }
 
 function cancelRecording() {   // nothing to send: the mic is switched off and the controls come back
+  stopClickedAt = 0;   // no reply follows, so a later typed turn's reply is not timed from this stop
   releaseMic();
   showMic(false);
   setBusy(false);
