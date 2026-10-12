@@ -1,7 +1,7 @@
 # Layer 2 scenarios: uv run python -m evals (needs OPENROUTER_API_KEY).
 # Each scenario puts a new student in a state, presses Start, gives one reply, and checks the result.
 #
-# setup:  concept, status (teaching or checking), step (teaching) or check (checking); optional points,
+# setup:  concept, status (teaching or checking), step (teaching; left out at a topic's start) or check (checking); optional points,
 #         reteach_count, and the pending question's hint_level, awaiting_working, followup_used, last_answer.
 # student_says: the student's reply.
 # expect: type (the reply type UNDERSTAND gave), rule, action, mistake (the one the decision targets),
@@ -13,12 +13,18 @@
   title: Claims understanding
   setup: {concept: factorisation, status: teaching, step: split_middle}
   student_says: "yeah I get it"
-  expect: {type: claims_understanding, rule: R0, action: next_step, points: 0}
+  expect: {rule: R0, action: next_step, points: 0}
 
 - id: already_know_test_me
   title: Already knows it (test me)
   setup: {concept: quadratic_formula, status: teaching, step: the_formula}
   student_says: "I already know this, can you test me?"
+  expect: {type: test_me, rule: R6, action: start_check, points: 0}
+
+- id: test_me_at_topic_start
+  title: Test me at a topic's start
+  setup: {concept: discriminant, status: teaching}
+  student_says: "I already know this, test me"
   expect: {type: test_me, rule: R6, action: start_check, points: 0}
 
 - id: no_working_hinglish

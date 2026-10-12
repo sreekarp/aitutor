@@ -8,6 +8,39 @@ understands what the student said and helps them fix their mistake in words, and
 piece of maths on the board before a student sees it.** State lives in the database and the engine,
 never in an LLM conversation, which is what makes the rest of this document possible.
 
+**How a lesson goes.** The rules are in `engine.py` (after a reply) and `sessions.py` (Start, Continue,
+a new topic); every turn saves its rule and reason, and the page's "Why?" panel shows them. While
+teaching, every reply ends on a check-in question, and every reply comes with buttons for the usual
+answers. A button sends the words the student could type or say, and the keyword rules read them, so a
+tap needs no model call.
+
+| Where the student is | They say, or tap | What happens |
+| --- | --- | --- |
+| A topic's start: its intro, then "Shall I teach it? Or say 'test me' if you already know it." | "test me", "quiz me", "I already know this" (**Test me first**) | R6: the questions start now |
+| | Anything else: "teach me", "ok", "no", a question (**Teach me**) | R0: step 1 |
+| A step, ending "Did that make sense? Shall we go on?" (the last step: "Ready for a question?") | "yes", "ok", "got it", "understood", "move on" (**Yes, go on**, **Yes, quiz me**) | R0: the next step, or after the last one the first question |
+| | "not sure", "no", "didn't get it", "another example" (**Not sure**) | R7 `example`: RESPOND solves a similar equation on the board (SymPy checks each line; never a lesson question), then "Shall we go on, or shall I do another example?" (**Go on**, **Another example**). Scripted: "Let's go over that step again." and the step is replayed |
+| | "test me", "skip to the questions" | R6: the questions start now; the other steps are skipped |
+| | A question, "I don't know" | R7: explained; same step |
+| A question is open (**Not sure**) | An answer | SymPy grades it: R1 credit, R2 "how did you get that?", R3 reteach, R4 hint or R5 follow-up |
+| | "not sure", "I don't know", "hint" | R4: the next hint |
+| | "got it", "test me" | R6: "show me", because points need an answer with working |
+| | "move on" | R8: "Let's get this one first", and the question again |
+| Anywhere | "Can we skip to the factorization topic?", "move on to the discriminant" | S2: that topic, as if it was picked in Topics |
+| | "say again", "pardon?" | R8: the last reply again, check-in included |
+
+"Yes" and "no" are read this way only while teaching: while a question is open they are answers, because
+several questions are yes or no. A spoken topic switch has to start the reply: only a few polite lead-in
+words (ok, so, please, can we, I want to, let's) may come before a move word (skip, go, move, jump,
+switch, change, take me), then "to" and a topic's name from the `aliases` in its lesson file, at the end
+of the reply (unique, checked at startup). Free text before "go to" ("I'm stuck, skip to roots") goes to
+UNDERSTAND as usual. The switch is read after the safety check, so "move on to the discriminant" switches
+topics instead of moving on. A safety reply, the day's limit and the end of the lessons get no check-in
+and no buttons. A lone "Sorry, I didn't catch that" asks for the reply itself, so it ends on no check-in,
+but it keeps the buttons the student already had. *(Designed)* Fairer passing: two clean answers in a row
+to master a topic, a **Move on** button that passes it with a review question next session, and a
+"test me" slip sending the student to step 1.
+
 ---
 
 ## 1. Data model
@@ -41,7 +74,8 @@ CREATE TABLE progress (                -- one row per student per concept: the c
   concept_id          TEXT,           -- stable ids: standard_form, roots, factorisation, ...
   status              TEXT,           -- not_started | teaching | checking | paused | mastered | needs_review
                                       -- (paused: the student picked another topic; everything else is kept)
-  step_id             TEXT,           -- the teaching step shown, by id, e.g. "split_middle"
+  step_id             TEXT,           -- the teaching step shown, by id, e.g. "split_middle"; empty at
+                                      -- a topic's start, before step 1 (its intro and the offer)
   points              FLOAT,          -- +1 per right answer with working, +0.5 after a hint; mastered at 2
   pending             JSON,           -- the open question: check_id, hint_level, awaiting_working,
                                       -- followup_used, last_answer. Set while status = checking, and
@@ -80,8 +114,8 @@ CREATE TABLE decisions (               -- append-only: the "why" behind every mo
   turn_id        TEXT REFERENCES turns(id),
   student_id     TEXT,
   concept_id     TEXT,
-  rule           TEXT,                -- R0..R10, S0, S1, S2 (a picked topic), END, LIMIT
-  action         TEXT,                -- next_step | credit | hint | reteach | needs_review | ...
+  rule           TEXT,                -- R0..R10, S0, S1, S2 (a topic picked or asked for), END, LIMIT
+  action         TEXT,                -- next_step | example | credit | hint | reteach | needs_review | ...
   reason         TEXT,                -- built from a template in code, never by an LLM
   evidence       JSON,                -- what the rule saw, answer key included: never sent to the browser
   hint_level     INTEGER,
@@ -138,7 +172,7 @@ Rollout:
 1. A new prompt is a new file (`respond.v2.md`); a version in use is never edited, because prompt
    files are read on every call.
 2. `uv run python -m evals --prompt-understand understand.v2 --prompt-respond respond.v2` (or
-   `--model-respond <id>`) runs the 17 tutor scenarios against the new version, 3 runs each. A
+   `--model-respond <id>`) runs the 20 tutor scenarios against the new version, 3 runs each. A
    scenario passes with a majority of passing runs; a red scenario blocks the change unless the
    version in use fails it too.
    `uv run python -m sims` shows false advances over longer conversations.
@@ -160,6 +194,12 @@ you reply" list for the board rules broken most, and the line "x - 2 = 0 or x - 
 the board now accepts. With it the ± errors stopped and the sign-flip reteach passes, so config uses
 understand.v2 + respond.v3. The same prompts scored 14, then 12: at 3 runs a difference of one or two
 scenarios is noise, so a closer call needs `--runs 5` or more.
+
+The check-ins and buttons ("How a lesson goes", at the top) needed new versions: `understand.v3.md` adds
+three reply types (`test_me`, `not_sure`, `move_on`) and reads "got it" while teaching as "go on", and
+`respond.v4.md` adds the `example` action, a solved example while teaching. Three scenarios were added for
+them, and `claims_understanding` now expects the next step instead of the questions. Config uses
+understand.v3 + respond.v4; they haven't had a run with the key yet.
 
 *(Designed)* Gradual rollout: send a share of students to the new version (by a hash of the
 student id: 10%, then 50%, then 100%) and compare the two side by side. Every turn already records
@@ -220,7 +260,7 @@ Alerts *(designed, not built; thresholds are targets to tune)*:
 
 **Finding out the tutor got worse before a student says so:**
 
-- **Evals before every change:** the 17 scenarios run against a new prompt or model, and a red
+- **Evals before every change:** the 20 tutor scenarios run against a new prompt or model, and a red
   scenario blocks it. A run fails if the first output of either prompt was rejected, so the safety
   net (one retry, then scripted words) can't hide a bad prompt. *(Designed)* The same suite nightly
   against the live config, plus a simulation batch reporting the false advance rate (points given
@@ -229,8 +269,8 @@ Alerts *(designed, not built; thresholds are targets to tune)*:
   students, but every catch is an issue on the turn, so a rising rate shows a prompt or model
   drifting even while students see nothing wrong.
 - **Decision mix drift:** a jump in R1 credits (the tutor got lenient), in reteaches per concept
-  (harsh or confusing), in R8 "say that again" or R7 questions, or in questions per lesson step all
-  show up before complaints do.
+  (harsh or confusing), in R8 "say that again" or R7 questions, in R7 solved examples (a lesson that
+  doesn't land), or in questions per lesson step all show up before complaints do.
 - *(Designed)* **Shadow understanding:** a small share of live turns re-run offline through
   UNDERSTAND on a stronger model; a rising rate of different reply types or mistakes means the live
   model drifted. (SymPy does the grading, so there is no LLM grade to re-check.)
@@ -242,9 +282,9 @@ Alerts *(designed, not built; thresholds are targets to tune)*:
 ## 4. Latency
 
 A spoken turn runs speech-to-text, UNDERSTAND (unless a fast path handles the reply), SymPy
-grading, the engine, RESPOND (only for hints, follow-ups, explanations, reteaches and needs review,
-with its board checks), then text-to-speech per segment. Every turn records milliseconds per stage
-in `turns.latency_ms` (`stt`, `understand`, `grade`, `decide`, `respond`, `total`), each
+grading, the engine, RESPOND (only for hints, follow-ups, explanations, solved examples, reteaches and
+needs review, with its board checks), then text-to-speech per segment. Every turn records milliseconds
+per stage in `turns.latency_ms` (`stt`, `understand`, `grade`, `decide`, `respond`, `total`), each
 text-to-speech call logs its own time, and the browser measures stop click → first audio and sends
 it with the next turn as `prev_first_audio_ms`. A voice turn's `latency_ms` also holds two times the
 browser sends with the recording: `mic_open_ms`, from the Speak click until the recording has really
@@ -314,9 +354,12 @@ What the student perceives, and what we do about it:
   never more than ~3 s behind the reply.
 - **Speak while synthesising:** the audio for every segment is requested at once, so segment 2 is
   being made while segment 1 plays.
-- **Skip work:** "ok", "next", "haan", "say again" and "pardon?" never reach a model, and scripted
+- **Skip work:** short replies made only of listed phrases ("ok", "haan", "not sure", "test me", "say
+  again", "pardon?"; "yes" and "no" only while teaching), a spoken topic switch ("skip to
+  factorisation") and every button tap (each sends such a phrase) never reach a model, and scripted
   actions (the next step, a new question, praise, "how did you get that?") need no RESPOND. So an
-  "ok" uses no model, a right answer one (UNDERSTAND), and a wrong answer or a question two. Audio
+  "ok" uses no model, a right answer one (UNDERSTAND), a tap on **Not sure** while teaching one
+  (RESPOND's solved example), and a wrong answer or a question two. Audio
   is cached on disk by model, voice and text, so lesson steps and scripted lines play at once after
   the first time.
 - **Short replies:** at most three segments of at most 60 words each.
@@ -357,7 +400,20 @@ Known gaps, after the build:
   PDF → curriculum pipeline, PIN sign-in, React, the LLM judge in evals, and a backup TTS model (the
   browser voice is the backup). **Designed but not built:** gradual rollout, step maps and progress
   migrations, several curriculum versions at once, alerts and dashboards, shadow checks, barge-in
-  and streaming, retained mastery, and a duplicate-request guard.
+  and streaming, retained mastery, a duplicate-request guard, and fairer passing (two clean answers in
+  a row, a Move on button, review questions).
+- **Passing is still the old rule.** Wrong answers never count against a student: right, wrong, wrong,
+  wrong, right is mastered, and so are four right answers after hints (half a point each). A student who
+  taps **Test me first** and then gets a question wrong gets hints like anyone else, not the lesson, and
+  "move on" while a question is open only gets the question again.
+- **The check-ins are a few fixed lines, and some replies are read roughly.** Each check-in rotates
+  through two or three phrasings, so a long lesson repeats them. After a solved example the check-in is
+  an either-or question ("Shall we go on, or shall I do another example?"), so a bare "no" is read as not
+  sure and gets another example. Solved examples while teaching have no limit, and each one is a RESPOND
+  call (about 2 s). While a question is open, "not sure" gets the next hint, not a solved example. A
+  spoken topic switch has to start the reply, be short and say where to ("Can we skip to the
+  factorization topic?"): "can we do factorisation now?" isn't read as one, and neither is "I'm stuck,
+  skip to roots" (UNDERSTAND gets that one).
 - **Sign-in is weak.** Anyone with the access code can sign in as any username and see that
   student's progress. Fine for a review; real students would need a parent or school account.
 - **Four formulas aren't checked.** The general formulas (standard form, the quadratic formula,
@@ -385,7 +441,7 @@ Known gaps, after the build:
   step by step", "let me go step by step" and "I'm doing it step by step" are asked again, not
   hinted. The edges are rough both ways: "I know how to solve it" and "I tried it step by step"
   still count as asking, and "I'm going mad, explain step by step" is asked again. UNDERSTAND's
-  prompt v1 had no such rule; `understand.v2.md` adds it and is in use since 12 Oct. One eval
+  prompt v1 had no such rule; `understand.v2.md` added it on 12 Oct and v3 keeps it. One eval
   scenario (`steps_paraphrase_question`) expects "how does splitting the middle term work for this
   one?" to stay a free question, and v2 reads it as asking for help: which is right is still open.
 - **Scripted mode is cruder than the LLM** (it's the fallback and the mock): it spots mistakes only
@@ -436,7 +492,7 @@ Known gaps, after the build:
 - **The mic stays on between answers.** The browser shows its mic indicator while the tutor replies
   and for up to a minute of the student's turn after that, though nothing is recorded until Speak is
   pressed. Phones and tablets don't keep it on, so every answer there still waits for the mic to open.
-- **Small, synthetic test sets:** 17 eval scenarios and 4 simulated students, and the simulated
+- **Small, synthetic test sets:** 20 eval scenarios and 4 simulated students, and the simulated
   students are LLMs with their own biases. Real student sessions are the missing check.
 - **Hinglish speech is untested.** Two eval scenarios type Hinglish, but no Hinglish recording has
   been through speech-to-text, and the voice ("sarah", chosen by listening) isn't Indian English.

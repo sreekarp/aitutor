@@ -48,10 +48,18 @@ first answer the mic stays on, so the next click records at once; it switches of
 within a minute of your turn starting, when you leave the tab or sign out, and after every recording on a
 phone or tablet. Nothing is recorded until you click. The whiteboard shows the working, with the line
 being spoken (or what the mic heard) along its bottom edge. **Topics** lists each concept: click any of
-them to go there, before or after Start; the topic you leave is saved just as it stands (⏸) and carries
-on from there when you click it again. **Why?** shows the reasons for the tutor's last five decisions. The mic
-only works on `localhost` or over https. Keep to one uvicorn worker: the breakers and SQLite assume a
-single process.
+them to go there, before or after Start, or say where to go ("skip to factorisation"). The topic you leave
+is saved just as it stands (⏸) and carries on from there when you go back to it. **Why?** shows the
+reasons for the tutor's last five decisions. The mic only works on `localhost` or over https. Keep to one
+uvicorn worker: the breakers and SQLite assume a single process.
+
+A lesson is a conversation, with a button under the text box for each usual reply. Each topic starts
+with what it's for and an offer to teach it: tap **Teach me**, or **Test me first** to go straight to its
+questions. Each step ends with "Did that make sense? Shall we go on?": tap **Yes, go on**, or **Not sure**
+for a solved example of the same kind on the board, then **Go on** or **Another example**. After the last
+step, **Yes, quiz me** starts the questions; while a question is open, **Not sure** gets a hint. A button
+sends the words you could type or say yourself ("teach me", "not sure"), and those are read without the
+AI, so the tutor answers at once.
 
 The terminal tutor uses `DATABASE_URL` when it is set (in the environment or `.env`), and its own
 `data/cli.db` when it isn't.
@@ -83,7 +91,7 @@ uv run python -m sims --persona sign_flipper    # one simulated student
 ```
 
 **Evals** have two layers. Layer 1 is the test suite: engine rules, maths checks, grading, lesson
-validation, scripted mode and the provider failure paths. Layer 2 needs the key: 17 tutor scenarios
+validation, scripted mode and the provider failure paths. Layer 2 needs the key: 20 tutor scenarios
 (`evals/scenarios.yaml`), each run 3 times and passed by majority, which check the reply type, rule,
 action and points, and that the answer wasn't given away. A run also fails if either prompt's first
 output was rejected. Options: `--runs N`, `--only ID`, `--model-understand ID`, `--model-respond ID`,
@@ -163,7 +171,7 @@ docker run -p 8000:8000 --env-file .env -v aitutor-data:/app/data aitutor
 | Path | What it holds |
 | --- | --- |
 | `app/tutor.py` | One turn, end to end: understand → grade → decide → respond → save |
-| `app/compose.py` | The scripted parts after the tutor's words: a step, a question, the topic picked up next, a re-ask |
+| `app/compose.py` | What a turn says after its words: the step or question, the topic picked up next, then the check-in and its buttons |
 | `app/safety.py` | The keyword safety check, run before anything else reads a student's reply |
 | `app/llm_steps.py` | The turn's two LLM steps (UNDERSTAND, RESPOND), each with its scripted fallback |
 | `app/voice.py`, `app/page.py` | Speech-to-text turns and the cached text-to-speech; the JSON the page gets |

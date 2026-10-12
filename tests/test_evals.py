@@ -45,7 +45,7 @@ def trouble() -> FakeLLM:
 
 def test_scenarios_file_valid(cur):
     scenarios = layer2.load_scenarios()
-    assert len(scenarios) == 19 and len({s["id"] for s in scenarios}) == 19
+    assert len(scenarios) == 20 and len({s["id"] for s in scenarios}) == 20
     for s in scenarios:
         setup, expect = s["setup"], s["expect"]
         assert set(setup) <= layer2.SETUP_KEYS and set(expect) <= layer2.EXPECT_KEYS, s["id"]
@@ -53,7 +53,8 @@ def test_scenarios_file_valid(cur):
         if setup["status"] == "checking":
             assert curriculum.get_check(concept, setup["check"]) is not None, s["id"]
         else:
-            assert setup["status"] == "teaching" and curriculum.get_step(concept, setup["step"]), s["id"]
+            assert setup["status"] == "teaching", s["id"]
+            assert "step" not in setup or curriculum.get_step(concept, setup["step"]), s["id"]   # none: the topic start
         assert expect["action"] in ACTIONS and s["title"] and s["student_says"].strip(), s["id"]
         assert expect.get("mistake") in {None, *(mistake.id for mistake in concept.mistakes)}, s["id"]
         assert fallback.keyword(s["student_says"], setup["status"]) is None, s["id"]   # every reply reaches UNDERSTAND
