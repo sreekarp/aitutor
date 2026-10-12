@@ -94,6 +94,17 @@ def test_session_then_turn_round_trip(cur):
     assert client.get("/api/state").status_code == 401
 
 
+def test_jump_picks_a_topic(cur):
+    client = make_client(cur)
+    sign_in(client)
+    picked = client.post("/api/jump", json={"concept_id": "discriminant"})
+    assert picked.status_code == 200 and PAYLOAD_KEYS <= set(picked.json())
+    assert picked.json()["decision"]["rule"] == "S2"
+    rows = {row["concept_id"]: row for row in picked.json()["progress"]}
+    assert rows["discriminant"]["current"] and rows["discriminant"]["status"] == "teaching"
+    assert client.post("/api/jump", json={"concept_id": "calculus"}).status_code == 404
+
+
 def test_turn_without_session_409(cur):
     client = make_client(cur)
     sign_in(client)

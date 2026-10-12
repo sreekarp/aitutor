@@ -28,6 +28,11 @@ class LoginForm(BaseModel):
     access_code: str
 
 
+class Jump(BaseModel):
+    """A topic picked in the progress panel."""
+    concept_id: str
+
+
 class TextTurn(BaseModel):
     """A reply typed in the text box, plus the last voice reply's stop-click-to-first-audio time."""
     text: str
@@ -79,6 +84,12 @@ def create_app(settings: Settings | None = None, *, llm=None, cur: Curriculum | 
     @app.post("/api/session")
     def start_session(student_id: str = Depends(signed_in)) -> dict:
         return page.payload(tutor, student_id, tutor.start(student_id))
+
+    @app.post("/api/jump")
+    def jump(body: Jump, student_id: str = Depends(signed_in)) -> dict:
+        if body.concept_id not in tutor.cur.concepts:
+            raise HTTPException(status_code=404, detail="There's no such topic.")
+        return page.payload(tutor, student_id, tutor.jump(student_id, body.concept_id))
 
     @app.post("/api/turn")
     def text_turn(body: TextTurn, student_id: str = Depends(signed_in)) -> dict:

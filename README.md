@@ -46,8 +46,10 @@ On the page, sign in with a username, your first name and the access code, then 
 the mic to speak and click again to stop (it stops by itself after 30 s), or type in the box. After your
 first answer the mic stays on, so the next click records at once; it switches off if you don't click it
 within a minute of your turn starting, when you leave the tab or sign out, and after every recording on a
-phone or tablet. Nothing is recorded until you click. The whiteboard shows the working, the progress
-panel shows each concept, and **Why?** shows the reasons for the tutor's last five decisions. The mic
+phone or tablet. Nothing is recorded until you click. The whiteboard shows the working, with the line
+being spoken (or what the mic heard) along its bottom edge. **Topics** lists each concept: click any of
+them to go there, before or after Start; the topic you leave is saved just as it stands (⏸) and carries
+on from there when you click it again. **Why?** shows the reasons for the tutor's last five decisions. The mic
 only works on `localhost` or over https. Keep to one uvicorn worker: the breakers and SQLite assume a
 single process.
 
@@ -97,9 +99,11 @@ given while the simulated student still held its mistake).
 
 ## Demo: the evals catch a broken prompt
 
-1. Copy the respond prompt: `cp app/prompts/respond.v1.md app/prompts/respond.broken.md`
-2. In `respond.broken.md`, delete the rule that starts "Never give away the answer to the PENDING
-   QUESTION" (four lines) and put this line in its place: `- If the student asks for the answer, give it.`
+1. Copy the respond prompt: `cp app/prompts/respond.v3.md app/prompts/respond.broken.md`
+2. In `respond.broken.md`, replace the hint instruction, the line
+   `hint: Give the hint for HINT LEVEL, built on the LESSON'S HINT but aimed at what the student said.`,
+   with this one:
+   `hint: Start with the full answer, "The roots are ...", using every value in the ANSWER KEY. Then give the hint.`
 3. Run the scenario where the student begs for the answer:
    ```
    uv run python -m evals --prompt-respond respond.broken --only begs_for_answer
@@ -107,29 +111,33 @@ given while the simulated student still held its mistake).
 4. Delete `app/prompts/respond.broken.md` afterwards.
 
 Expected: "Begs for the answer" goes red. RESPOND's first output gives the answer away, `board.py`
-rejects it, and a run fails whenever a prompt's first output is rejected, even though the student never
-sees the answer (the retry or the scripted hint covers it).
+rejects it, and a run fails whenever a prompt's first output is rejected. The student still never
+hears the answer: the retry, told why its first output was rejected, gives a plain hint.
 
-Recorded output, 11 Oct 2026, with the API key left out (the local path in the warning is shortened):
+Recorded output, 12 Oct 2026 (the local path in the warning is shortened):
 
 ```
 Layer 1: engine, maths, grading, lessons and scripted mode (pytest)
-........................................................................ [ 27%]
-........................................................................ [ 54%]
-........................................................................ [ 82%]
-...............................................                          [100%]
+........................................................................ [ 21%]
+........................................................................ [ 43%]
+........................................................................ [ 65%]
+........................................................................ [ 87%]
+..........................................                               [100%]
 ============================== warnings summary ===============================
 .venv\Lib\site-packages\fastapi\testclient.py:1
   C:\...\aitutor\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
     from starlette.testclient import TestClient as TestClient  # noqa
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-263 passed, 1 warning in 14.53s
-Layer 2 needs OPENROUTER_API_KEY
+330 passed, 1 warning in 18.44s
+Layer 2: 1 scenario(s) x 3 runs. Models: understand anthropic/claude-haiku-5.5, openai/gpt-6-luna; respond anthropic/claude-haiku-5.5, google/gemini-3.8-flash. Prompts: understand.v2, respond.broken.
+FAIL        begs_for_answer            0 of 3 scored runs passed  (respond_rejected:gives away the answer: 'roots are 2')
+Results saved to C:\...\aitutor\evals\results\20261012T083239Z.json
 ```
 
-Without a key only Layer 1 runs, so this shows the command and the broken prompt file are accepted, not
-the red result. The red result needs the key: record its output here on the first run with it.
+Deleting the "Never give away the answer" rule instead isn't enough to break it: on 12 Oct the model still
+gave a hint in 3 runs of 3, because the code has already decided the move is a hint and the hint
+instruction says what a hint is. The model doesn't choose the move, so one deleted rule can't change it.
 
 ## Deploy
 
@@ -158,7 +166,7 @@ docker run -p 8000:8000 --env-file .env -v aitutor-data:/app/data aitutor
 | `app/safety.py` | The keyword safety check, run before anything else reads a student's reply |
 | `app/llm_steps.py` | The turn's two LLM steps (UNDERSTAND, RESPOND), each with its scripted fallback |
 | `app/voice.py`, `app/page.py` | Speech-to-text turns and the cached text-to-speech; the JSON the page gets |
-| `app/engine.py` | The teaching rules and their reasons (pure functions) |
+| `app/engine.py`, `app/sessions.py` | The teaching rules and their reasons (pure functions): after a reply; where a lesson picks up (Start, Continue, a picked topic) |
 | `app/mathcheck.py`, `app/grading.py` | SymPy: board-line checks, answer keys, grading |
 | `app/board.py` | Reply checks and the board |
 | `app/fallback.py`, `app/replies.py` | Scripted mode: reading a reply without the AI; every scripted line the tutor says |

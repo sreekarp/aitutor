@@ -6,10 +6,11 @@ import pytest
 from sympy import Poly, expand
 
 from app import board, curriculum, grading, mathcheck, prompts
-from app.config import PROMPT_VERSIONS
+from app.config import PROMPT_VERSIONS, ROOT
 from app.models import BoardCommand, BoardLine, Decision, Kind, Reply, ReplyType, Segment, Understood
 
 NO_REVEAL = "- Never give away the answer to the PENDING QUESTION"
+DEMO_LINE = "hint: Give the hint for HINT LEVEL, built on the LESSON'S HINT but aimed at what the student said."
 
 
 def _objects(schema):
@@ -47,7 +48,7 @@ def test_understand_prompt_contains_context(cur):
     messages = prompts.understand_messages(concept=concept, phase="checking", check=check, previous_answer="3",
                                            tutor_last_line="So, what are the roots?", student_text="0 too")
     assert [m["role"] for m in messages] == ["system", "user"]
-    assert messages[0]["content"] == prompts.load_prompt("understand.v1")
+    assert messages[0]["content"] == prompts.load_prompt(PROMPT_VERSIONS["understand"])
     facts = messages[1]["content"]
     for expected in (f"CONCEPT: {concept.title}", "PHASE: checking", f"PENDING QUESTION: {check.say}",
                      "QUESTION KIND: roots", "ANSWER FORMAT: the roots in SymPy syntax",
@@ -84,7 +85,7 @@ def test_respond_prompt_gives_answer_keys_and_lists_check_equations(cur):
         understood=Understood(type="answer", answer="-2, -3"), grade=grading.grade(check, "-2, -3"),
         mistake=mistake, hint_text=None, board=lines, check_equations=[c.equation for c in concept.checks],
         formulas=cur.formulas, previous_reason="A new session.", student_text="minus 2 and minus 3")
-    assert messages[0] == {"role": "system", "content": prompts.load_prompt("respond.v1")}
+    assert messages[0] == {"role": "system", "content": prompts.load_prompt(PROMPT_VERSIONS["respond"])}
     facts = messages[1]["content"]
     key_values = {str(v) for v in grading.answer_key(check).values}
     assert set(_line(facts, "ANSWER KEY: ").split(", ")) == key_values
@@ -118,39 +119,21 @@ def test_respond_prompt_for_hint_and_needs_review(cur):
     assert "ANSWER KEY: " in facts
 
 
-@pytest.mark.parametrize("name", ["respond.v1", "respond.v2"])
-def test_the_broken_prompt_demo_removes_every_reveal_instruction(cur, name):
-    """README's demo deletes one four-line rule from the respond prompt (v1 now, v2 once it is switched on).
-    Nothing else may forbid giving the answer away, neither another part of the file nor the facts the code
-    adds, or the demo could never go red."""
-    lines = prompts.load_prompt(name).splitlines()
-    start, end = _no_reveal_rule(lines)
-    assert end - start == 4                               # the README says "(four lines)"
-    broken = "\n".join(lines[:start] + lines[end:])
-    concept = cur.concepts["factorisation"]
-    check, next_check = concept.checks[0], concept.checks[1]
-    for action in ("hint", "follow_up", "explain", "reteach"):
-        decision = Decision(rule="R4", action=action, concept_id=concept.id, reason="A reason.", hint_level=1,
-                            ask_check_id=next_check.id if action == "reteach" else None)
-        facts = prompts.respond_messages(
-            decision=decision, concept=concept, step=None, check=check, key=grading.answer_key(check),
-            next_check=next_check if action == "reteach" else None,
-            next_key=grading.answer_key(next_check) if action == "reteach" else None,
-            understood=Understood(type="dont_know"), grade=None, mistake=None, hint_text=check.hints[0],
-            board=[], check_equations=[check.equation], formulas=cur.formulas, previous_reason="",
-            student_text="just tell me the answer")[1]["content"]
-        for phrase in ("give away", "give no answer", "never reveal", "secret"):
-            assert phrase not in (broken + "\n" + facts).lower(), (action, phrase)
+def test_the_broken_prompt_demo_edits_a_line_of_the_configured_respond_prompt():
+    """README's demo swaps RESPOND's hint instruction for one that gives the answer away. That line must be in the
+    configured respond prompt exactly once, and README must copy that version and quote the line."""
+    respond = PROMPT_VERSIONS["respond"]
+    assert prompts.load_prompt(respond).splitlines().count(DEMO_LINE) == 1
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert f"cp app/prompts/{respond}.md app/prompts/respond.broken.md" in readme and DEMO_LINE in readme
 
 
-def test_v2_drafts_exist_and_keep_the_no_reveal_rule():
-    """The v2 prompts are drafts: config stays on v1 until a Layer 2 run passes with them. respond.v2 keeps
-    v1's no-reveal rule word for word, so the README demo works the same on either version."""
-    for name in ("understand.v2", "respond.v2"):
-        assert len(prompts.load_prompt(name)) > 500
-    v1, v2 = prompts.load_prompt("respond.v1").splitlines(), prompts.load_prompt("respond.v2").splitlines()
-    (start_1, end_1), (start_2, end_2) = _no_reveal_rule(v1), _no_reveal_rule(v2)
-    assert v2[start_2:end_2] == v1[start_1:end_1]
+@pytest.mark.parametrize("name", ["respond.v2", "respond.v3"])
+def test_later_respond_prompts_keep_the_no_reveal_rule(name):
+    """Every respond version keeps v1's no-reveal rule word for word."""
+    v1, later = prompts.load_prompt("respond.v1").splitlines(), prompts.load_prompt(name).splitlines()
+    (start_1, end_1), (start_2, end_2) = _no_reveal_rule(v1), _no_reveal_rule(later)
+    assert later[start_2:end_2] == v1[start_1:end_1]
 
 
 def _a_times_c(equation: str):
@@ -160,10 +143,11 @@ def _a_times_c(equation: str):
     return poly.coeff_monomial(mathcheck.x**2) * poly.coeff_monomial(1) if poly.degree() == 2 else None
 
 
-def test_respond_v2_labelled_step_example_passes_the_reply_rules(cur):
-    """respond.v2's two-line example (a words line, then its maths line) is a reply board.py accepts. Its product
+@pytest.mark.parametrize("name", ["respond.v2", "respond.v3"])
+def test_labelled_step_example_passes_the_reply_rules(cur, name):
+    """The two-line example (a words line, then its maths line) is a reply board.py accepts. Its product
     is no lesson question's a × c, so a model copying it into a hint can't mix it up with the question's numbers."""
-    lines = prompts.load_prompt("respond.v2").splitlines()
+    lines = prompts.load_prompt(name).splitlines()
     example = [json.loads(line) for line in lines if line.strip().startswith('{"op": "write", "id": "s')]
     assert [(cmd["id"], cmd["text"], cmd["latex"], cmd["check"]) for cmd in example] == [
         ("s1", "Step one: multiply a by c", None, None), ("s2", None, "4(-5) = -20", "Eq(4*(-5), -20)")]

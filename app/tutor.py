@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import Engine
 
-from app import board, curriculum, db, engine, fallback, grading, llm_steps, replies, safety
+from app import board, curriculum, db, engine, fallback, grading, llm_steps, replies, safety, sessions
 from app.config import MAX_INPUT_CHARS, MODELS, PROMPT_VERSIONS, SESSION_GAP_MIN, TURN_DEADLINE_S, Settings
 from app.models import (BoardCommand, Curriculum, Decision, Grade, Progress, Segment, TurnContext, TurnResult,
                         Understood)
@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 DIDNT_CATCH = "Sorry, I didn't catch that. Say it again, or type it."
 MISHEARD = "Sorry, I may have misheard you. Say it again, or type it."   # a spoken reply nobody could place
 SORRY = "Sorry, let's try that again."
-RESUMING = ("greet", "resume", "mastered", "needs_review")    # actions that go on to the current concept
+RESUMING = ("greet", "resume", "mastered", "needs_review", "jump")    # actions that go on to the current concept
 LOG_FIELDS = ("session_id", "student_id", "versions", "phase", "understood", "grade", "latency_ms", "calls", "issues")
 
 
@@ -40,6 +40,29 @@ class Tutor:
     def start(self, student_id: str) -> TurnResult:
         """Start / Continue: S1 within SESSION_GAP_MIN minutes of the session's last turn, else a new session + S0."""
         started = time.monotonic()
+        session, new_session = self._session(student_id)
+        try:
+            ctx, replaced = self._context(student_id, session, "", started, [], {})
+            decision, after = sessions.start(ctx.before, self.cur, new_session=new_session, replaced=replaced)
+            return self._finish(ctx, "start", None, None, decision, after, self._words(ctx, decision, after))
+        except Exception:
+            log.exception("session start failed for student %s", student_id)
+            return self._sorry(session, "")
+
+    def jump(self, student_id: str, concept_id: str) -> TurnResult:
+        """S2: the student picked a topic, before or after Start (a session is opened if there isn't one)."""
+        started = time.monotonic()
+        session, _ = self._session(student_id)
+        try:
+            ctx, _ = self._context(student_id, session, "", started, [], {})
+            decision, after = sessions.jump(ctx.before, self.cur, concept_id)
+            return self._finish(ctx, "jump", None, None, decision, after, self._words(ctx, decision, after))
+        except Exception:
+            log.exception("topic jump failed for student %s", student_id)
+            return self._sorry(session, "")
+
+    def _session(self, student_id: str) -> tuple[dict, bool]:
+        """The student's session, or a new one (True) when there is none or its last turn is too old."""
         with self.db_engine.begin() as conn:
             session = db.latest_session(conn, student_id)
             new_session = session is None or not _recent(db.last_turn(conn, session["id"]))
@@ -47,15 +70,11 @@ class Tutor:
                 models = {"mode": "scripted"} if self.scripted else MODELS
                 session = db.create_session(conn, student_id, curriculum_version=self.cur.version,
                                             prompt_versions=PROMPT_VERSIONS, models=models)
-        try:
-            ctx, replaced = self._context(student_id, session, "", started, [], {})
-            decision, after = engine.start(ctx.before, self.cur, new_session=new_session, replaced=replaced)
-            words = replies.words(decision, cur=self.cur, progress=after, check=None, grade=None,
-                                  first_name=ctx.student["first_name"])
-            return self._finish(ctx, "start", None, None, decision, after, words)
-        except Exception:
-            log.exception("session start failed for student %s", student_id)
-            return self._sorry(session, "")
+        return session, new_session
+
+    def _words(self, ctx: TurnContext, decision: Decision, after: Progress) -> list[Segment]:
+        return replies.words(decision, cur=self.cur, progress=after, check=None, grade=None,
+                             first_name=ctx.student["first_name"])
 
     def turn(self, student_id: str, text: str, *, input_mode: str = "text", prev_first_audio_ms: int | None = None,
              stt_failed: bool = False, pre_calls: list | None = None, pre_latency: dict | None = None) -> TurnResult:
@@ -86,13 +105,13 @@ class Tutor:
         """The order of checks: LIMIT, safety, curriculum change, fast paths, understanding."""
         understood = grade = None
         if over_limit:
-            decision, after = engine.limit_decision(), ctx.before
+            decision, after = sessions.limit_decision(), ctx.before
         elif replaced and not safety.is_safety(ctx.text):
-            decision, after = engine.lesson_changed(ctx.before, self.cur), ctx.before
+            decision, after = sessions.lesson_changed(ctx.before, self.cur), ctx.before
         else:
             understood = _timed(ctx, "understand", self._read, ctx, stt_failed)
             if ctx.check and understood.answer and not understood.safety:    # grade answers while checking
-                grade = _timed(ctx, "grade", grading.grade, ctx.check, understood.answer)
+                understood, grade = _timed(ctx, "grade", _grade, ctx, understood)
             decision, after = _timed(ctx, "decide", engine.decide, ctx.before, self.cur, understood, grade)
         misheard = _misheard(ctx, input_mode, understood, decision)
         if (stt_failed or misheard) and decision.action == "repeat":
@@ -111,7 +130,7 @@ class Tutor:
             saved = db.load_progress(conn, student_id, self.cur)
             board_now = db.session_board(conn, session["id"])
             last = db.last_turn(conn, session["id"])
-        before, issues, replaced = engine.reconcile(saved, self.cur)
+        before, issues, replaced = sessions.reconcile(saved, self.cur)
         concept_id = engine.current_concept(before, self.cur)
         concept = self.cur.concepts[concept_id] if concept_id else None
         pending = before[concept_id].pending if concept_id else None
@@ -220,6 +239,23 @@ def _timed(ctx: TurnContext, stage: str, function, *args):
     result = function(*args)
     ctx.latency[stage] = round((time.monotonic() - started) * 1000)
     return result
+
+
+def _grade(ctx: TurnContext, understood: Understood) -> tuple[Understood, Grade]:
+    """SymPy grades UNDERSTAND's answer. UNDERSTAND can write down the right answer when the student said a wrong
+    one, so a right answer is checked against the student's own words, read by the scripted rules: when UNDERSTAND
+    named a mistake, or those words are a trap answer, and they aren't right, the student's words are graded."""
+    grade = grading.grade(ctx.check, understood.answer)
+    if grade.verdict != "correct" or ctx.scripted:
+        return understood, grade
+    pending = ctx.before[ctx.concept.id].pending
+    own = fallback.understand(ctx.text, phase=ctx.phase, check=ctx.check,
+                              awaiting_working=pending.awaiting_working).answer
+    own_grade = grading.grade(ctx.check, own) if own else grade
+    if own_grade.verdict != "correct" and (understood.mistake or own_grade.trap):
+        ctx.issues.append("answer_rewritten")
+        return understood.model_copy(update={"answer": own}), own_grade
+    return understood, grade
 
 
 def _recent(turn: dict | None) -> bool:

@@ -177,6 +177,21 @@ def test_expression_after_equation():
     assert report(discriminant) == [("ok", ""), ("ok", "arithmetic")]          # no x: never chained
 
 
+def test_each_bracket_equal_to_zero_is_one_line():
+    # The step after factorising: "x - 2 = 0 or x - 3 = 0" has the same roots as the line before it
+    q1 = L("(x-2)(x-3) = 0", "Eq((x-2)*(x-3), 0)")
+    brackets = L(r"x - 2 = 0 \text{ or } x - 3 = 0", "Or(Eq(x - 2, 0), Eq(x - 3, 0))")
+    roots = L(r"x = 2 \text{ or } x = 3", "Or(Eq(x, 2), Eq(x, 3))")
+    assert statuses([q1, brackets, roots]) == ["ok"] * 3
+    halves = L(r"2x + 1 = 0 \text{ or } x - 2 = 0", "Or(Eq(2*x + 1, 0), Eq(x - 2, 0))")
+    assert statuses([L("(2x+1)(x-2) = 0", "Eq((2*x+1)*(x-2), 0)"), halves]) == ["ok", "ok"]
+    flipped = L(r"x + 2 = 0 \text{ or } x + 3 = 0", "Or(Eq(x + 2, 0), Eq(x + 3, 0))")
+    assert report([q1, flipped]) == [("ok", ""), ("FAIL", "not equivalent to the previous line: loses {2, 3}, "
+                                                           "adds {-3, -2}")]
+    squared = L(r"x^2 = 4 \text{ or } x = 1", "Or(Eq(x**2, 4), Eq(x, 1))")      # only first-degree parts
+    assert statuses([squared]) == ["FAIL"]
+
+
 def test_equation_after_expression():
     q1 = L("x^2 - 5x + 6 = 0", "Eq(x**2 - 5*x + 6, 0)")
     hint = [q1, L("(x-2)(x-3)", "(x-2)*(x-3)"), L("(x-2)(x-3) = 0", "Eq((x-2)*(x-3), 0)"),

@@ -8,7 +8,7 @@ from sympy import Eq, Or
 
 from app import grading, mathcheck
 from app.config import BOARD_MAX_LINES, MAX_SEGMENTS, SAY_MAX_WORDS
-from app.curriculum import LATEX_CHARS, highlight_problem
+from app.curriculum import LATEX_CHARS, SPOKEN_SYMBOLS, highlight_problem
 from app.fallback import spoken_maths
 from app.models import PINNED_IDS, AnswerKey, BoardCommand, BoardLine, Segment
 
@@ -84,10 +84,12 @@ def validate_reply(segments: list[Segment], ctx: ReplyContext) -> list[str]:
 
 
 def _speech_problems(say: str) -> list[str]:
-    """Rule 2: speech has no LaTeX characters and at most 60 words."""
+    """Rule 2: speech has no LaTeX characters, no "=" or minus sign before a number, and at most 60 words."""
     problems = []
     if any(char in say for char in LATEX_CHARS):
         problems.append("say has LaTeX characters; say the maths in words")
+    if SPOKEN_SYMBOLS.search(say):
+        problems.append("say has '=' or a minus sign before a number; say 'equals' and 'minus' in words")
     if len(say.split()) > SAY_MAX_WORDS:
         problems.append(f"say is over {SAY_MAX_WORDS} words")
     return problems
@@ -111,7 +113,7 @@ def _command_problems(cmd: BoardCommand, ctx: ReplyContext, latex_of: dict[str, 
     if [cmd.latex, cmd.formula, cmd.text].count(None) != 2:
         shape.append(f"{line}: write exactly one of latex, formula or text; words and maths go on separate lines")
     if cmd.text and re.search(r"[\d=]", cmd.text):
-        shape.append(f"{line}: a text line can't have digits or '='; write numbers in a words line as words, "
+        shape.append(f"{line}: the text line {cmd.text!r} has digits or '='; write numbers in a words line as words, "
                      "e.g. 'Step one', and put maths on a checked line")
     if shape:
         return shape
@@ -173,7 +175,7 @@ def reveals_answer(segments: list[Segment], key: AnswerKey | None, student_answe
         return "gives away the answer: says every value of it"
     for segment in segments:
         for cmd in segment.board:
-            claimed = _claimed(cmd.check) if cmd.op == "write" else None
+            claimed = _stated(cmd.check) if cmd.op == "write" else None
             if claimed and _same_set([v for v in claimed if not _has(said, v)], secret):
                 return f"gives away the answer: line {cmd.id} claims it"
     return None
@@ -194,6 +196,15 @@ def _claimed(check: str | None) -> list | None:
     if all(isinstance(p, Eq) and p.lhs == mathcheck.x and p.rhs.is_number for p in parts):
         return [p.rhs for p in parts]
     return None
+
+
+def _stated(check: str | None) -> list | None:
+    """The roots a line states outright: a root claim, or each bracket set to zero ("x - 2 = 0 or x - 3 = 0")."""
+    try:
+        expr = mathcheck.parse_check(check or "")
+        return _claimed(check) or (list(mathcheck.solutions(expr)) if isinstance(expr, Or) else None)
+    except mathcheck.CheckError:
+        return None
 
 
 def _has(values: list, value) -> bool:

@@ -170,3 +170,33 @@ def test_the_last_needs_review_says_we_come_back_once(tutor, db_engine, cur):
         "That's everything for now, Asha! You've mastered roots and checking by substitution, solving by "
         "factorisation, the quadratic formula, the discriminant and the nature of roots and word problems.",
         "Next session we'll come back to standard form and recognising a quadratic."]
+
+
+def test_picking_a_topic_pauses_this_one_and_comes_back_to_it(tutor, db_engine, cur):
+    """S2: the open question waits, with its hint, while another topic runs; picking it again asks it again."""
+    student_id = sf2_open(db_engine, cur, points=1.0, hint_level=1)
+    tutor.start(student_id)
+    picked = tutor.jump(student_id, "discriminant")
+    concept = cur.concepts["discriminant"]
+    assert (picked.decision.rule, picked.decision.action) == ("S2", "jump")
+    assert [segment.say for segment in picked.segments] == [
+        "Sure. Standard form and recognising a quadratic is saved just where you left it.",
+        f"Now let's move on to the discriminant and the nature of roots. {concept.intro}",
+        *[segment.say for segment in concept.steps[0].segments]]
+    assert picked.segments[1].board[0].op == "clear"            # wiped as the picked topic opens
+    saved = progress_of(db_engine, cur, student_id)
+    assert saved["standard_form"] == ConceptState("standard_form", status="paused", points=1.0,
+                                                  pending=Pending("sf2", hint_level=1), last_check_id="sf2")
+    assert saved["discriminant"].status == "teaching"
+    back = tutor.jump(student_id, "standard_form")
+    sf2 = curriculum.get_check(cur.concepts["standard_form"], "sf2")
+    assert back.segments[1].say == "Let's get back to standard form and recognising a quadratic, where we left off."
+    assert back.segments[-1].say == sf2.say
+    assert progress_of(db_engine, cur, student_id)["standard_form"].status == "checking"
+
+
+def test_picking_a_topic_before_start_opens_a_session(tutor, db_engine, cur):
+    student_id = new_student(db_engine, cur)
+    picked = tutor.jump(student_id, "word_problems")
+    assert picked.decision.rule == "S2" and picked.decision.concept_id == "word_problems"
+    assert tutor.turn(student_id, "ok").decision.concept_id == "word_problems"       # turns now work

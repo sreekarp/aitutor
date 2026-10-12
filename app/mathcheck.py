@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 
-from sympy import (Add, Eq, Expr, FiniteSet, Float, Integer, Mul, Number, Or, Pow, Rational, S,
+from sympy import (Add, Eq, Expr, FiniteSet, Float, Integer, Mul, Number, Or, Poly, Pow, Rational, S,
                    Symbol, preorder_traversal, simplify, solveset, sqrt)
 from sympy import latex as to_latex
 from sympy.core.function import AppliedUndef
@@ -130,8 +130,8 @@ def parse_display(latex: str):
         parts = [p.replace("\\pm", sign) for p in parts for sign in "+-"]
     if len(parts) <= 1:
         return _parse_one(latex)
-    claims = [_parse_one(p) for p in parts]                           # a root claim, x = a or x = b
-    if all(isinstance(c, Eq) and c.lhs == x and not c.rhs.free_symbols for c in claims):
+    claims = [_parse_one(p) for p in parts]                           # x = a or x = b, or x - a = 0 or x - b = 0
+    if all(_root_of(c) is not None for c in claims):
         return Or(*claims)
     return None
 
@@ -145,18 +145,28 @@ def question_latex(equation: str) -> str:
 # ---------- checking lines and steps ----------
 
 def solutions(expr):
-    """Complex solution set of an equation or an 'x = a or x = b' claim; None for a bare expression."""
+    """Complex solution set of an equation or an 'or' line (x = a or x - b = 0); None for a bare expression."""
     if isinstance(expr, Or):
-        values = []
-        for part in expr.args:
-            if not (isinstance(part, Eq) and part.lhs == x and not part.rhs.free_symbols):
-                raise CheckError("a root claim must look like Or(Eq(x, a), Eq(x, b))")
-            values.append(simplify(part.rhs))                         # evaluate "-1/3" before comparing sets
+        values = [_root_of(part) for part in expr.args]
+        if None in values:
+            raise CheckError("an 'or' line joins first-degree equations: Or(Eq(x, a), Eq(x, b)) or "
+                             "Or(Eq(x - a, 0), Eq(x - b, 0))")
         return FiniteSet(*values)
     if isinstance(expr, Eq):
         # Complex roots, not just real ones: otherwise any two equations with no real roots look the same.
         return solveset(expr.lhs - expr.rhs, x, S.Complexes)
     return None
+
+
+def _root_of(part):
+    """The one root of a first-degree equation ("x = 3", "x - 2 = 0", "2x + 1 = 0"), else None."""
+    if not isinstance(part, Eq):
+        return None
+    side = part.lhs - part.rhs
+    if not side.is_polynomial(x) or Poly(side, x).degree() != 1:
+        return None
+    slope, start = Poly(side, x).all_coeffs()
+    return simplify(-start / slope)                                   # evaluate "-1/3" before comparing sets
 
 
 def _equal(a, b):

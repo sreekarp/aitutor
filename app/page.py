@@ -32,9 +32,11 @@ def payload(tutor: Tutor, student_id: str, result: TurnResult) -> dict:
 
 
 def _progress_row(concept: Concept, concept_state: ConceptState, current: bool) -> dict:
-    """One concept for the progress panel; step_index counts from 0 and is only set while teaching."""
+    """One concept for the progress panel; step_index counts from 0 and is only set while on a step (teaching,
+    or paused on a step: a paused concept with an open question has none)."""
     step_ids = [step.id for step in concept.steps]
-    teaching = concept_state.status == "teaching" and concept_state.step_id in step_ids
+    on_step = concept_state.status in ("teaching", "paused") and not concept_state.pending
+    teaching = on_step and concept_state.step_id in step_ids
     return {"concept_id": concept.id, "title": concept.title, "status": concept_state.status,
             "step_index": step_ids.index(concept_state.step_id) if teaching else None, "step_count": len(step_ids),
             "points": concept_state.points,

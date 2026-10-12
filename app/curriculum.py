@@ -16,6 +16,9 @@ from app.config import CURRICULUM_DIR, MAX_HINTS, SAY_MAX_WORDS
 from app.models import PINNED_IDS, WORD_KINDS, BoardCommand, Check, Concept, Curriculum, Segment, Step
 
 LATEX_CHARS = "\\^{}$_"               # never allowed in spoken text
+# Nor "=" or a minus sign before a number, a root or a letter: a voice reads "x = -2" and "x-2" as "x equals 2"
+# and "x 2". Any dash counts ("–2" too), except inside a word ("self-check", "two-step"). Say "equals", "minus".
+SPOKEN_SYMBOLS = re.compile(r"=|(?<![A-Za-z]{2})[-‐‑‒–−﹣－]\s*(?:[\d.√½¼¾]|root\b|sqrt\b|[a-z]\b)")
 COMMAND = re.compile(r"\\[A-Za-z]+")  # a LaTeX command name, e.g. \frac
 LABEL_ID, EQUATION_ID = PINNED_IDS    # "q-label" and "q-eq": the question's two pinned board lines
 
@@ -106,7 +109,8 @@ def _concept_problems(concept: Concept, formulas: dict[str, str]) -> list[str]:
         problems += [f"check {check.id}: {p}" for p in _check_problems(check, mistake_ids)]
     for mistake in concept.mistakes:
         problems += [f"mistake {mistake.id}: {p}" for p in _speech_problems(mistake.fix)]
-    return problems + [f"intro: {p}" for p in _speech_problems(concept.intro)]
+    spoken = (("intro", concept.intro), ("title", concept.title))       # the title is said in greetings and moves
+    return problems + [f"{name}: {p}" for name, text in spoken for p in _speech_problems(text)]
 
 
 def _step_problems(step: Step, formulas: dict[str, str]) -> list[str]:
@@ -189,6 +193,11 @@ def _check_problems(check: Check, mistake_ids: set[str]) -> list[str]:
             problems.append(f"trap {trap!r} grades {verdict}; a trap must grade wrong or partial")
     if check.kind == "coefficient" and _common_factor(check.equation) != 1:
         problems.append("the coefficients share a factor, so a, b and c have more than one right answer")
+    if check.kind in WORD_KINDS:                     # the praise says the answer aloud (grading.key_speech)
+        try:
+            problems += [f"praise: {p}" for p in _speech_problems(grading.key_speech(check))]
+        except ValueError as err:
+            problems.append(f"the praise can't say the answer: {err}")
     return problems
 
 
@@ -203,6 +212,8 @@ def _speech_problems(text: str) -> list[str]:
     problems = []
     if any(char in text for char in LATEX_CHARS):
         problems.append(f"spoken text has LaTeX characters: {text[:40]!r}")
+    if SPOKEN_SYMBOLS.search(text):
+        problems.append(f"spoken text has '=' or a minus sign; say 'equals' and 'minus': {text[:40]!r}")
     if len(text.split()) > SAY_MAX_WORDS:
         problems.append(f"spoken text is over {SAY_MAX_WORDS} words: {text[:40]!r}")
     return problems

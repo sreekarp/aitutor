@@ -207,6 +207,21 @@ def test_key_text():
         assert not set(grading.key_text(check)) & set(r"\^{}$_"), check.id
 
 
+def test_key_speech_says_numbers_in_words():
+    # key_text is for the board ("x = -2"); a voice reads "-2" as "2", so speech says "minus 2"
+    expected = {"rt1": "Yes, minus 2 is a root", "rt2": "No, minus 1 is not a root",
+                "rt3": "Yes, 3 over 2 is a root", "di2": "Two equal real roots",
+                "sf1": "No, it is not a quadratic equation",
+                "wp2": "No, it is not possible: the equation has no real roots"}
+    for check_id, text in expected.items():
+        assert grading.key_speech(CHECKS[check_id]) == text, check_id
+    assert grading.say_number(Rational(-1, 3)) == "minus 1 over 3"
+    assert grading.say_number(2 - sqrt(3)) == "2 minus root 3"
+    assert grading.say_number(2 * sqrt(3)) == "2 root 3"             # no "*" read aloud
+    with pytest.raises(ValueError):                                 # can't be said in words: refused, not mangled
+        grading.say_number(sqrt(2 + sqrt(3)))
+
+
 # ---------- grading ----------
 
 def test_verdict_table():

@@ -72,6 +72,9 @@ def words(decision: Decision, *, cur: Curriculum, progress: Progress, check: Che
         return [worked, Segment(say=REVIEW_LATER)] if decision.resume_concept_id else [worked]
     if action == "end":
         return _summary(cur, progress, first_name)
+    if action == "jump":                                     # the topic left keeps its place; opening() follows
+        left = cur.concepts.get(decision.evidence.get("from") or "")
+        return _say(f"Sure. {left.title} is saved just where you left it.") if left and left is not concept else []
     raise ValueError(f"no scripted words for action {action!r}")
 
 
@@ -92,8 +95,9 @@ def reask(check: Check, awaiting_working: bool, hint_level: int = 0) -> Segment:
 
 def opening(concept: Concept, action: str, from_top: bool) -> list[Segment]:
     """Said as a concept is picked up, before its step or question. From step 1: its intro (not on Continue).
-    Right after R1 or R9 ended another concept: first that we move on to it, or go back to it if already started."""
-    title, moved_on = _lower_first(concept.title), action in ("mastered", "needs_review")
+    Right after R1 or R9 ended another concept, or a picked topic (S2): first that we move on to it, or go back to
+    it if already started."""
+    title, moved_on = _lower_first(concept.title), action in ("mastered", "needs_review", "jump")
     if not from_top:                                         # no "Now" here: some steps start with it
         return _say(f"Let's get back to {title}, where we left off.") if moved_on else []
     if action == "resume":
@@ -129,7 +133,7 @@ def _lower_first(text: str) -> str:
 def _praise(decision: Decision, check: Check, concept: Concept) -> str:
     """Praise that rotates by check id; word answers are restated in NCERT words ("Right — no real roots.")."""
     praise = PRAISE[sum(map(ord, check.id)) % len(PRAISE)]
-    text = f"{praise} — {_lower_first(grading.key_text(check))}." if check.kind in WORD_KINDS else f"{praise}!"
+    text = f"{praise} — {_lower_first(grading.key_speech(check))}." if check.kind in WORD_KINDS else f"{praise}!"
     if decision.action == "mastered" and decision.resume_concept_id:   # not the very last: END's summary says it
         text += f" You've mastered {_lower_first(concept.title)}."
     return text

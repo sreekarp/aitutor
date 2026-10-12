@@ -123,15 +123,15 @@ def test_prompt_understand_flag_tries_a_new_understand_prompt(cur, tmp_path):
     assert layer2._overrides(args) == ({}, {"understand": "understand.v2", "respond": "respond.v2"})
     with pytest.raises(SystemExit):                                         # there is no such file
         layer2.parse_args(["--prompt-understand", "understand.v9"])
-    used = [good(), good(), good()]
+    used, configured = [good(), good(), good()], dict(PROMPT_VERSIONS)
     clients = list(used)
-    args = layer2.parse_args(["--only", "stuck_hinglish", "--prompt-understand", "understand.v2"])
+    args = layer2.parse_args(["--only", "stuck_hinglish", "--prompt-understand", "understand.v1"])
     assert layer2.run(args, settings=SETTINGS, cur=cur, make_client=lambda: clients.pop(0), results_dir=tmp_path) == 0
     report = json.loads(next(tmp_path.glob("*.json")).read_text(encoding="utf-8"))
-    assert report["prompts"] == {"understand": "understand.v2", "respond": "respond.v1"}
+    assert report["prompts"] == {"understand": "understand.v1", "respond": configured["respond"]}
     system_prompts = [messages[0]["content"] for client in used for role, messages in client.asked if role == "understand"]
-    assert len(system_prompts) == 3 and set(system_prompts) == {prompts.load_prompt("understand.v2")}
-    assert PROMPT_VERSIONS["understand"] == "understand.v1"                  # the override was undone
+    assert len(system_prompts) == 3 and set(system_prompts) == {prompts.load_prompt("understand.v1")}
+    assert PROMPT_VERSIONS == configured                                    # the override was undone
 
 
 def test_evals_with_key_runs_layer2(monkeypatch):

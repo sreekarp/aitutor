@@ -121,7 +121,7 @@ class Grade:
 
 
 # ---------- progress ----------
-Status = Literal["not_started", "teaching", "checking", "mastered", "needs_review"]
+Status = Literal["not_started", "teaching", "checking", "paused", "mastered", "needs_review"]
 
 
 @dataclass
@@ -151,13 +151,13 @@ Progress = dict[str, ConceptState]   # concept id -> state, one entry per concep
 # ---------- decisions ----------
 ACTIONS = ("next_step", "start_check", "credit", "mastered", "probe", "reteach", "hint", "follow_up",
            "clarify", "explain", "show_me", "repeat", "needs_review", "safety", "greet", "resume",
-           "end", "limit", "lesson_changed")
+           "end", "limit", "lesson_changed", "jump")
 LLM_ACTIONS = frozenset({"hint", "follow_up", "explain", "reteach", "needs_review"})
 
 
 @dataclass
 class Decision:
-    rule: str                        # "R0".."R10", "S0", "S1", "END", "LIMIT"
+    rule: str                        # "R0".."R10", "S0", "S1", "S2", "END", "LIMIT"
     action: str                      # one of ACTIONS
     concept_id: str | None           # the concept this turn was about (None for END and LIMIT)
     reason: str                      # for the Why? panel; never contains an answer key

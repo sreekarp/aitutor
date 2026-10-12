@@ -1,4 +1,4 @@
-// The whiteboard and the two side panels (progress and "Why?"): drawing only, no server calls.
+// The whiteboard and the two side panels (topics and "Why?"): drawing only, no server calls.
 // Loaded first: voice.js and app.js use its $ and make. Plain JS, no build step.
 "use strict";
 
@@ -74,23 +74,38 @@ function runBoard(commands) {   // one segment's commands; its highlights replac
   drawBoard(marks);
 }
 
-// ---------- progress and "Why?" panels ----------
-function progressRow(row) {   // ✓ mastered, ⚠ needs review, ▶ current (with its step or points), · not started
-  const icon = { mastered: "✓", needs_review: "⚠" }[row.status] || (row.current ? "▶" : "·");
-  const li = make("li", `${icon} ${row.title}`, row.current ? "current" : row.status);
-  if (row.current && row.status === "checking") {
-    li.append(make("small", `points ${row.points}/${POINTS_TO_MASTER} · hint ${row.hint_level}/${MAX_HINTS}` +
-      ` · reteach ${row.reteach_count}/${MAX_RETEACHES}`));
-  } else if (row.current && Number.isInteger(row.step_index)) {
-    li.append(make("small", `step ${row.step_index + 1} of ${row.step_count}`));
-  }
+// ---------- topics (progress) and "Why?" panels ----------
+// Each topic is a button: picking one pauses the current topic (app.js sends it). ✓ mastered, ⚠ needs review,
+// ⏸ paused, ▶ current, · not started; the dots are the points towards mastery (● one, ◐ half, ○ none).
+function topicRow(row) {
+  const icon = { mastered: "✓", needs_review: "⚠", paused: "⏸" }[row.status] || (row.current ? "▶" : "·");
+  const button = make("button", "", "topic");
+  button.type = "button";
+  button.dataset.concept = row.concept_id;
+  if (row.current) button.setAttribute("aria-current", "step");
+  const dot = (n) => (row.points >= n ? "●" : row.points >= n - 0.5 ? "◐" : "○");
+  const dots = Array.from({ length: POINTS_TO_MASTER }, (_, i) => dot(i + 1)).join("");
+  button.append(make("span", icon, "icon"), make("span", row.title, "name"), make("span", dots, "dots"));
+  const detail = topicDetail(row);
+  if (detail) button.append(make("small", detail));
+  const li = make("li", "", row.current ? "current" : row.status);
+  li.append(button);
   return li;
+}
+
+function topicDetail(row) {   // the small line under a topic: where it stands
+  if (row.current && row.status === "checking") {
+    return `hint ${row.hint_level}/${MAX_HINTS} · reteach ${row.reteach_count}/${MAX_RETEACHES}`;
+  }
+  const step = Number.isInteger(row.step_index) ? `step ${row.step_index + 1} of ${row.step_count}` : "";
+  if (row.status === "paused") return `saved at ${step || "a question"}`;
+  return row.current ? step : "";
 }
 
 function drawPanels(data) {
   const current = data.progress.find((row) => row.current);
   $("concept").textContent = current ? current.title : "All concepts done";
-  $("progress").replaceChildren(...data.progress.map(progressRow));
+  $("progress").replaceChildren(...data.progress.map(topicRow));
   $("why").replaceChildren(...data.why.slice(0, 5).map((decision) => {
     const li = make("li");
     li.append(make("b", decision.rule), decision.reason);

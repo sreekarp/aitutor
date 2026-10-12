@@ -39,11 +39,13 @@ CREATE TABLE sessions (                -- a new one at Start after a 30-minute g
 CREATE TABLE progress (                -- one row per student per concept: the current state
   student_id          TEXT,
   concept_id          TEXT,           -- stable ids: standard_form, roots, factorisation, ...
-  status              TEXT,           -- not_started | teaching | checking | mastered | needs_review
+  status              TEXT,           -- not_started | teaching | checking | paused | mastered | needs_review
+                                      -- (paused: the student picked another topic; everything else is kept)
   step_id             TEXT,           -- the teaching step shown, by id, e.g. "split_middle"
   points              FLOAT,          -- +1 per right answer with working, +0.5 after a hint; mastered at 2
   pending             JSON,           -- the open question: check_id, hint_level, awaiting_working,
-                                      -- followup_used, last_answer. Set exactly while status = checking
+                                      -- followup_used, last_answer. Set while status = checking, and
+                                      -- kept while a topic left mid-question is paused
   last_check_id       TEXT,           -- the last question asked; the next one follows it in file order
   reteach_count       INTEGER,        -- at most 3 per pass through a concept
   strategies_tried    JSON,           -- ["worked_example", "substitute_back"]
@@ -78,7 +80,7 @@ CREATE TABLE decisions (               -- append-only: the "why" behind every mo
   turn_id        TEXT REFERENCES turns(id),
   student_id     TEXT,
   concept_id     TEXT,
-  rule           TEXT,                -- R0..R10, S0, S1, END, LIMIT
+  rule           TEXT,                -- R0..R10, S0, S1, S2 (a picked topic), END, LIMIT
   action         TEXT,                -- next_step | credit | hint | reteach | needs_review | ...
   reason         TEXT,                -- built from a template in code, never by an LLM
   evidence       JSON,                -- what the rule saw, answer key included: never sent to the browser
@@ -137,11 +139,27 @@ Rollout:
    files are read on every call.
 2. `uv run python -m evals --prompt-understand understand.v2 --prompt-respond respond.v2` (or
    `--model-respond <id>`) runs the 17 tutor scenarios against the new version, 3 runs each. A
-   scenario passes with a majority of passing runs; any red scenario blocks the change.
+   scenario passes with a majority of passing runs; a red scenario blocks the change unless the
+   version in use fails it too.
    `uv run python -m sims` shows false advances over longer conversations.
 3. Switch `PROMPT_VERSIONS` (or `MODELS`) in `config.py` and deploy.
 4. Rollback is the same switch back. Because state isn't in the prompt, students mid-session move
    back on their next turn.
+
+**The first runs with the key, 12 Oct 2026** (17 scenarios × 3 runs each; results in `evals/results/`):
+
+| Prompts | Scenarios passed | First RESPOND output rejected | Fell back to scripted words |
+| --- | --- | --- | --- |
+| understand.v1 + respond.v1 | 12 of 17 | 37% | 3 of 27 |
+| understand.v2 + respond.v2 | 14 of 17 | 30% | 3 of 27 |
+| understand.v2 + respond.v3, two runs | 14, then 12 of 17 | 30%, then 40% | 5 of 30, then 3 of 30 |
+
+They found a real bug: UNDERSTAND wrote down the right roots when the student said wrong ones, so a
+sign flip earned a point (fixed; see "What's ugly"). respond.v3 adds a short "check these before
+you reply" list for the board rules broken most, and the line "x - 2 = 0 or x - 3 = 0", which
+the board now accepts. With it the ± errors stopped and the sign-flip reteach passes, so config uses
+understand.v2 + respond.v3. The same prompts scored 14, then 12: at 3 runs a difference of one or two
+scenarios is noise, so a closer call needs `--runs 5` or more.
 
 *(Designed)* Gradual rollout: send a share of students to the new version (by a hash of the
 student id: 10%, then 50%, then 100%) and compare the two side by side. Every turn already records
@@ -169,7 +187,7 @@ from the first turn after the deploy:
 | Concepts split, merged or renamed | Split "roots" into two | *(Designed)* a migration script maps progress (mastered → both mastered; in progress → the first) |
 
 Points are always kept, and the turn records a `curriculum_changed` issue. This is the
-curriculum-change rule (`engine.reconcile`), checked at the start of every turn. *(Designed)* A step
+curriculum-change rule (`sessions.reconcile`), checked at the start of every turn. *(Designed)* A step
 map (old step → equivalent new step) would move students more gently than "back to the first
 step", and loading several curriculum versions at once would let a session finish on the version
 it started with. Neither is built: the rule above already keeps every student on valid ids.
@@ -256,15 +274,23 @@ one tick. The client's round trip uses a finer clock and is the real total. On L
 Docker image, the same code records exact milliseconds.
 
 So the tutor's own work (parsing, SymPy, the engine and the database) costs tens of milliseconds,
-and in LLM mode nearly all the time is model calls. **Those numbers come from the first session run
-with the API key:** speech-to-text, UNDERSTAND, RESPOND and text-to-speech per stage, and stop click →
-first audio from the browser. Until then the only model timings are single calls from a check on
-11 Oct, not a session: speech-to-text 1.1–2.5 s, UNDERSTAND 1.4 s (`gpt-6-luna`) to 2.9 s
-(`claude-haiku-5.5`, the primary) on a new connection, and text-to-speech 0.6–1.5 s per sentence.
-Added up, a spoken answer would take roughly 3–7 s from stop click to first audio *(estimate)*, and
-more when RESPOND also runs: above the target of p50 ≤ 2.0 s and p95 ≤ 3.5 s. If the measurements
-confirm it, the first levers are a faster UNDERSTAND model (the evals compare models with
-`--model-understand`) and streaming RESPOND.
+and in LLM mode nearly all the time is model calls.
+
+**Measured: model calls, 12 Oct 2026**, from the `calls` of every eval run and the four simulated
+students (464 calls, all on `claude-haiku-5.5`; no provider errors, no backup model used):
+
+| Call | Typical (p50) | Slow (p95) | Max | Calls |
+| --- | --- | --- | --- | --- |
+| UNDERSTAND | 1.7 s | 2.7 s | 4.0 s | 259 |
+| RESPOND | 2.2 s | 3.2 s | 5.8 s | 126 |
+
+A rejected RESPOND output costs a second call, and 30–40% of first outputs were rejected in the
+evals (see "What's ugly"). Speech-to-text and text-to-speech still have only single calls from a
+check on 11 Oct: 1.1–2.5 s and 0.6–1.5 s per sentence. Added up, a spoken right answer (speech-to-text,
+UNDERSTAND, then the first sentence's audio) takes roughly 3.5–7 s from stop click to first audio
+*(estimate from the parts; not yet measured in the browser)*, and more when RESPOND runs: above the
+target of p50 ≤ 2.0 s and p95 ≤ 3.5 s. The first levers are a faster UNDERSTAND model (the evals
+compare models with `--model-understand`), fewer RESPOND rejections, and streaming RESPOND.
 
 What the student perceives, and what we do about it:
 
@@ -359,9 +385,9 @@ Known gaps, after the build:
   step by step", "let me go step by step" and "I'm doing it step by step" are asked again, not
   hinted. The edges are rough both ways: "I know how to solve it" and "I tried it step by step"
   still count as asking, and "I'm going mad, explain step by step" is asked again. UNDERSTAND's
-  prompt v1 has no such rule, so with the LLM one can still be read as a question. The drafted `understand.v2.md` adds the rule, and `respond.v2.md` shows steps
-  asked as a question on a similar example, but `config.py` stays on v1 until both pass a Layer 2 run
-  with the key.
+  prompt v1 had no such rule; `understand.v2.md` adds it and is in use since 12 Oct. One eval
+  scenario (`steps_paraphrase_question`) expects "how does splitting the middle term work for this
+  one?" to stay a free question, and v2 reads it as asking for help: which is right is still open.
 - **Scripted mode is cruder than the LLM** (it's the fallback and the mock): it spots mistakes only
   through trap answers, so it hints where the LLM might reteach; any "?" makes a reply a question,
   even "did India win yesterday?", unless it holds an answer, asks for help ("how do I solve
@@ -419,6 +445,20 @@ Known gaps, after the build:
   have misheard you. Say it again, or type it." and the question again; no transcript at all gets
   "Sorry, I didn't catch that. Say it again, or type it." A mishearing that reads as a real reply,
   like a wrong number or "I don't know", is still taken at its word.
+- **UNDERSTAND can tidy up a wrong answer.** In the first eval run with the key, the student said
+  the sign-flipped roots and UNDERSTAND, though it named the sign-flip mistake, wrote down the right
+  ones, so SymPy marked them right. The prompt already said "never correct it". Now a right answer is
+  checked against the student's own words, read by the scripted rules (`tutor._grade`): when
+  UNDERSTAND named a mistake, or those words are a trap answer, they are what gets graded, and the
+  turn records `answer_rewritten`. A rewrite that names no mistake and matches no trap still slips
+  through.
+- **RESPOND's board lines are often rejected.** 30–40% of first outputs broke a board rule (most
+  often digits in a words line, like "multiply the 3 by the constant term"), and 10–17% failed the
+  retry too and fell back to scripted words. The student never sees a bad line, but each rejection
+  costs about 2 s. Reteaches fail most: they write the most maths.
+- **The simulated students drift.** The "overconfident" student answered both questions right with
+  working, so that run tested nothing about over-confidence; false advances count only what the
+  student model admits to.
 
 With two more days: measure a real voice session and act on it, stream LLM output into segments,
 add barge-in, check a student's spoken working for the exact slip, and run ten real students

@@ -149,6 +149,30 @@ def test_reteach_fallback_is_replay(cur, db_engine):
     assert all(segment in result.segments for segment in replayed)
 
 
+@pytest.mark.parametrize("llm_mistake", ["sign_flip", None])
+def test_answer_corrected_by_understand_is_graded_as_said(cur, db_engine, llm_mistake):
+    # Seen with the real model: the student says the sign-flipped roots, and UNDERSTAND writes down the right
+    # ones (naming the mistake, or not). The student's own words are graded instead: the trap, not a point.
+    fixed = {**understood("answer", "2, 3"), "mistake": llm_mistake}
+    fake = FakeLLM(understand=[fixed], respond=[ProviderError("HTTP 500")])
+    tutor, student_id = at_first_question(cur, db_engine, fake)
+    result = tutor.turn(student_id, "minus 2 and minus 3")
+    assert (result.decision.rule, result.decision.mistake) == ("R3", "sign_flip")
+    assert result.grade.verdict == "wrong" and result.understood.answer == "-2, -3"
+    assert "answer_rewritten" in result.issues
+    assert factorisation_state(db_engine, cur, student_id).points == 0
+
+
+def test_right_answer_with_a_named_mistake_is_still_right(cur, db_engine):
+    # UNDERSTAND may name a mistake in the working; the student's own words are right too, so nothing changes.
+    right = {**understood("answer", "2, 3"), "mistake": "sign_flip"}
+    fake = FakeLLM(understand=[right])
+    tutor, student_id = at_first_question(cur, db_engine, fake)
+    result = tutor.turn(student_id, "2 and 3")
+    assert (result.decision.rule, result.grade.verdict) == ("R2", "correct")
+    assert "answer_rewritten" not in result.issues
+
+
 def test_llm_reteach_is_checked_against_the_next_question(cur, db_engine):
     concept = cur.concepts["factorisation"]
     next_check = concept.checks[1]                                          # 3x^2 - 5x - 2 = 0: -1/3 and 2

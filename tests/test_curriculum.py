@@ -85,6 +85,14 @@ BROKEN = [  # (what is broken, how to break it, words the problem must contain)
     ("LaTeX in a fix", lambda c: setattr(c.mistakes[0], "fix", "Watch x_1."), "LaTeX characters"),
     ("LaTeX in the intro", lambda c: setattr(c, "intro", "We'll solve x^2 = 4."), "intro: spoken text has LaTeX"),
     ("too many words", lambda c: setattr(c.checks[0], "say", "word " * 61), "over 60 words"),
+    ("symbols in speech", lambda c: setattr(c.checks[0], "say", "Is x = -2 a root?"), "'=' or a minus sign"),
+    ("symbols in a title", lambda c: setattr(c, "title", "Solving x = 4"), "title: spoken text has '='"),
+    ("answer the praise can't say",
+     lambda c: (setattr(c.checks[0], "kind", "is_root"), setattr(c.checks[0], "traps", {}),
+                setattr(c.checks[0], "candidate", "sqrt(2 + sqrt(3))")),
+     "can't be said in words"),
+    ("minus sign in a hint", lambda c: setattr(c.checks[0], "hints", ["One.", "Two.", "Try -3."]),
+     "'=' or a minus sign"),
     ("file id differs", lambda c: setattr(c, "id", "other"), "the file's id is other"),
 ]
 

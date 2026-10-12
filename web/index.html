@@ -7,6 +7,9 @@
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.18.9/dist/katex.min.css"
         integrity="sha384-lPx0C4zIUZLpveABMwOFcFeGZwsvKBJfhJ85FN1PYOV7xApBcFMhcAEMVKF8loOI" crossorigin="anonymous">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap">
   <link rel="stylesheet" href="/style.css">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.18.9/dist/katex.min.js"
           integrity="sha384-19KE2cFb3U+RUWmyhBz7aLOGDG8WrRC6hE3oY/HTZZlAAVWYTdmvLC//+TIV3zUx" crossorigin="anonymous"></script>
@@ -39,11 +42,14 @@
     </header>
     <main class="layout">
       <section class="board-area" aria-label="Whiteboard">
-        <div id="board" class="board"></div>
+        <div class="board-frame">
+          <div id="board" class="board"></div>
+          <!-- the line being spoken, so eyes can stay on the board; the transcript below reads it out -->
+          <p id="caption" class="caption" aria-hidden="true"></p>
+        </div>
         <button id="start" type="button" class="primary start">Start</button>
       </section>
       <section class="talk" aria-label="Conversation">
-        <div id="transcript" class="transcript" aria-live="polite"></div>
         <form id="say-form" class="say" hidden>
           <button id="mic" type="button" aria-pressed="false">🎤 Speak</button>
           <input id="text-box" aria-label="Your answer or question" maxlength="500" autocomplete="off"
@@ -51,18 +57,21 @@
           <button id="send" type="submit" class="primary">Send</button>
         </form>
         <p id="mic-note" class="hint" hidden>The microphone needs https (or localhost), so please type your answers.</p>
+        <div id="transcript" class="transcript" aria-live="polite"></div>
       </section>
       <aside class="side">
-        <section class="panel" aria-label="Progress">
-          <h2>Progress</h2>
+        <section class="panel" aria-label="Topics">
+          <h2>Topics</h2>
+          <p class="hint">Pick any topic. The one you leave is saved for later.</p>
           <ol id="progress" class="progress"></ol>
         </section>
-        <section class="panel" aria-label="Why the tutor decided">
-          <h2>Why?</h2>
+        <details class="panel">
+          <summary>Why did the tutor do that?</summary>
           <ol id="why" class="why"></ol>
-        </section>
+        </details>
       </aside>
     </main>
+    <p id="toast" class="toast" role="status" hidden></p>
   </div>
 </body>
 </html>

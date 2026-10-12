@@ -1,8 +1,8 @@
 // Sound and the mic: the browser voice, each segment's server audio, the stop-click-to-first-audio timing,
 // and recording. The mic stays on between answers, so after the first one Speak starts at once; while the mic
 // opens, the Speak button reads "Opening mic…". Each recording is sent with two mic timings (mic_open_ms,
-// recording_ms). Loaded after board.js; it calls runTurn, request, setStatus, showNote, setBusy and
-// addTranscript from app.js. Plain JS, no build step.
+// recording_ms). Loaded after board.js; it calls runTurn, request, setStatus, showNote, setBusy,
+// addTranscript and setCaption from app.js. Plain JS, no build step.
 "use strict";
 
 const MAX_RECORDING_MS = 30000;   // a recording stops by itself after 30 s
@@ -240,7 +240,10 @@ function sendRecording(blob, micOpenMs, recordingMs) {   // the recording and it
   if (ms !== null) form.append("prev_first_audio_ms", String(ms));
   runTurn(async () => {
     const reply = await request("/api/turn/audio", { method: "POST", body: form });
-    if (reply.transcript) addTranscript("you", reply.transcript);
+    if (reply.transcript) {   // what the mic heard, on the board too: a mishearing is easy to spot
+      addTranscript("you", reply.transcript);
+      setCaption(`You said: ${reply.transcript}`, "you");
+    }
     return reply;
   });
 }

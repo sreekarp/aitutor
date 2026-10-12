@@ -5,6 +5,7 @@
 // ---------- settings ----------
 const REPLY_TIMEOUT_MS = 17000;   // stop waiting for the server after ~17 s
 const TOO_LONG = "That took too long — try again or type it";
+const TOAST_MS = 3000;            // how long "Topic mastered!" stays up
 
 const startButton = $("start"), sayForm = $("say-form"), textBox = $("text-box");
 
@@ -55,13 +56,30 @@ function showNote(message) {   // a problem, in the status line and the transcri
   addTranscript("note", message);
 }
 
-function setBusy(busy) {   // the text box and its buttons are off while a turn runs
-  for (const el of sayForm.elements) el.disabled = busy;
+let busy = false;   // a turn or a recording is running: no typing, and no topic can be picked
+
+function setBusy(on) {   // the text box and its buttons are off while a turn runs
+  busy = on;
+  for (const el of sayForm.elements) el.disabled = on;
+  $("progress").classList.toggle("busy", on);
+}
+
+function setCaption(text, who = "tutor") {   // the line under the board: what the tutor says, or what it heard
+  $("caption").textContent = text;
+  $("caption").className = `caption ${who}`;
+}
+
+function celebrate() {
+  const toast = $("toast");
+  toast.textContent = "Topic mastered! ✓";
+  toast.hidden = false;
+  setTimeout(() => { toast.hidden = true; }, TOAST_MS);
 }
 
 // ---------- one turn ----------
 function showSegment(segment) {
   runBoard(segment.board);
+  setCaption(segment.say);
   addTranscript("tutor", segment.say);
 }
 
@@ -98,6 +116,7 @@ async function runTurn(send) {   // send() makes the request and resolves to the
   try {
     const reply = await send();
     drawPanels(reply);
+    if (reply.decision.action === "mastered") celebrate();
     await playReply(reply);
     typeIt = reply.input_hint === "type";
     setStatus(typeIt ? "Your turn. Typing may be easier." : "Your turn.");
@@ -123,6 +142,7 @@ function showTutor(state) {   // after sign-in or a reload: the saved board and 
   $("app").hidden = false;
   board = state.board;   // board.js keeps the lines
   drawBoard();
+  setCaption("");
   drawPanels(state);
   startButton.textContent = state.progress.some((row) => row.status !== "not_started") ? "Continue" : "Start";
   startButton.hidden = false;
@@ -162,18 +182,29 @@ function onStart() {
   runTurn(() => postJSON("/api/session", {}));
 }
 
+function onPickTopic(event) {   // a topic in the panel: the tutor pauses this one and opens that one
+  const topic = event.target.closest("button.topic");
+  if (!topic || busy || topic.getAttribute("aria-current")) return;
+  unlockSound();
+  startButton.hidden = true;
+  sayForm.hidden = false;
+  runTurn(() => postJSON("/api/jump", { concept_id: topic.dataset.concept }));
+}
+
 function onSend(event) {
   event.preventDefault();
   const text = textBox.value.trim();
   if (!text) return;
   textBox.value = "";
   addTranscript("you", text);
+  setCaption(`You: ${text}`, "you");
   runTurn(() => postJSON("/api/turn", { text, prev_first_audio_ms: takeFirstAudioMs() }));
 }
 
 $("signin-form").addEventListener("submit", onSignIn);
 $("signout").addEventListener("click", onSignOut);
 startButton.addEventListener("click", onStart);
+$("progress").addEventListener("click", onPickTopic);
 sayForm.addEventListener("submit", onSend);
 micButton.addEventListener("click", onMic);
 if (canSpeak) speechSynthesis.onvoiceschanged = chooseVoice;

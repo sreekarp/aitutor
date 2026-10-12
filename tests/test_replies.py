@@ -3,7 +3,7 @@ import re
 
 from conftest import check_of, fresh_progress
 
-from app import grading, mathcheck, replies
+from app import curriculum, grading, mathcheck, replies
 from app.models import ACTIONS, Check, ConceptState, Decision, Grade, Pending, Segment
 
 LATEX_CHARS = set("\\^{}$_")
@@ -42,6 +42,7 @@ def test_templates_have_no_latex_and_no_keys(cur):
                 says += [replies.reask(check, waiting).say for waiting in (False, True)]
                 for say in says:
                     assert not set(say) & LATEX_CHARS and len(say.split()) <= 60, (check.id, action, say)
+                    assert not curriculum.SPOKEN_SYMBOLS.search(say), (check.id, action, say)
                     assert action not in open_question or not re.search(r"\d", say), (check.id, action, say)
         progress[cid].step_id = concept.steps[0].id                   # while teaching: replays and repeats
         for action in ("explain", "repeat", "next_step"):
@@ -144,6 +145,24 @@ def test_opening_before_a_concepts_step_or_question(cur):
     assert replies.opening(roots, "mastered", False) == replies.opening(roots, "needs_review", False) == back
     for action, from_top in (("resume", True), ("resume", False), ("greet", False)):   # Continue, or carrying on
         assert replies.opening(roots, action, from_top) == [], (action, from_top)
+    assert replies.opening(roots, "jump", True) == move_on and replies.opening(roots, "jump", False) == back
+
+
+def test_praise_says_a_word_answer_in_words(cur):
+    # "x = -2" was read aloud as "x equals 2": the praise now says the number the way the question does
+    rt1 = check_of(cur, "rt1")
+    said = spoken(cur, "credit", rt1, "roots")[0]
+    assert said.endswith(" — yes, minus 2 is a root.") and "=" not in said, said
+
+
+def test_jump_says_the_topic_left_is_saved(cur):
+    def said(left):
+        decision = Decision(rule="S2", action="jump", concept_id="factorisation", reason="test",
+                            evidence={"from": left})
+        return replies.words(decision, cur=cur, progress=fresh_progress(cur), check=None, grade=None,
+                             first_name="Asha")
+    assert said("roots") == [Segment(say="Sure. Roots and checking by substitution is saved just where you left it.")]
+    assert said(None) == said("factorisation") == []           # nothing was left, or the same topic was picked
 
 
 def test_answer_line_is_checked_or_text(cur):

@@ -60,6 +60,12 @@ def test_apply_cap_keeps_question_lines():
 def test_say_rules():
     for say in (r"So \frac{1}{2}.", "x^2 is nine.", "Use {a, b}.", "It costs $5.", "Call it x_1."):
         assert any("LaTeX" in p for p in problems(say=say)), say
+    for say in ("So x = -2.", "It is -3.", "Try −1 now.", "Put –2 in place of x.", "So x-2 is zero.",
+                "Now 5-3 gives 2.", "Take 3x-5.", "It's -√3.", "It's - root 3.", "So -b over 2a.", "Try -.5."):
+        assert any("'=' or a minus sign" in p for p in problems(say=say)), say
+    for say in ("x squared minus 5x plus 6 equals zero.", "It's a well-known step: 3x squared.", "Self-check it.",
+                "Nice work — 2 and 3 are right.", "Look at the x-axis.", "A two-step method."):
+        assert not any("minus sign" in p for p in problems(say=say)), say
     assert problems(say="word " * 60) == []
     assert any("over 60 words" in p for p in problems(say="word " * 61))
     assert board.validate_reply([], context()) != []                       # 1 to 3 segments
@@ -81,7 +87,8 @@ def test_a_label_beside_maths_reports_both_word_rules():
     back at once, each saying how to fix it, because the single retry sends exactly these lines to the model."""
     found = problems(write("e1", "2(-3) = -6", "Eq(2*(-3), -6)", text="Step 1: a times c"), action="explain")
     assert found == ["line e1: write exactly one of latex, formula or text; words and maths go on separate lines",
-                     "line e1: a text line can't have digits or '='; write numbers in a words line as words, "
+                     "line e1: the text line 'Step 1: a times c' has digits or '='; write numbers in a words line "
+                     "as words, "
                      "e.g. 'Step one', and put maths on a checked line"]
 
 
@@ -173,6 +180,8 @@ def test_reveals_answer_cases():
     assert says("Find two numbers that multiply to 6 and add to minus 5.") is None
     assert says("Yes, x = 3 works. Now find the other root.", student="3") is None
     assert says("Look.", commands=[write("r1", "(x-2)(x-3) = 0", "Eq((x-2)*(x-3), 0)")]) is None
+    brackets = write("r1", r"x - 2 = 0 \text{ or } x - 3 = 0", "Or(Eq(x - 2, 0), Eq(x - 3, 0))")
+    assert says("Look.", commands=[brackets])                              # each bracket = 0 states the roots
     assert says("It's 2 and 3.", student="2, 3") is None                 # nothing left to give away
     surds = grading.answer_key(roots_check("Eq(x**2 - 4*x + 1, 0)"))       # 2 - sqrt(3), 2 + sqrt(3)
     assert board.reveals_answer([Segment(say="So x is 2 plus root 3.")], surds, "")

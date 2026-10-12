@@ -1,11 +1,12 @@
-"""The teaching rules: which move comes next, and why. Pure functions: no I/O, inputs never changed."""
+"""The teaching rules after a student's reply (R0-R10, END): which move comes next, and why. Where a lesson
+picks up (Start, Continue, a picked topic) is in sessions.py. Pure functions: no I/O, inputs never changed."""
 from __future__ import annotations
 
 import copy
 from dataclasses import replace
 
-from app.config import MAX_HINTS, MAX_RETEACHES, POINTS_TO_MASTER, SESSION_GAP_MIN
-from app.curriculum import get_check, get_step, next_check_id, next_step_id
+from app.config import MAX_HINTS, MAX_RETEACHES, POINTS_TO_MASTER
+from app.curriculum import next_check_id, next_step_id
 from app.models import Concept, ConceptState, Curriculum, Decision, Grade, Pending, Progress, Understood
 
 # How R8's reason starts, by reply type.
@@ -14,12 +15,12 @@ REPEAT_CAUSE = {"next": "That reply didn't answer the question", "say_again": "Y
 
 
 def current_concept(progress: Progress, cur: Curriculum) -> str | None:
-    """The first concept being taught or checked, else the first not started, else None."""
+    """The first concept being taught or checked, else the first paused or not started, else None."""
     for cid in cur.order:
         if progress[cid].status in ("teaching", "checking"):
             return cid
     for cid in cur.order:
-        if progress[cid].status == "not_started":
+        if progress[cid].status in ("paused", "not_started"):
             return cid
     return None
 
@@ -30,10 +31,12 @@ def decide(progress: Progress, cur: Curriculum, understood: Understood,
     after = copy.deepcopy(progress)               # all changes happen on this copy
     cid = current_concept(after, cur)
     state = after[cid] if cid is not None else None
+    if state and state.status == "paused":       # nothing else active: it carries on where it stopped
+        activate(after, cur, cid)
     asked = state.pending.check_id if state and state.pending else None
     if understood.safety:
-        decision = _make("R10", "safety", state, "Safety comes first: the reply may need an adult's help, "
-                         "so the lesson waits. Progress is kept.")
+        decision = make_decision("R10", "safety", state, "Safety comes first: the reply may need an adult's help, "
+                                 "so the lesson waits. Progress is kept.")
     elif state is None:
         decision = end_decision()
     elif state.pending is None:
@@ -45,54 +48,6 @@ def decide(progress: Progress, cur: Curriculum, understood: Understood,
     return decision, after
 
 
-def start(progress: Progress, cur: Curriculum, *, new_session: bool,
-          replaced: bool = False) -> tuple[Decision, Progress]:
-    """S0 (a new session) or S1 (carry on): resume the current concept where it stands. S1 clears the board
-    only when the lesson files replaced the open question (replaced): that question is a new one."""
-    after = copy.deepcopy(progress)
-    if new_session:                                  # S0: every concept marked for review starts again
-        for cid in cur.order:
-            if after[cid].status == "needs_review":  # points, reteaches, strategies reset; last question kept
-                after[cid] = ConceptState(cid, status="teaching", step_id=next_step_id(cur.concepts[cid], None),
-                                          last_check_id=after[cid].last_check_id)
-    cid = _resume_next(after, cur)
-    state = after[cid] if cid else None
-    where = "we carry on where you left off" if cid else "every concept is mastered or marked for review"
-    if new_session:
-        return _make("S0", "greet", state, f"New session: concepts marked for review start again from step 1, "
-                     f"and {where}.", resume_concept_id=cid, clear_board=True), after
-    return _make("S1", "resume", state, f"You're back within {SESSION_GAP_MIN} minutes, so {where}.",
-                 resume_concept_id=cid, clear_board=replaced), after
-
-
-def reconcile(progress: Progress, cur: Curriculum) -> tuple[Progress, list[str], bool]:
-    """Move students off removed steps and questions. Returns (progress, issues, question replaced)."""
-    after, changed, replaced = copy.deepcopy(progress), False, False      # points are always kept
-    current = current_concept(after, cur)
-    for cid in cur.order:
-        state, concept = after[cid], cur.concepts[cid]
-        if state.status == "teaching" and get_step(concept, state.step_id) is None:
-            state.step_id, changed = next_step_id(concept, None), True       # back to the first step
-        if state.pending and get_check(concept, state.pending.check_id) is None:
-            check_id = next_check_id(concept, state.last_check_id)          # check 1 if that id is gone too
-            state.pending, state.last_check_id = Pending(check_id), check_id
-            changed, replaced = True, replaced or cid == current
-    return after, ["curriculum_changed"] if changed else [], replaced
-
-
-def lesson_changed(progress: Progress, cur: Curriculum) -> Decision:
-    """R8 after reconcile() replaced the current question: this reply isn't marked; the new question is asked."""
-    state = progress[current_concept(progress, cur)]
-    return _make("R8", "lesson_changed", state, "The lesson changed, so your reply isn't marked and a new "
-                 "question is asked. Points are kept.", ask_check_id=state.pending.check_id, clear_board=True)
-
-
-def limit_decision() -> Decision:
-    """LIMIT: today's turn limit is reached; nothing else changes."""
-    return Decision(rule="LIMIT", action="limit", concept_id=None,
-                    reason="Today's turn limit is reached, so the lesson continues tomorrow.")
-
-
 def end_decision() -> Decision:
     """END: no concept is left to teach; the same reply answers every later turn."""
     return Decision(rule="END", action="end", concept_id=None,
@@ -102,6 +57,9 @@ def end_decision() -> Decision:
 # ---------- the rules while teaching, and while checking ----------
 def _teaching(state: ConceptState, concept: Concept, understood: Understood) -> Decision:
     kind, total = understood.type, len(concept.steps)
+    if kind == "answer" and understood.mistake in {mistake.id for mistake in concept.mistakes}:
+        return make_decision("R7", "explain", state, "Your reply shows a known mistake, so it is explained before "
+                             "moving on. Same step.", mistake=understood.mistake)
     if kind in ("next", "answer"):
         step_id = next_step_id(concept, state.step_id)
         if step_id is None:
@@ -109,17 +67,17 @@ def _teaching(state: ConceptState, concept: Concept, understood: Understood) -> 
                              f"Teaching: all {total} steps done, so a question checks what you learned.")
         state.status, state.step_id = "teaching", step_id      # also starts a concept not started yet
         number = [step.id for step in concept.steps].index(step_id) + 1
-        return _make("R0", "next_step", state, f"Teaching: you're ready, so step {number} of {total}.",
-                     play_step_id=step_id)
+        return make_decision("R0", "next_step", state, f"Teaching: you're ready, so step {number} of {total}.",
+                             play_step_id=step_id)
     if kind == "claims_understanding":
         return _ask_next(state, concept, "R6", "start_check",
                          "You said you get it, so the remaining steps are skipped and a question checks it.")
     if kind == "question":
-        return _make("R7", "explain", state, "You asked a question, so it is answered. Same step.")
+        return make_decision("R7", "explain", state, "You asked a question, so it is answered. Same step.")
     if kind == "dont_know":
-        return _make("R7", "explain", state, "You said you don't follow, so this step is explained again.")
+        return make_decision("R7", "explain", state, "You said you don't follow, so this step is explained again.")
     # "it": the last reply, or just the step after a topic start or a lone apology (tutor._context picks which)
-    return _make("R8", "repeat", state, f"{REPEAT_CAUSE[kind]}, so it is said again. Nothing changes.")
+    return make_decision("R8", "repeat", state, f"{REPEAT_CAUSE[kind]}, so it is said again. Nothing changes.")
 
 
 def _checking(after: Progress, cur: Curriculum, state: ConceptState, understood: Understood,
@@ -128,15 +86,16 @@ def _checking(after: Progress, cur: Curriculum, state: ConceptState, understood:
     if kind == "answer":
         return _answer(after, cur, state, understood, grade)
     if kind == "question":
-        return _make("R7", "explain", state, "You asked a question, so it is answered first. Same question.",
-                     reask=True)
+        return make_decision("R7", "explain", state, "You asked a question, so it is answered first. Same question.",
+                             reask=True)
     if kind == "dont_know":
         return _hint(after, cur, state, "You asked for help.", wrong_values=False)
     if kind == "claims_understanding":
-        return _make("R6", "show_me", state, "Points need an answer with working, so: show me. Same question.",
-                     ask_check_id=check_id)
-    return _make("R8", "repeat", state, f"{REPEAT_CAUSE[kind]}, so the question is asked again. Nothing changes.",
-                 ask_check_id=check_id)
+        return make_decision("R6", "show_me", state, "Points need an answer with working, so: show me. Same question.",
+                             ask_check_id=check_id)
+    return make_decision("R8", "repeat", state,
+                         f"{REPEAT_CAUSE[kind]}, so the question is asked again. Nothing changes.",
+                         ask_check_id=check_id)
 
 
 # ---------- answers while checking ----------
@@ -156,24 +115,25 @@ def _answer(after: Progress, cur: Curriculum, state: ConceptState, understood: U
         return _credit(after, cur, state, "SymPy: correct, with working.")
     if verdict == "correct":
         pending.awaiting_working = True
-        return _make("R2", "probe", state,
-                     "SymPy: correct, but the working wasn't shown. Points come once you say how.")
+        return make_decision("R2", "probe", state,
+                             "SymPy: correct, but the working wasn't shown. Points come once you say how.")
     if verdict == "wrong":
         return _wrong(after, cur, state, "SymPy: not the answer.", _mistake(concept, understood, grade),
                       grade.wrong_values)
     if not pending.followup_used:                            # partial or unsure: one follow-up first
         pending.followup_used = True
         if verdict == "unsure":
-            return _make("R5", "clarify", state, "An answer couldn't be read from that reply, "
-                         "so one follow-up asks for just the answer.")
+            return make_decision("R5", "clarify", state, "An answer couldn't be read from that reply, "
+                                 "so one follow-up asks for just the answer.")
         what = "a value is missing" if grade.detail == "missing" else "a value doesn't fit the question"
-        return _make("R5", "follow_up", state, f"SymPy: partly right ({what}). One follow-up; not counted wrong.",
-                     mistake=_mistake(concept, understood, grade), reask=True)
+        return make_decision("R5", "follow_up", state,
+                             f"SymPy: partly right ({what}). One follow-up; not counted wrong.",
+                             mistake=_mistake(concept, understood, grade), reask=True)
     if verdict == "partial":
         return _wrong(after, cur, state, "SymPy: still only partly right.", _mistake(concept, understood, grade),
                       grade.wrong_values)
-    return _make("R8", "repeat", state, "Still couldn't read an answer, so the question is asked again. "
-                 "An unreadable answer never leads to a hint.", ask_check_id=pending.check_id)
+    return make_decision("R8", "repeat", state, "Still couldn't read an answer, so the question is asked again. "
+                         "An unreadable answer never leads to a hint.", ask_check_id=pending.check_id)
 
 
 def _mistake(concept: Concept, understood: Understood, grade: Grade) -> str | None:
@@ -200,7 +160,7 @@ def _hint(after: Progress, cur: Curriculum, state: ConceptState, cause: str, wro
     if pending.hint_level >= MAX_HINTS:
         return _reteach(after, cur, state, "R4", f"{cause} All {MAX_HINTS} hints used.", None, wrong_values)
     pending.hint_level += 1
-    return _make("R4", "hint", state, f"{cause} Hint {pending.hint_level} of {MAX_HINTS}.", reask=True)
+    return make_decision("R4", "hint", state, f"{cause} Hint {pending.hint_level} of {MAX_HINTS}.", reask=True)
 
 
 def _credit(after: Progress, cur: Curriculum, state: ConceptState, cause: str) -> Decision:
@@ -213,8 +173,8 @@ def _credit(after: Progress, cur: Curriculum, state: ConceptState, cause: str) -
     if state.points < POINTS_TO_MASTER:
         return _ask_next(state, concept, "R1", "credit", f"{cause} {score}.")
     state.status, state.pending = "mastered", None
-    return _make("R1", "mastered", state, f"{cause} {score}, so {concept.title} is mastered.",
-                 resume_concept_id=_resume_next(after, cur), clear_board=True)
+    return make_decision("R1", "mastered", state, f"{cause} {score}, so {concept.title} is mastered.",
+                         resume_concept_id=resume_next(after, cur), clear_board=True)
 
 
 # ---------- reteaching (R3, R4, R9) ----------
@@ -223,9 +183,9 @@ def _reteach(after: Progress, cur: Curriculum, state: ConceptState, rule: str, c
     """R3, or R4 after the last hint: reteach, then the next question. R9 instead after 3 reteaches."""
     if state.reteach_count >= MAX_RETEACHES:                 # R9: marked for review, on to the next concept
         state.status, state.pending = "needs_review", None
-        return _make("R9", "needs_review", state, f"{cause} Already {MAX_RETEACHES} reteaches, so this concept "
-                     "is marked for review next session.", mistake=mistake,
-                     resume_concept_id=_resume_next(after, cur), clear_board=True)
+        return make_decision("R9", "needs_review", state, f"{cause} Already {MAX_RETEACHES} reteaches, so this concept "
+                             "is marked for review next session.", mistake=mistake,
+                             resume_concept_id=resume_next(after, cur), clear_board=True)
     concept = cur.concepts[state.concept_id]
     strategy = pick_strategy(concept, state, wrong_values)
     untried = strategy not in state.strategies_tried
@@ -261,19 +221,27 @@ def _ask_next(state: ConceptState, concept: Concept, rule: str, action: str, rea
     """Ask the next question. Asking any question starts a fresh pending, on a clean board."""
     check_id = next_check_id(concept, state.last_check_id)
     state.status, state.pending, state.last_check_id = "checking", Pending(check_id), check_id
-    return _make(rule, action, state, reason, ask_check_id=check_id, clear_board=True, **extra)
+    return make_decision(rule, action, state, reason, ask_check_id=check_id, clear_board=True, **extra)
 
 
-def _resume_next(after: Progress, cur: Curriculum) -> str | None:
-    """The concept to resume; one not started yet begins at its first step."""
+def resume_next(after: Progress, cur: Curriculum) -> str | None:
+    """The concept to resume, made active (see activate)."""
     cid = current_concept(after, cur)
-    if cid is not None and after[cid].status == "not_started":
-        after[cid].status = "teaching"
-        after[cid].step_id = next_step_id(cur.concepts[cid], None)
+    if cid is not None:
+        activate(after, cur, cid)
     return cid
 
 
-def _make(rule: str, action: str, state: ConceptState | None, reason: str, **extra) -> Decision:
+def activate(after: Progress, cur: Curriculum, cid: str) -> None:
+    """A paused concept carries on where it stopped; one not started yet begins at its first step."""
+    state = after[cid]
+    if state.status == "paused":
+        state.status = "checking" if state.pending else "teaching"
+    elif state.status == "not_started":
+        state.status, state.step_id = "teaching", next_step_id(cur.concepts[cid], None)
+
+
+def make_decision(rule: str, action: str, state: ConceptState | None, reason: str, **extra) -> Decision:
     """A Decision about this concept, carrying its current hint level and reteach count."""
     if state is None:
         return Decision(rule=rule, action=action, concept_id=None, reason=reason, **extra)

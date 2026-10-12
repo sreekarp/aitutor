@@ -1,4 +1,4 @@
-"""Tests for app/engine.py, the teaching rules.
+"""Tests for app/engine.py and app/sessions.py, the teaching rules.
 
 The engine runs on a tiny curriculum built in this file, so these tests don't change when the
 lesson files do. Every decision goes through turn() or check_decision(), which also check two
@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import copy
 import re
+from dataclasses import replace
 from fractions import Fraction
 
 import pytest
 
-from app import engine
+from app import engine, sessions
 from app.models import (ACTIONS, Check, Concept, ConceptState, Curriculum, Decision, Grade, Mistake, Pending,
                         Progress, Segment, Step, Understood)
 
@@ -189,6 +190,16 @@ def test_question_explains_and_keeps_state():
     decision, after = turn(progress, said("question"))
     assert (decision.rule, decision.action, decision.reask) == ("R7", "explain", True)
     assert after == progress
+
+
+def test_teaching_answer_with_known_mistake_is_explained():
+    # "I think the roots are -4 and 1" while teaching: the slip is explained before moving on
+    progress = progress_with(teaching_at("a_method"))
+    decision, after = turn(progress, said("answer", "-4, 1", mistake="sign_flip"))
+    assert (decision.rule, decision.action, decision.mistake) == ("R7", "explain", "sign_flip")
+    assert after == progress
+    decision, _ = turn(progress, said("answer", "12", mistake="not_listed"))    # an unknown id moves on as before
+    assert (decision.rule, decision.action) == ("R0", "next_step")
 
 
 def test_unclear_while_teaching_repeats_last_reply():
@@ -466,7 +477,7 @@ def test_s0_resets_every_needs_review_and_keeps_last_check():
     progress = progress_with(mastered("alpha"), needs_review("beta", "b_cases", "b2"),
                              needs_review("gamma", "g_example", "g1"))
     before = copy.deepcopy(progress)
-    decision, after = engine.start(progress, CUR, new_session=True)
+    decision, after = sessions.start(progress, CUR, new_session=True)
     check_decision(decision)
     assert (decision.rule, decision.action, decision.concept_id) == ("S0", "greet", "beta")
     assert (decision.resume_concept_id, decision.clear_board) == ("beta", True)
@@ -474,7 +485,7 @@ def test_s0_resets_every_needs_review_and_keeps_last_check():
     assert after["gamma"] == ConceptState("gamma", status="teaching", step_id="g_plan", last_check_id="g1")
     assert after["alpha"] == before["alpha"] and progress == before         # input unchanged
     # a brand-new student starts the first concept at step 1
-    decision, after = engine.start(progress_with(), CUR, new_session=True)
+    decision, after = sessions.start(progress_with(), CUR, new_session=True)
     assert decision.resume_concept_id == "alpha"
     assert after["alpha"] == ConceptState("alpha", status="teaching", step_id="a_intro")
 
@@ -482,7 +493,7 @@ def test_s0_resets_every_needs_review_and_keeps_last_check():
 def test_s1_continues_without_clear():
     progress = progress_with(mastered("alpha"), needs_review("beta", "b_cases", "b2"),
                              asking("g2", cid="gamma", points=1.0, hint_level=2))
-    decision, after = engine.start(progress, CUR, new_session=False)
+    decision, after = sessions.start(progress, CUR, new_session=False)
     check_decision(decision)
     assert (decision.rule, decision.action, decision.resume_concept_id, decision.clear_board) == \
         ("S1", "resume", "gamma", False)
@@ -491,13 +502,78 @@ def test_s1_continues_without_clear():
 
 def test_s0_with_everything_final_resumes_none():
     done = progress_with(mastered("alpha"), mastered("beta"), mastered("gamma"))
-    decision, after = engine.start(done, CUR, new_session=True)
+    decision, after = sessions.start(done, CUR, new_session=True)
     check_decision(decision)
     assert (decision.rule, decision.concept_id, decision.resume_concept_id) == ("S0", None, None)
     assert after == done
     final = progress_with(mastered("alpha"), needs_review("beta", "b_cases", "b2"), mastered("gamma"))
-    decision, after = engine.start(final, CUR, new_session=False)          # S1 never resets a review
+    decision, after = sessions.start(final, CUR, new_session=False)          # S1 never resets a review
     assert (decision.rule, decision.resume_concept_id) == ("S1", None) and after == final
+
+
+# ---------- the student picks a concept (S2) ----------
+def jump(progress: Progress, concept_id: str) -> tuple[Decision, Progress]:
+    """sessions.jump(), plus: the input progress is unchanged and the decision passes check_decision()."""
+    before = copy.deepcopy(progress)
+    decision, after = sessions.jump(progress, CUR, concept_id)
+    assert progress == before, "jump() changed its input"
+    return check_decision(decision), after
+
+
+def test_jump_pauses_the_current_concept_and_starts_the_picked_one():
+    progress = progress_with(asking("a2", points=1.0, hint_level=2))
+    decision, after = jump(progress, "gamma")
+    assert (decision.rule, decision.action, decision.concept_id) == ("S2", "jump", "gamma")
+    assert (decision.resume_concept_id, decision.clear_board, decision.evidence["from"]) == ("gamma", True, "alpha")
+    assert after["alpha"] == ConceptState("alpha", status="paused", points=1.0, pending=Pending("a2", hint_level=2),
+                                          last_check_id="a2")             # everything kept, just paused
+    assert after["gamma"] == ConceptState("gamma", status="teaching", step_id="g_plan")
+    assert engine.current_concept(after, CUR) == "gamma"
+
+
+def test_jump_from_nothing_active_names_nothing_left():
+    decision, after = jump(progress_with(), "gamma")                  # a new student: alpha was never started
+    assert decision.evidence["from"] is None and "paused" not in decision.reason
+    assert after["alpha"].status == "not_started" and after["gamma"].status == "teaching"
+
+
+def test_jump_back_resumes_a_paused_concept_where_it_stopped():
+    paused_question = ConceptState("alpha", status="paused", points=1.0, pending=Pending("a2", hint_level=2),
+                                   last_check_id="a2")
+    paused_step = ConceptState("beta", status="paused", step_id="b_cases")
+    progress = progress_with(paused_question, paused_step, teaching_at("g_example", cid="gamma"))
+    decision, after = jump(progress, "alpha")
+    assert after["alpha"] == replace(paused_question, status="checking") and decision.hint_level == 2
+    assert after["gamma"].status == "paused" and after["beta"] == paused_step
+    decision, after = jump(after, "beta")
+    assert after["beta"] == replace(paused_step, status="teaching") and after["alpha"].status == "paused"
+
+
+def test_jump_to_a_finished_concept_starts_it_again():
+    progress = progress_with(mastered("alpha"), needs_review("beta", "b_cases", "b2"), asking("g1", cid="gamma"))
+    for cid, last_check in (("alpha", None), ("beta", "b2")):
+        decision, after = jump(progress, cid)
+        assert after[cid] == ConceptState(cid, status="teaching", step_id=CUR.concepts[cid].steps[0].id,
+                                          last_check_id=last_check)     # points reset; the next question follows on
+        assert "again" in decision.reason and after["gamma"].status == "paused"
+
+
+def test_jump_pauses_every_active_concept():
+    # a new session puts each concept marked for review back into teaching, so more than one can be active
+    progress = progress_with(teaching_at("a_intro"), teaching_at("b_what", cid="beta"))
+    decision, after = jump(progress, "gamma")
+    assert [after[cid].status for cid in CUR.order] == ["paused", "paused", "teaching"]
+    assert engine.current_concept(after, CUR) == "gamma"
+
+
+def test_paused_concepts_come_back_in_order_and_end_waits_for_them():
+    progress = progress_with(ConceptState("alpha", status="paused", step_id="a_method"),
+                             asking("b3", cid="beta", points=1.0), mastered("gamma"))
+    decision, after = turn(progress, said("answer", "no", working=True), graded("correct", "no"))
+    assert (decision.rule, decision.action, decision.resume_concept_id) == ("R1", "mastered", "alpha")
+    assert after["alpha"] == ConceptState("alpha", status="teaching", step_id="a_method")
+    assert engine.current_concept(progress_with(ConceptState("beta", status="paused", step_id="b_what")),
+                                  CUR) == "alpha"                          # unstarted and paused, in order
 
 
 # ---------- lesson files edited between turns ----------
@@ -512,40 +588,40 @@ def edited(cid: str, step: str | None = None, check: str | None = None) -> Curri
 
 def test_reconcile_missing_step_while_teaching():
     progress = progress_with(teaching_at("a_method", last_check_id="a1"))
-    after, issues, replaced = engine.reconcile(progress, edited("alpha", step="a_method"))
+    after, issues, replaced = sessions.reconcile(progress, edited("alpha", step="a_method"))
     assert (after["alpha"].step_id, issues, replaced) == ("a_intro", ["curriculum_changed"], False)
     assert after["alpha"].last_check_id == "a1" and progress["alpha"].step_id == "a_method"
     checking = asking("a1")
     checking.step_id = "a_method"                                  # a step only matters while teaching
     progress = progress_with(checking)
-    assert engine.reconcile(progress, edited("alpha", step="a_method")) == (progress, [], False)
+    assert sessions.reconcile(progress, edited("alpha", step="a_method")) == (progress, [], False)
 
 
 def test_reconcile_missing_pending_check_asks_next_fresh():
     progress = progress_with(asking("a2", points=1.0, hint_level=2, followup_used=True, last_answer="12"))
     cur = edited("alpha", check="a2")
-    after, issues, replaced = engine.reconcile(progress, cur)
+    after, issues, replaced = sessions.reconcile(progress, cur)
     assert (issues, replaced) == (["curriculum_changed"], True)
     state = after["alpha"]
     assert state.pending == Pending("a1") and state.last_check_id == "a1"        # a fresh pending
     assert state.status == "checking" and state.points == 1.0                    # points are kept
-    decision = check_decision(engine.lesson_changed(after, cur))
+    decision = check_decision(sessions.lesson_changed(after, cur))
     assert (decision.rule, decision.action, decision.concept_id, decision.ask_check_id) == \
         ("R8", "lesson_changed", "alpha", "a1")
     assert "lesson changed" in decision.reason
-    assert engine.reconcile(after, cur) == (after, [], False)                   # a second pass finds nothing
+    assert sessions.reconcile(after, cur) == (after, [], False)                   # a second pass finds nothing
     # another concept's question is fixed too, but this turn's reply is still marked
     progress = progress_with(teaching_at("a_method"), asking("g2", cid="gamma"))
-    after, issues, replaced = engine.reconcile(progress, edited("gamma", check="g2"))
+    after, issues, replaced = sessions.reconcile(progress, edited("gamma", check="g2"))
     assert (after["gamma"].pending, issues, replaced) == (Pending("g1"), ["curriculum_changed"], False)
 
 
 def test_reconcile_unknown_last_check_falls_back_to_first():
     cur = edited("alpha", check="a3")
-    after, _, replaced = engine.reconcile(progress_with(asking("a3", hint_level=1)), cur)
+    after, _, replaced = sessions.reconcile(progress_with(asking("a3", hint_level=1)), cur)
     assert replaced and after["alpha"].pending == Pending("a1")       # check 1, not the one after a3's old place
     # while teaching, an unknown last question needs no fix: the first question asked is check 1
-    after, issues, _ = engine.reconcile(progress_with(teaching_at("a_check", last_check_id="a3")), cur)
+    after, issues, _ = sessions.reconcile(progress_with(teaching_at("a_check", last_check_id="a3")), cur)
     assert issues == []
     decision, after = turn(after, said("next"), cur=cur)
     assert decision.ask_check_id == "a1" and after["alpha"].pending == Pending("a1")
@@ -568,7 +644,7 @@ def test_replay_instead_undoes_strategy():
 
 
 def test_limit_and_end_decisions():
-    for decision, rule, action in ((engine.limit_decision(), "LIMIT", "limit"),
+    for decision, rule, action in ((sessions.limit_decision(), "LIMIT", "limit"),
                                    (engine.end_decision(), "END", "end")):
         check_decision(decision)
         assert (decision.rule, decision.action, decision.concept_id) == (rule, action, None)
@@ -600,16 +676,16 @@ def test_only_a_new_question_clears_the_board():
         decision, _ = turn(progress, understood, grade)
         assert (decision.rule, decision.action, decision.clear_board) == (rule, action, clears)
     lesson = edited("alpha", check="a1")                  # the open question was removed: a new one is asked
-    after, _, replaced = engine.reconcile(progress_with(asking("a1")), lesson)
-    decision = check_decision(engine.lesson_changed(after, lesson))
+    after, _, replaced = sessions.reconcile(progress_with(asking("a1")), lesson)
+    decision = check_decision(sessions.lesson_changed(after, lesson))
     assert replaced and (decision.action, decision.clear_board) == ("lesson_changed", True)
 
 
 def test_s1_clears_the_board_only_when_the_lesson_replaced_the_open_question():
     lesson = edited("alpha", check="a1")
-    after, _, replaced = engine.reconcile(progress_with(asking("a1", hint_level=1)), lesson)
-    decision, _ = engine.start(after, lesson, new_session=False, replaced=replaced)
+    after, _, replaced = sessions.reconcile(progress_with(asking("a1", hint_level=1)), lesson)
+    decision, _ = sessions.start(after, lesson, new_session=False, replaced=replaced)
     check_decision(decision)
     assert (decision.rule, decision.resume_concept_id, decision.clear_board) == ("S1", "alpha", True)
-    decision, _ = engine.start(after, lesson, new_session=False, replaced=False)
+    decision, _ = sessions.start(after, lesson, new_session=False, replaced=False)
     assert (decision.rule, decision.clear_board) == ("S1", False)

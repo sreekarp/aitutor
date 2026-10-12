@@ -158,6 +158,25 @@ def key_text(check: Check) -> str:
     return KEY_WORDS[check.kind][key.word]
 
 
+def key_speech(check: Check) -> str:
+    """A word answer as the tutor says it (key_text is for the board): "Yes, minus 2 is a root"."""
+    if check.kind == "is_root":
+        value = say_number(_candidate(check))
+        return f"Yes, {value} is a root" if answer_key(check).word == "yes" else f"No, {value} is not a root"
+    return KEY_WORDS[check.kind][answer_key(check).word]
+
+
+def say_number(value) -> str:
+    """A number in words for speech: -2 -> "minus 2", 3/2 -> "3 over 2", 2 - sqrt(3) -> "2 minus root 3".
+    A voice reads the "-" of "-2" as a dash, so "x = -2" sounds like "x equals 2"."""
+    text = re.sub(r"sqrt\((\d+)\)", r"root \1", _show(value)).replace("*", " ")       # 2*sqrt(3) -> "2 root 3"
+    text = re.sub(r"(\d+)/(\d+)", r"\1 over \2", text).replace(" + ", " plus ").replace(" - ", " minus ")
+    text = re.sub(r"^-\s*", "minus ", text)
+    if re.search(r"[*/()]|sqrt", text):
+        raise ValueError(f"{value} can't be said in words")
+    return text
+
+
 def _left_minus_right(equation):
     """The check's equation L = R as the expanded polynomial L - R."""
     parsed = parse_check(equation)
