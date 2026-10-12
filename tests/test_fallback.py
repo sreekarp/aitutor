@@ -132,6 +132,15 @@ def test_a_confused_reply_that_mentions_making_sense_does_not_go_on(cur):
     assert understand(cur, "that makes sense, why is it zero?", phase="teaching").type == "question"
 
 
+def test_i_know_this_is_test_me_only_as_a_whole_reply(cur):
+    for text in ("I know this", "I already know this.", "i already know it"):
+        assert fallback.keyword(text, "teaching") == "test_me", text
+    for text in ("I know this is hard", "I already know this part, but why is it zero?"):
+        assert fallback.keyword(text, "teaching") is None, text
+        assert understand(cur, text, phase="teaching").type != "test_me", text
+    assert understand(cur, "I already know this, test me", phase="teaching").type == "test_me"      # via "test me"
+
+
 def test_understand_reads_test_me_not_sure_and_move_on_in_longer_replies(cur):
     teaching = {"I already know this, can you test me?": "test_me", "can you quiz me now": "test_me",
                 "I get it, test me": "test_me", "I'm not sure I follow that": "not_sure",

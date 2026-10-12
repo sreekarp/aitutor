@@ -65,8 +65,10 @@ GET_IT = phrases(*GET_ITS)
 GET_IT_WHOLE = phrases(*GET_ITS, "i get it", "makes sense")
 # What the student wants next: skip to the questions, or stop this topic. Read as a whole reply (keyword) and in
 # longer replies (understand).
-TEST_ME = phrases("test me", "test me first", "quiz me", "i already know this", "i already know it",
-                  "i know this", "skip to the questions")
+TEST_ME = phrases("test me", "test me first", "quiz me", "skip to the questions")
+# "i know this" counts only as a whole reply: inside a longer one ("I know this is hard") it isn't a request.
+TEST_ME_WHOLE = phrases("test me", "test me first", "quiz me", "skip to the questions", "i already know this",
+                        "i already know it", "i know this")
 MOVE_ON = phrases("move on", "no thanks", "stop here", "next topic")
 # Not following what was just explained. As a whole reply, "no" and "nahi" count only while teaching (NOT_SURE):
 # while a question is open they are answers (NOT_SURE_ASKED). In a longer reply UNSURE is read after answers, as
@@ -116,7 +118,7 @@ def keyword(text: str, phase: str) -> str | None:
         lists = [(NEXT, "next"), (GET_IT_WHOLE, "claims_understanding"), (NOT_SURE, "not_sure")]
     else:
         lists = [(NOT_SURE_ASKED, "not_sure")]
-    for pattern, kind in lists + [(MOVE_ON, "move_on"), (TEST_ME, "test_me")]:
+    for pattern, kind in lists + [(MOVE_ON, "move_on"), (TEST_ME_WHOLE, "test_me")]:
         if pattern.fullmatch(clean):
             return kind
     return None
