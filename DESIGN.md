@@ -67,7 +67,8 @@ CREATE TABLE turns (                   -- append-only: one row per reply, and pe
   latency_ms    JSON,                 -- per stage, plus the browser's prev_first_audio_ms, and for
                                       -- voice turns its mic_open_ms and recording_ms
   calls         JSON,                 -- per model call: role, model, ms, outcome, retried,
-                                      -- backup_used, tokens, cost
+                                      -- backup_used, tokens, cost; speech-to-text also keeps
+                                      -- seconds, the clip's length, when OpenRouter sends it
   issues        JSON,                 -- rejected outputs and why, fallbacks, lesson changes, safety
   created_at    DATETIME
 );
@@ -99,6 +100,9 @@ Why it looks like this:
   started.
 - **Positions are ids, not numbers.** `step_id` and `pending.check_id` name the step and the
   question, so editing a lesson file can't silently move a student (section 2).
+- **Every new question, new topic and new session starts on a clean board,** so a question never
+  shares the board with an earlier one's working; a hint, an explanation or a re-ask of the same
+  question keeps the board.
 - **Versions are stamped twice:** on the session (what was configured when it started) and on
   every turn (what that turn actually used), and every model call in `calls` names its model. Any
   metric can be sliced by prompt, model or curriculum version.
@@ -178,11 +182,12 @@ Every turn writes one `turns` row, one `decisions` row and one JSON log line to 
 fields: session, turn and student ids; the session's and the turn's versions; phase; what
 UNDERSTAND made of the reply; SymPy's verdict; the decision's rule and reason; milliseconds per
 stage (for a voice turn, also the browser's mic-open and recording times); each model call's model,
-time, outcome, retry, backup, tokens and cost; and any issues. An issue is a rejected model output
-with its exact problems (not JSON, bad maths, a revealed answer, LaTeX in speech), a fall back to
-scripted words, a lesson change, a safety review or an internal error. A safety review is a reply
-caught by the keyword safety check (`app/safety.py`, run before anything else reads the reply) or by
-UNDERSTAND's safety flag. A safety review and a model's breaker opening also write a warning line.
+time, outcome, retry, backup, tokens and cost (for speech-to-text, also the clip's length in
+seconds); and any issues. An issue is a rejected model output with its exact problems (not JSON, bad
+maths, a revealed answer, LaTeX in speech), a fall back to scripted words, a lesson change, a safety
+review or an internal error. A safety review is a reply caught by the keyword safety check
+(`app/safety.py`, run before anything else reads the reply) or by UNDERSTAND's safety flag. A safety
+review and a model's breaker opening also write a warning line.
 
 Alerts *(designed, not built; thresholds are targets to tune)*:
 
@@ -363,6 +368,11 @@ Known gaps, after the build:
   students are LLMs with their own biases. Real student sessions are the missing check.
 - **Hinglish speech is untested.** Two eval scenarios type Hinglish, but no Hinglish recording has
   been through speech-to-text, and the voice ("sarah", chosen by listening) isn't Indian English.
+- **Speech-to-text can mishear,** sometimes into words nobody said or another script. While a
+  question is open, a spoken reply UNDERSTAND can't place (unclear or off-topic) gets "Sorry, I may
+  have misheard you. Say it again, or type it." and the question again; no transcript at all gets
+  "Sorry, I didn't catch that. Say it again, or type it." A mishearing that reads as a real reply,
+  like a wrong number or "I don't know", is still taken at its word.
 
 With two more days: measure a real voice session and act on it, stream LLM output into segments,
 add barge-in, check a student's spoken working for the exact slip, and run ten real students

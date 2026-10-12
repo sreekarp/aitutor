@@ -1,11 +1,12 @@
 """app/tutor.py and app/llm_steps.py with the LLM: a fake client plays UNDERSTAND and RESPOND."""
-from conftest import FakeLLM
+import pytest
+from conftest import FakeLLM, new_question, new_student
 
 from app import curriculum, db
 from app.config import POINTS_TO_MASTER, Settings
-from app.fallback import REVIEW_LATER
+from app.fallback import REVIEW_LATER, SAFETY_REPLY
 from app.llm import ProviderError
-from app.tutor import Tutor
+from app.tutor import MISHEARD, Tutor
 
 SETTINGS = Settings(openrouter_api_key="test-key", access_code="test", session_secret="test",
                     database_url="sqlite://", llm_mode="auto", max_turns_per_day=1000, tts_voice="sarah",
@@ -141,7 +142,7 @@ def test_llm_reteach_is_checked_against_the_next_question(cur, db_engine):
     assert result.decision.strategy == "worked_example"
     assert factorisation_state(db_engine, cur, student_id).strategies_tried == ["worked_example"]
     assert [segment.say for segment in result.segments[:3]] == [s["say"] for s in worked["segments"]]
-    assert result.segments[-1] == curriculum.ask_segment(next_check, cur.formulas)
+    assert result.segments[-1] == new_question(next_check, cur.formulas)
     assert "NEXT ANSWER KEY: -1/3, 2" in fake.asked[1][1][1]["content"]
 
 
@@ -175,3 +176,43 @@ def test_after_a_topic_start_understand_still_reads_the_real_last_line(cur, db_e
     assert f"TUTOR'S LAST LINE: {first.segments[-1].say}" in fake.asked[0][1][1]["content"]
     step_1 = cur.concepts["standard_form"].steps[0].segments
     assert [segment.say for segment in result.segments] == [segment.say for segment in step_1]
+
+
+# ---------- spoken replies the tutor can't place: the mic may have misheard ----------
+@pytest.mark.parametrize("kind, heard", [("unclear", "Кама майна."), ("off_topic", "Experience is the best teacher.")])
+def test_spoken_reply_nobody_can_place_while_checking_may_be_misheard(cur, db_engine, kind, heard):
+    """Speech-to-text can turn an answer into words nobody said. While a question is open, the tutor says it may
+    have misheard, asks the question again and suggests typing. Nothing else changes."""
+    tutor, student_id = at_first_question(cur, db_engine, FakeLLM(understand=[understood(kind)]))
+    before = factorisation_state(db_engine, cur, student_id)
+    result = tutor.turn(student_id, heard, input_mode="voice")
+    fa1 = cur.concepts["factorisation"].checks[0]
+    assert [segment.say for segment in result.segments] == [MISHEARD, fa1.say]
+    assert (result.decision.rule, result.input_hint, result.transcript) == ("R8", "type", heard)
+    assert factorisation_state(db_engine, cur, student_id) == before
+
+
+def test_spoken_off_topic_reply_while_teaching_still_replays_the_step(cur, db_engine):
+    """While teaching, a spoken reply nobody can place replays the step as before, and "say again" still works."""
+    tutor = Tutor(cur, db_engine, SETTINGS, llm=FakeLLM(understand=[understood("off_topic")]))
+    student_id = new_student(db_engine, cur)
+    tutor.start(student_id)                               # greeting, intro, step 1
+    step_1 = [segment.say for segment in cur.concepts["factorisation"].steps[0].segments]
+    heard = tutor.turn(student_id, "Experience is the best teacher.", input_mode="voice")
+    again = tutor.turn(student_id, "say again")
+    assert [segment.say for segment in heard.segments] == step_1 == [segment.say for segment in again.segments]
+
+
+def test_misheard_is_only_for_spoken_replies_nobody_can_place(cur, db_engine):
+    """A typed reply, a spoken one UNDERSTAND can read (here Hindi), a spoken "say again" and a spoken safety
+    reply are answered as before."""
+    fake = FakeLLM(understand=[understood("off_topic"), understood("dont_know")], respond=[HINT])
+    tutor, student_id = at_first_question(cur, db_engine, fake)
+    typed = tutor.turn(student_id, "can we play cricket later?")
+    assert (typed.segments[0].say, typed.input_hint) == ("Let me ask that again.", None)
+    hindi = tutor.turn(student_id, "मुझे नहीं पता", input_mode="voice")           # "I don't know"
+    assert (hindi.decision.rule, hindi.decision.action) == ("R4", "hint")
+    again = tutor.turn(student_id, "say again", input_mode="voice")
+    assert again.segments[0].say == "Let me ask that again."
+    safe = tutor.turn(student_id, "I want to die", input_mode="voice")
+    assert (safe.decision.rule, safe.segments[0].say, safe.input_hint) == ("R10", SAFETY_REPLY, None)

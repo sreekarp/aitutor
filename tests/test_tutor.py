@@ -4,7 +4,7 @@ import json
 from dataclasses import replace
 
 import pytest
-from conftest import new_student, progress_of, said_with_working
+from conftest import new_question, new_student, progress_of, said_with_working
 
 from app import curriculum, db, engine, grading, page
 from app.config import MAX_INPUT_CHARS, Settings
@@ -44,7 +44,7 @@ def test_full_pass_through_factorisation_scripted(tutor, db_engine, cur):
     state = progress_of(db_engine, cur, student_id)["factorisation"]
     assert (result.decision.rule, result.decision.action) == ("R0", "start_check")
     assert state.status == "checking" and state.pending == Pending(concept.checks[0].id)
-    assert result.segments[-1] == curriculum.ask_segment(concept.checks[0], cur.formulas)
+    assert result.segments[-1] == new_question(concept.checks[0], cur.formulas)
 
     first = concept.checks[0]
     result = tutor.turn(student_id, said_with_working(first))
@@ -88,7 +88,7 @@ def test_wrong_trap_answer_reteaches_and_asks_next(tutor, db_engine, cur):
     fix = next(mistake.fix for mistake in concept.mistakes if mistake.id == mistake_id)
     assert any(fix in say for say in says)
     assert all(segment.say in says for segment in curriculum.get_step(concept, concept.reteach_step).segments)
-    assert result.segments[-1] == curriculum.ask_segment(curriculum.get_check(concept, next_id), cur.formulas)
+    assert result.segments[-1] == new_question(curriculum.get_check(concept, next_id), cur.formulas)
     assert grading.key_text(check) not in decision.reason
 
 
@@ -130,7 +130,7 @@ def test_turn_after_check_removed(db_engine, cur):
     assert "curriculum_changed" in result.issues and result.grade is None
     new_id = curriculum.next_check_id(concept, removed.id)       # the removed id is unknown -> check 1
     assert progress_of(db_engine, edited, student_id)["factorisation"].pending == Pending(new_id)
-    assert result.segments[-1] == curriculum.ask_segment(curriculum.get_check(concept, new_id), edited.formulas)
+    assert result.segments[-1] == new_question(curriculum.get_check(concept, new_id), edited.formulas)
 
 
 def test_limit_reached(db_engine, cur):
@@ -175,6 +175,17 @@ def test_stt_failed_turn_asks_to_type(tutor, db_engine, cur):
     assert result.segments[-1] == curriculum.ask_segment(check, cur.formulas)    # while checking: the question again
     assert result.input_hint == "type"
     assert progress_of(db_engine, cur, student_id)["factorisation"].pending == Pending(check.id)
+
+
+def test_say_again_after_didnt_catch_replays_the_step(tutor, db_engine, cur):
+    """While teaching, "say again" right after a lone "didn't catch that" replays the step, not the apology."""
+    student_id = new_student(db_engine, cur)
+    tutor.start(student_id)                                      # greeting, intro, step 1
+    sorry = tutor.turn(student_id, "", input_mode="voice", stt_failed=True)
+    assert [segment.say for segment in sorry.segments] == [DIDNT_CATCH]
+    again = tutor.turn(student_id, "say again")
+    step_1 = cur.concepts["factorisation"].steps[0].segments
+    assert [segment.say for segment in again.segments] == [segment.say for segment in step_1]
 
 
 def test_payload_shape(tutor, db_engine, cur):

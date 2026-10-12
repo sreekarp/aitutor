@@ -45,8 +45,10 @@ def decide(progress: Progress, cur: Curriculum, understood: Understood,
     return decision, after
 
 
-def start(progress: Progress, cur: Curriculum, *, new_session: bool) -> tuple[Decision, Progress]:
-    """S0 (a new session) or S1 (carry on): resume the current concept where it stands."""
+def start(progress: Progress, cur: Curriculum, *, new_session: bool,
+          replaced: bool = False) -> tuple[Decision, Progress]:
+    """S0 (a new session) or S1 (carry on): resume the current concept where it stands. S1 clears the board
+    only when the lesson files replaced the open question (replaced): that question is a new one."""
     after = copy.deepcopy(progress)
     if new_session:                                  # S0: every concept marked for review starts again
         for cid in cur.order:
@@ -60,7 +62,7 @@ def start(progress: Progress, cur: Curriculum, *, new_session: bool) -> tuple[De
         return _make("S0", "greet", state, f"New session: concepts marked for review start again from step 1, "
                      f"and {where}.", resume_concept_id=cid, clear_board=True), after
     return _make("S1", "resume", state, f"You're back within {SESSION_GAP_MIN} minutes, so {where}.",
-                 resume_concept_id=cid), after
+                 resume_concept_id=cid, clear_board=replaced), after
 
 
 def reconcile(progress: Progress, cur: Curriculum) -> tuple[Progress, list[str], bool]:
@@ -82,7 +84,7 @@ def lesson_changed(progress: Progress, cur: Curriculum) -> Decision:
     """R8 after reconcile() replaced the current question: this reply isn't marked; the new question is asked."""
     state = progress[current_concept(progress, cur)]
     return _make("R8", "lesson_changed", state, "The lesson changed, so your reply isn't marked and a new "
-                 "question is asked. Points are kept.", ask_check_id=state.pending.check_id)
+                 "question is asked. Points are kept.", ask_check_id=state.pending.check_id, clear_board=True)
 
 
 def limit_decision() -> Decision:
@@ -255,10 +257,10 @@ def replay_instead(decision: Decision, before: Progress, after: Progress) -> tup
 
 # ---------- small shared helpers ----------
 def _ask_next(state: ConceptState, concept: Concept, rule: str, action: str, reason: str, **extra) -> Decision:
-    """Ask the next question. Asking any question starts a fresh pending."""
+    """Ask the next question. Asking any question starts a fresh pending, on a clean board."""
     check_id = next_check_id(concept, state.last_check_id)
     state.status, state.pending, state.last_check_id = "checking", Pending(check_id), check_id
-    return _make(rule, action, state, reason, ask_check_id=check_id, **extra)
+    return _make(rule, action, state, reason, ask_check_id=check_id, clear_board=True, **extra)
 
 
 def _resume_next(after: Progress, cur: Curriculum) -> str | None:

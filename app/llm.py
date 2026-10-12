@@ -212,10 +212,12 @@ def _mp3_bytes(response: httpx.Response) -> bytes:
 
 
 def _usage(response: httpx.Response) -> dict:
-    """Tokens and cost from a JSON response's "usage" (audio responses have none)."""
+    """Tokens and cost from a JSON response's "usage" (audio responses have none), and for speech-to-text the
+    clip's length in seconds when OpenRouter sends it."""
     if "json" not in response.headers.get("content-type", ""):
         return {}
     usage = response.json().get("usage")
     if not isinstance(usage, dict):
         return {}
-    return {"tokens": usage.get("total_tokens"), "cost": usage.get("cost")}
+    seconds = {"seconds": usage["seconds"]} if "seconds" in usage else {}     # speech-to-text: the clip's length
+    return {"tokens": usage.get("total_tokens"), "cost": usage.get("cost"), **seconds}

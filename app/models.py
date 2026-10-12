@@ -169,7 +169,7 @@ class Decision:
     play_step_id: str | None = None        # play this step of concept_id after the words
     ask_check_id: str | None = None        # ask this question of concept_id after the words
     resume_concept_id: str | None = None   # resume this concept after the words
-    clear_board: bool = False              # clear the board before resuming / playing
+    clear_board: bool = False              # clear the board as a new question, topic or session starts
     reask: bool = False                    # add the short scripted re-ask after the words
 
 
@@ -215,7 +215,8 @@ class TurnContext:
     check: Check | None                # the pending question before decide() (None while teaching)
     text: str                          # the student's words, cut to MAX_INPUT_CHARS
     last_speech: list[Segment]         # what R8 replays: last turn's speech, without its board commands
-                                       # (right after a topic start or move-on: just the current step's speech)
+                                       # (right after a topic start or move-on, or a lone "didn't catch that"
+                                       # or "may have misheard": just the current step's speech)
     previous_reason: str               # reason of the previous turn's decision ("" if none)
     board: list[BoardLine]             # the session board before this turn
     deadline: float                    # time.monotonic() + TURN_DEADLINE_S, set at turn start

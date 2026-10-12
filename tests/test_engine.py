@@ -571,3 +571,43 @@ def test_limit_and_end_decisions():
         check_decision(decision)
         assert (decision.rule, decision.action, decision.concept_id) == (rule, action, None)
         assert (decision.resume_concept_id, decision.ask_check_id, decision.play_step_id) == (None, None, None)
+
+
+# ---------- the board: a new question starts clean ----------
+def test_only_a_new_question_clears_the_board():
+    """A new question starts on a clean board; a move about the same question keeps the board and its working."""
+    partial = graded("partial", "11", detail="missing")
+    cases = [   # (progress, reply, grade) -> (rule, action, clears the board)
+        (progress_with(teaching_at("a_check")), said("next"), None, "R0", "start_check", True),
+        (progress_with(teaching_at("a_intro")), said("claims_understanding"), None, "R6", "start_check", True),
+        (progress_with(asking("a1")), said("answer", "7, 11", working=True), graded("correct", "7, 11"),
+         "R1", "credit", True),
+        (progress_with(asking("a1")), said("answer", "-7, -11"), TRAP, "R3", "reteach", True),
+        (progress_with(asking("a1", hint_level=3)), said("answer", "12, 13"), WRONG, "R4", "reteach", True),
+        (progress_with(asking("a1")), said("answer", "7, 11"), graded("correct", "7, 11"), "R2", "probe", False),
+        (progress_with(asking("a1")), said("dont_know"), None, "R4", "hint", False),
+        (progress_with(asking("a1")), said("answer", "11"), partial, "R5", "follow_up", False),
+        (progress_with(asking("a1")), said("answer", "eleventy"), graded("unsure", "eleventy"), "R5", "clarify", False),
+        (progress_with(asking("a1")), said("claims_understanding"), None, "R6", "show_me", False),
+        (progress_with(asking("a1")), said("question"), None, "R7", "explain", False),
+        (progress_with(teaching_at("a_method")), said("question"), None, "R7", "explain", False),
+        (progress_with(asking("a1")), said("unclear"), None, "R8", "repeat", False),
+        (progress_with(teaching_at("a_method")), said("say_again"), None, "R8", "repeat", False),
+    ]
+    for progress, understood, grade, rule, action, clears in cases:
+        decision, _ = turn(progress, understood, grade)
+        assert (decision.rule, decision.action, decision.clear_board) == (rule, action, clears)
+    lesson = edited("alpha", check="a1")                  # the open question was removed: a new one is asked
+    after, _, replaced = engine.reconcile(progress_with(asking("a1")), lesson)
+    decision = check_decision(engine.lesson_changed(after, lesson))
+    assert replaced and (decision.action, decision.clear_board) == ("lesson_changed", True)
+
+
+def test_s1_clears_the_board_only_when_the_lesson_replaced_the_open_question():
+    lesson = edited("alpha", check="a1")
+    after, _, replaced = engine.reconcile(progress_with(asking("a1", hint_level=1)), lesson)
+    decision, _ = engine.start(after, lesson, new_session=False, replaced=replaced)
+    check_decision(decision)
+    assert (decision.rule, decision.resume_concept_id, decision.clear_board) == ("S1", "alpha", True)
+    decision, _ = engine.start(after, lesson, new_session=False, replaced=False)
+    assert (decision.rule, decision.clear_board) == ("S1", False)

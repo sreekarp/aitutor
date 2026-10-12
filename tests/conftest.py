@@ -4,7 +4,7 @@ import pytest
 from app import curriculum, db, grading
 from app.config import POINTS_TO_MASTER, Settings
 from app.llm import BadOutputError
-from app.models import ConceptState, Curriculum, Progress
+from app.models import BoardCommand, ConceptState, Curriculum, Progress, Segment
 
 
 @pytest.fixture(scope="session")
@@ -56,7 +56,8 @@ class FakeLLM:
                     raise BadOutputError(str(err)) from None
 
 
-# ---------- whole-turn tests (use: from conftest import new_student, progress_of, said_with_working) ----------
+# ---------- whole-turn tests ----------
+# (use: from conftest import new_student, progress_of, said_with_working, new_question)
 def new_student(db_engine, cur, mastered=None):
     """Asha, with the concepts before factorisation mastered (or the ones given), so factorisation is current."""
     with db_engine.begin() as conn:
@@ -77,6 +78,12 @@ def progress_of(db_engine, cur, student_id):
 def said_with_working(check):
     """The right answer, said first (scripted mode reads values before "because"), then the working."""
     return " and ".join(str(value) for value in grading.answer_key(check).values) + " because I factorised it"
+
+
+def new_question(check, formulas) -> Segment:
+    """How a NEW question is asked: its own segment clears the board first, then writes the question."""
+    asked = curriculum.ask_segment(check, formulas)
+    return Segment(say=asked.say, board=[BoardCommand(op="clear"), *asked.board])
 
 
 # ---------- web tests ----------

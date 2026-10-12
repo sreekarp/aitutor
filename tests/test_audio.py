@@ -1,13 +1,14 @@
 """Voice: the audio turn route, speech-to-text failures and the text-to-speech cache."""
 import hashlib
 
+import httpx
 import pytest
 from conftest import make_settings, sign_in
 from fastapi.testclient import TestClient
 
 from app import db, voice
 from app.config import MODELS
-from app.llm import ProviderError
+from app.llm import Client, ProviderError
 from app.main import create_app
 from app.tutor import DIDNT_CATCH, Tutor
 
@@ -79,6 +80,20 @@ def test_turn_audio_transcribes_then_runs_turn(cur, db_engine):
     assert saved["latency_ms"]["mic_open_ms"] == 640      # the browser's Speak click -> recording started
     assert saved["latency_ms"]["recording_ms"] == 1500    # and recording started -> Stop
     assert "stt" in saved["latency_ms"] and "total" in saved["latency_ms"]
+
+
+def test_the_clip_length_is_kept_with_the_speech_to_text_call(cur, db_engine):
+    """OpenRouter's speech-to-text usage says how long the clip was ("seconds"); the turn's calls keep it."""
+    usage = {"seconds": 2.5, "input_tokens": 25, "output_tokens": 8, "total_tokens": 33, "cost": 0.00007125}
+    openrouter = httpx.MockTransport(lambda request: httpx.Response(200, json={"text": "ok", "usage": usage}))
+    tutor = Tutor(cur, db_engine, VOICE_ON, Client("test-key", http=httpx.Client(transport=openrouter)))
+    with db_engine.begin() as conn:
+        student_id = db.get_or_create_student(conn, "asha", "Asha")["id"]
+    tutor.start(student_id)
+    result = voice.turn_audio(tutor, student_id, SPEECH, "audio/webm")       # "ok": no other model call
+    with db_engine.connect() as conn:
+        calls = db.get_turn(conn, result.turn_id)["calls"]
+    assert [(call["role"], call.get("seconds"), call["tokens"]) for call in calls] == [("stt", 2.5, 33)]
 
 
 def test_audio_route_runs_a_turn(cur, tmp_path):

@@ -17,6 +17,7 @@ from app.models import (BoardCommand, Curriculum, Decision, Grade, Progress, Seg
 log = logging.getLogger(__name__)
 
 DIDNT_CATCH = "Sorry, I didn't catch that. Say it again, or type it."
+MISHEARD = "Sorry, I may have misheard you. Say it again, or type it."   # a spoken reply nobody could place
 SORRY = "Sorry, let's try that again."
 RESUMING = ("greet", "resume", "mastered", "needs_review")    # actions that go on to the current concept
 LOG_FIELDS = ("session_id", "student_id", "versions", "phase", "understood", "grade", "latency_ms", "calls", "issues")
@@ -47,8 +48,8 @@ class Tutor:
                 session = db.create_session(conn, student_id, curriculum_version=self.cur.version,
                                             prompt_versions=PROMPT_VERSIONS, models=models)
         try:
-            ctx, _ = self._context(student_id, session, "", started, [], {})
-            decision, after = engine.start(ctx.before, self.cur, new_session=new_session)
+            ctx, replaced = self._context(student_id, session, "", started, [], {})
+            decision, after = engine.start(ctx.before, self.cur, new_session=new_session, replaced=replaced)
             words = fallback.words(decision, cur=self.cur, progress=after, check=None, grade=None,
                                    first_name=ctx.student["first_name"])
             return self._finish(ctx, "start", None, None, decision, after, words)
@@ -93,12 +94,13 @@ class Tutor:
             if ctx.check and understood.answer and not understood.safety:    # grade answers while checking
                 grade = _timed(ctx, "grade", grading.grade, ctx.check, understood.answer)
             decision, after = _timed(ctx, "decide", engine.decide, ctx.before, self.cur, understood, grade)
-        if stt_failed and decision.action == "repeat":
-            words = [Segment(say=DIDNT_CATCH)]               # while checking, compose asks the question again
+        misheard = _misheard(ctx, input_mode, understood, decision)
+        if (stt_failed or misheard) and decision.action == "repeat":
+            words = [Segment(say=DIDNT_CATCH if stt_failed else MISHEARD)]   # while checking, compose asks again
         else:
             words, decision, after = _timed(ctx, "respond", llm_steps.respond, self.llm, self.cur, ctx, decision,
                                             after, understood or Understood(type="unclear"), grade)
-        hint = _input_hint(decision, understood, stt_failed)
+        hint = _input_hint(decision, understood, stt_failed or misheard)
         return self._finish(ctx, input_mode, understood, grade, decision, after, words, hint)
 
     def _context(self, student_id: str, session: dict, text: str, started: float, calls: list,
@@ -115,9 +117,11 @@ class Tutor:
         pending = before[concept_id].pending if concept_id else None
         said = [Segment(say=seg["say"]) for seg in last["tutor_output"]["segments"] if seg["say"]] if last else []
         step = curriculum.get_step(concept, before[concept_id].step_id) if concept and not pending else None
-        if step and last and last["action"] in RESUMING:
+        apology_only = [segment.say for segment in said] in ([DIDNT_CATCH], [MISHEARD])
+        if step and last and (last["action"] in RESUMING or apology_only):
             # After a topic start or move-on, "say again" replays just the step: not the greeting, intro or praise.
-            # That reply ended with the step, so UNDERSTAND's "tutor's last line" is still its real last line.
+            # After a lone apology ("didn't catch that", "may have misheard"), the step too, not the apology.
+            # Either way UNDERSTAND's "tutor's last line" is the step's last line: the line being answered.
             said = [Segment(say=segment.say) for segment in step.segments]
         ctx = TurnContext(
             student=student, session=session, concept=concept, phase="checking" if pending else "teaching",
@@ -220,10 +224,19 @@ def _recent(turn: dict | None) -> bool:
     return turn is not None and datetime.now(timezone.utc) - turn["created_at"] < timedelta(minutes=SESSION_GAP_MIN)
 
 
-def _input_hint(decision: Decision, understood: Understood | None, stt_failed: bool) -> str | None:
-    """"type" when the reply suggests typing: R5 clarify, R8 after an unclear reply, or a failed recording."""
+def _misheard(ctx: TurnContext, input_mode: str, understood: Understood | None, decision: Decision) -> bool:
+    """R8 while checking after a spoken reply UNDERSTAND couldn't place ("unclear" or "off_topic"): the mic may
+    have misheard it, so the tutor says so before asking again. (While teaching, R8 says the last step or reply
+    again instead, as before.)"""
+    return (input_mode == "voice" and ctx.phase == "checking" and decision.action == "repeat"
+            and understood is not None and understood.type in ("unclear", "off_topic"))
+
+
+def _input_hint(decision: Decision, understood: Understood | None, not_heard: bool) -> str | None:
+    """"type" when the reply suggests typing: R5 clarify, R8 after an unclear reply, or speech that wasn't heard
+    (a failed recording, or a spoken reply that may have been misheard)."""
     unclear = understood is not None and understood.type == "unclear" and decision.action == "repeat"
-    return "type" if stt_failed or decision.action == "clarify" or unclear else None
+    return "type" if not_heard or decision.action == "clarify" or unclear else None
 
 
 def _log_turn(ctx: TurnContext, turn_id: str, row: dict, decision: Decision) -> None:
