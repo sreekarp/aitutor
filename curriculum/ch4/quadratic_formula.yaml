@@ -5,7 +5,7 @@ id: quadratic_formula
 title: The quadratic formula
 ncert: "4.4 opening, Example 8"
 intro: "Some quadratics are hard to factorise by splitting the middle term, and some can't be. If the roots are real, the quadratic formula always finds them, using just a, b and c."
-aliases: [quadratic formula, the formula]
+aliases: [quadratic formula]
 
 steps:
   - id: the_formula

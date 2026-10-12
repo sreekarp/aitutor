@@ -169,7 +169,7 @@ class Tutor:
         """Compose, update the board, then save progress, turn, decision and board in one transaction."""
         lone_apology = [segment.say for segment in words] == [DIDNT_CATCH]    # asks for the reply: no cue after it
         segments = words + compose.compose(self.cur, ctx, decision, after, with_cue=not lone_apology)
-        shown = compose.shown_action(ctx, decision)       # a replay keeps the buttons of the cue it replays
+        shown = compose.shown_action(ctx, decision, lone_apology)     # a replay keeps its cue's buttons
         choices = [] if decision.rule in compose.NO_CUE else compose.cue_for(self.cur, after, shown)[1]
         new_board = board.apply(ctx.board, segments, self.cur.formulas)
         if decision.rule == "R10":

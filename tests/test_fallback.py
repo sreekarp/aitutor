@@ -46,10 +46,22 @@ def test_keyword_reads_got_it_test_me_not_sure_and_move_on():
 def test_yes_and_no_while_a_question_is_open_are_answers_never_go_on_or_not_sure():
     """A yes/no question ("is it a quadratic?") is answered with "yes", "no", "haan" or "nahi". The fast path must
     leave all of them to be graded, however they're spelled; only while teaching do they mean go on / not sure."""
-    for text in ("yes", "Yes.", "no", "No!", "haan", "Haan ji", "nahi", "Nahi."):
+    for text in ("yes", "Yes.", "no", "No!", "haan", "Haan ji", "nahi", "Nahi.", "yeah", "nope"):
         assert fallback.keyword(text, "checking") is None, text
     assert fallback.keyword("yes", "teaching") == "next"
     assert fallback.keyword("haan", "teaching") == "next"
+
+
+def test_natural_replies_to_a_check_in_go_on_or_are_not_sure_while_teaching():
+    """"Yeah", "sure" and "go ahead" answer "Shall we go on?"; "nope" and "not really" answer "Did that make sense?"
+    with no. "teach me please" and "i know this" are whole replies too."""
+    for text in ("yeah", "Yep!", "yup", "Sure", "yes please", "Go ahead", "alright", "teach me please"):
+        assert fallback.keyword(text, "teaching") == "next", text
+    for text in ("nope", "Nope.", "not really"):
+        assert fallback.keyword(text, "teaching") == "not_sure", text
+    assert fallback.keyword("I know this", "teaching") == fallback.keyword("i know this", "checking") == "test_me"
+    for text in ("sure", "yep", "not really"):                          # while a question is open they are answers
+        assert fallback.keyword(text, "checking") is None, text
 
 
 def test_pardon_sorry_what_and_come_again_ask_to_hear_it_again():
@@ -69,7 +81,7 @@ def aliases(cur) -> dict[str, list[str]]:
 def test_topic_request_reads_a_move_to_a_named_topic(cur):
     asked = {"Can we skip to the factorization topic?": "factorisation",      # from the session log
              "move on to the discriminant": "discriminant", "Go back to roots, please": "roots",
-             "take me to the quadratic formula": "quadratic_formula", "Let's go to the formula": "quadratic_formula",
+             "take me to the quadratic formula": "quadratic_formula", "Let's go to the quadratic formula": "quadratic_formula",
              "switch to word problems": "word_problems", "jump to nature of the roots": "discriminant",
              "can we change to standard form now": "standard_form", "Skip to Factorising!": "factorisation"}
     for text, concept_id in asked.items():
@@ -89,7 +101,7 @@ def test_topic_request_needs_a_move_to_and_a_name_at_the_end(cur):
     reply: not a request. The first is from the session log."""
     for text in ("Okay, let's move on to the next step.", "move on", "skip to", "factorisation",
                  "I want to learn factorisation", "move to standard form, then factorise",
-                 "go to roots first then factorise", "I used the formula",
+                 "go to roots first then factorise", "I used the formula", "let's go to the formula", "skip to formula",
                  "I am scared of my dad, skip to factorisation", "nobody at home cares about me, go to roots",
                  "factorise it, then go to the roots", "then we go to the formula", "first I move to standard form",
                  "can we please " + "please " * 8 + "skip to roots"):
@@ -110,6 +122,14 @@ def test_understand_order_and_negations(cur):
     assert understand(cur, "I know it is yes", "rt1").answer == "yes"     # ... and "know" isn't "no"
     assert understand(cur, "I don't know, maybe 2").type == "dont_know"   # dont_know is checked first
     assert understand(cur, "2 and 3", phase="teaching").type == "unclear"  # answers are read only while checking
+
+
+def test_a_confused_reply_that_mentions_making_sense_does_not_go_on(cur):
+    """"makes sense" counts as got it only as a whole reply (keyword), never inside a longer one."""
+    for text in ("nothing makes sense", "none of this makes sense"):
+        assert fallback.keyword(text, "teaching") is None, text
+        assert understand(cur, text, phase="teaching").type not in ("claims_understanding", "next"), text
+    assert understand(cur, "that makes sense, why is it zero?", phase="teaching").type == "question"
 
 
 def test_understand_reads_test_me_not_sure_and_move_on_in_longer_replies(cur):

@@ -2,7 +2,7 @@
 carries a decision's evidence or any SymPy check text."""
 from __future__ import annotations
 
-from app import compose, db, engine
+from app import compose, db, engine, replies
 from app.models import BoardCommand, Concept, ConceptState, Progress, TurnResult
 from app.tutor import Tutor
 
@@ -15,11 +15,15 @@ def state(tutor: Tutor, student_id: str) -> dict:
         session = db.latest_session(conn, student_id)
         lines = db.session_board(conn, session["id"]) if session else []
         recent = db.recent_decisions(conn, student_id)
+        last = db.last_turn(conn, session["id"]) if session else None
+    segments = last["tutor_output"]["segments"] if last else []
+    safety_said = bool(segments) and segments[-1]["say"] == replies.SAFETY_REPLY    # R10, or "say again" after it
     current = engine.current_concept(progress, tutor.cur)
     rows = [_progress_row(tutor.cur.concepts[cid], progress[cid], cid == current) for cid in tutor.cur.order]
     why = [{"rule": d["rule"], "action": d["action"], "reason": d["reason"]} for d in recent]
     shown = [{"id": line.id, "latex": line.latex, "formula": line.formula, "text": line.text} for line in lines]
-    return {"progress": rows, "why": why, "board": shown, "choices": _saved_choices(tutor, progress, recent)}
+    choices = _saved_choices(tutor, progress, recent, safety_said)
+    return {"progress": rows, "why": why, "board": shown, "choices": choices}
 
 
 def payload(tutor: Tutor, student_id: str, result: TurnResult) -> dict:
@@ -33,11 +37,11 @@ def payload(tutor: Tutor, student_id: str, result: TurnResult) -> dict:
             "choices": [{"label": choice.label, "say": choice.say} for choice in result.choices]}
 
 
-def _saved_choices(tutor: Tutor, progress: Progress, recent: list[dict]) -> list[dict]:
+def _saved_choices(tutor: Tutor, progress: Progress, recent: list[dict], safety_said: bool = False) -> list[dict]:
     """The buttons after a reload: rebuilt from the saved progress and the newest decisions, as the turn chose them
     (a "say again" shows the buttons of the cue it replays, so the newest decision that isn't one decides)."""
-    if not recent or recent[0]["rule"] in compose.NO_CUE:
-        return []                                    # before the first Start, or after safety, the limit or the end
+    if not recent or recent[0]["rule"] in compose.NO_CUE or safety_said:
+        return []              # before the first Start, or after safety (or its replay), the limit or the end
     action = next((decision["action"] for decision in recent if decision["action"] != "repeat"), recent[0]["action"])
     _, choices = compose.cue_for(tutor.cur, progress, action)
     return [{"label": choice.label, "say": choice.say} for choice in choices]

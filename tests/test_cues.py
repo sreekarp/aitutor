@@ -243,3 +243,28 @@ def test_buttons_drawn_while_a_turn_runs_start_off():
     click = js[js.index("function onChoice("):]
     assert "button.disabled = busy;" in draw and 'button.type = "button";' in draw
     assert "if (!button || busy) return;" in click[:click.index("\n}")]
+
+
+def test_yeah_sure_and_nope_answer_the_check_in_in_scripted_mode(tutor, db_engine, cur):
+    """At the offer and on a step, "yeah" and "sure" go on, and "nope" takes the not-sure path (not the step again)."""
+    student_id = new_student(db_engine, cur)
+    steps = cur.concepts["factorisation"].steps
+    tutor.start(student_id)
+    assert tutor.turn(student_id, "yeah").decision.play_step_id == steps[0].id        # at the offer
+    assert tutor.turn(student_id, "sure").decision.play_step_id == steps[1].id        # on a step
+    nope = tutor.turn(student_id, "nope")
+    assert nope.decision.action != "repeat" and nope.understood.type == "not_sure"
+
+
+def test_say_sorry_after_a_safety_reply_replays_it_with_no_cue_or_buttons(tutor, db_engine, cur):
+    """A distressed "sorry" after R10 hears the safety reply as said: no check-in, no buttons, also after a reload."""
+    student_id = new_student(db_engine, cur)
+    tutor.start(student_id)
+    tutor.turn(student_id, "teach me")
+    assert tutor.turn(student_id, "my number is 9876543210").decision.rule == "R10"
+    again = tutor.turn(student_id, "sorry")
+    assert again.decision.rule == "R8"
+    assert [segment.say for segment in again.segments] == [replies.SAFETY_REPLY] and again.choices == []
+    assert page.state(tutor, student_id)["choices"] == []
+    reply = tutor.turn(student_id, "pardon")                      # and a replay of the replay
+    assert [segment.say for segment in reply.segments] == [replies.SAFETY_REPLY] and reply.choices == []

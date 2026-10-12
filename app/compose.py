@@ -66,6 +66,8 @@ def cue_for(cur: Curriculum, progress: Progress, last_action: str | None) -> tup
     if cid is None:
         return None, []
     concept, state = cur.concepts[cid], progress[cid]
+    if last_action == "safety":                        # a replayed safety reply (shown_action): no cue, no buttons
+        return None, []
     if state.pending:
         return None, [NOT_SURE]
     if state.step_id is None:
@@ -79,12 +81,15 @@ def cue_for(cur: Curriculum, progress: Progress, last_action: str | None) -> tup
     return Segment(say=replies.cue_line(kind, state.step_id or cid)), list(CHOICES[kind])
 
 
-def shown_action(ctx: TurnContext, decision: Decision) -> str:
+def shown_action(ctx: TurnContext, decision: Decision, apology: bool = False) -> str:
     """The action whose cue the student last heard: a replay (R8) of a solved example keeps the example's cue and
-    buttons, so they still match what is said."""
+    buttons, so they still match what is said. A replay of the safety reply (R10) has neither, just as R10 itself;
+    but a lone "didn't catch that" (apology) replays nothing, so it keeps the step's buttons."""
     said = ctx.last_speech
-    replayed_example = decision.action == "repeat" and bool(said) and said[-1].say in replies.CUES["example"]
-    return "example" if replayed_example else decision.action
+    replay = decision.action == "repeat" and ctx.phase == "teaching" and bool(said)
+    if replay and not apology and said[-1].say == replies.SAFETY_REPLY:
+        return "safety"
+    return "example" if replay and said[-1].say in replies.CUES["example"] else decision.action
 
 
 def _replays_a_cue(ctx: TurnContext, decision: Decision) -> bool:
