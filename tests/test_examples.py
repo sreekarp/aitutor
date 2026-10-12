@@ -1,10 +1,12 @@
 """Whole turns for a solved example while teaching: a student not sure about a step sees a similar equation solved
 on the board (the example action), with the AI and without it. An example changes no progress, so it is never a
 reteach."""
-from conftest import FakeLLM, new_student, progress_of
+from conftest import FakeLLM, make_settings, new_student, progress_of, sign_in
+from fastapi.testclient import TestClient
 
 from app import curriculum, db, replies
 from app.config import Settings
+from app.main import create_app
 from app.tutor import Tutor
 
 SETTINGS = Settings(openrouter_api_key="test-key", access_code="test", session_secret="test",
@@ -95,3 +97,19 @@ def test_scripted_examples_keep_the_step_until_go_on(cur, db_engine):
     result = tutor.turn(student_id, "go on")
     assert (result.decision.rule, result.decision.play_step_id) == ("R0", "a_not_one")
 
+
+def test_say_again_and_a_reload_after_an_example_keep_its_cue_and_buttons(cur):
+    """Scripted, through the app: "say again" after a solved example replays it with one example cue (not two) and
+    the example's buttons, and a reload draws the same buttons."""
+    client = TestClient(create_app(make_settings(), cur=cur))
+    sign_in(client)
+    client.post("/api/session")
+    client.post("/api/turn", json={"text": "teach me"})
+    example = client.post("/api/turn", json={"text": "not sure"}).json()
+    buttons = [{"label": "Go on", "say": "go on"}, {"label": "Another example", "say": "another example"}]
+    assert (example["decision"]["action"], example["choices"]) == ("example", buttons)
+    again = client.post("/api/turn", json={"text": "say again"}).json()
+    cues = [segment["say"] for segment in again["segments"] if segment["say"] in replies.CUES["example"]]
+    assert len(cues) == 1 and again["segments"][-1]["say"] == cues[0]
+    assert again["choices"] == buttons
+    assert client.get("/api/state").json()["choices"] == buttons
