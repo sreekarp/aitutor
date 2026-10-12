@@ -76,12 +76,22 @@ def test_topic_request_reads_a_move_to_a_named_topic(cur):
         assert fallback.topic_request(text, aliases(cur)) == concept_id, text
 
 
+def test_topic_request_allows_polite_lead_ins_before_the_verb(cur):
+    asked = {"Can we skip to the factorization topic?": "factorisation", "please go to roots": "roots",
+             "ok lets move to the discriminant": "discriminant", "I want to skip to factorisation": "factorisation",
+             "could you take me to word problems please": "word_problems"}
+    for text, concept_id in asked.items():
+        assert fallback.topic_request(text, aliases(cur)) == concept_id, text
+
+
 def test_topic_request_needs_a_move_to_and_a_name_at_the_end(cur):
     """No move verb and "to", no topic's name, more words after the name (working, not a request), or a long
     reply: not a request. The first is from the session log."""
     for text in ("Okay, let's move on to the next step.", "move on", "skip to", "factorisation",
                  "I want to learn factorisation", "move to standard form, then factorise",
                  "go to roots first then factorise", "I used the formula",
+                 "I am scared of my dad, skip to factorisation", "nobody at home cares about me, go to roots",
+                 "factorise it, then go to the roots", "then we go to the formula", "first I move to standard form",
                  "can we please " + "please " * 8 + "skip to roots"):
         assert fallback.topic_request(text, aliases(cur)) is None, text
 

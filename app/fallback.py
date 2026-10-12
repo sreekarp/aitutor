@@ -92,7 +92,10 @@ WORD_CHOICES = {"is_quadratic": grading.YES_NO_WORDS, "is_root": grading.YES_NO_
 # A topic asked for by name: a move verb, maybe "on" or "back", then "to" ("can we skip to", "move on to", "take me
 # back to"). Only words like "topic" or "please" may follow the topic's name, so working such as "move to standard
 # form, then factorise" isn't a request; nor is a reply longer than TOPIC_REQUEST_WORDS words.
-MOVE_TO = re.compile(r"\b(?:skip|go|move|jump|switch|change|take me)(?: (?:on|back|over|ahead|straight))? to ")
+# The request must start the reply: only polite lead-ins ("can we", "ok lets", "i want to") may come before the verb,
+# so worries or working before "go to" ("I am scared of my dad, skip to roots") are left for UNDERSTAND.
+LEAD_IN = r"(?:(?:ok|okay|so|please|now|can|could|would|we|i|you|lets|let|s|us|want|wanna|like|id|d|just|to) )*"
+MOVE_TO = re.compile(LEAD_IN + r"(?:skip|go|move|jump|switch|change|take me)(?: (?:on|back|over|ahead|straight))? to ")
 TOPIC_TAIL = r"(?: (?:topic|chapter|lesson|section|part|please|now|instead|again))*"
 TOPIC_REQUEST_WORDS = 12
 
@@ -118,7 +121,7 @@ def topic_request(text: str, aliases: dict[str, list[str]]) -> str | None:
     """The topic a short reply asks to go to, named by one of its aliases (concept id -> aliases, from the lesson
     files): "Can we skip to the factorization topic?" -> "factorisation". None when it names no topic."""
     clean = " ".join(re.sub(r"[^a-z0-9]+", " ", text.lower()).split())
-    found = MOVE_TO.search(clean)
+    found = MOVE_TO.match(clean)
     if not found or len(clean.split()) > TOPIC_REQUEST_WORDS:
         return None
     rest = clean[found.end():]                                # e.g. "the factorization topic"
