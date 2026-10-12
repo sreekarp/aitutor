@@ -110,10 +110,10 @@ Why it looks like this:
   contain the answer key, often while the same question is still open. The key stays in `evidence`.
 - **No raw audio and no personal data beyond a first name.** The users are minors; transcripts are
   enough for debugging and evals. (The audio cache on disk holds only the tutor's own lines.)
-  Nothing is recorded or sent unless Speak is pressed. The page keeps the mic on between answers,
-  until a minute after the last recording (the browser shows its mic indicator meanwhile), and
-  switches it off sooner when the tab is hidden or left, at sign-out, and on iPhones and iPads after
-  every recording.
+  Nothing is recorded or sent unless Speak is pressed, and nothing is recorded in a hidden tab. The
+  page keeps the mic on between answers (the browser shows its mic indicator meanwhile), and
+  switches it off when Speak isn't pressed within a minute of the student's turn starting, when the
+  tab is hidden or left, at sign-out, and after every recording on a phone or tablet.
 - **Sign-in is a username, a first name and a shared access code.** The signed-in student id lives
   in a signed, HTTP-only cookie and is never taken from the request body. The access code keeps
   strangers off the OpenRouter key, and a daily turn limit across all students caps the cost.
@@ -230,12 +230,12 @@ in `turns.latency_ms` (`stt`, `understand`, `grade`, `decide`, `respond`, `total
 text-to-speech call logs its own time, and the browser measures stop click → first audio and sends
 it with the next turn as `prev_first_audio_ms`. A voice turn's `latency_ms` also holds two times the
 browser sends with the recording: `mic_open_ms`, from the Speak click until the recording has really
-started, and `recording_ms`, from then until Stop (or the 30 s limit, or the mic stopping by itself);
-a time that can't be measured is left out. With the mic still on from the last answer, `mic_open_ms`
-is near 0 (55–60 ms measured in Chrome, which takes that long to report that a recording has started).
-When the mic has to be opened (the first answer, the first after a minute without one, and every
-answer on iPhones and iPads) it includes that, and a student's first-ever click also includes the
-browser asking them to allow the microphone.
+started, and `recording_ms`, from then until Stop (or the 30 s limit, or the mic stopping by itself).
+A recording that never really started (the tab was hidden first) isn't sent at all. With the mic
+still on from the last answer, `mic_open_ms` is near 0 (55–60 ms measured in Chrome, which takes that
+long to report that a recording has started). When the mic has to be opened (the first answer, the
+first after the mic went a minute unused, and every answer on a phone or tablet) it includes that,
+and a student's first-ever click also includes the browser asking them to allow the microphone.
 
 **Measured: one scripted-mode session** (no LLM), 11 Oct 2026: 55 typed turns plus the Start,
 through the real web server (one uvicorn worker, a SQLite file) on a Windows 11 laptop. It covered
@@ -271,12 +271,18 @@ What the student perceives, and what we do about it:
 - **Show progress immediately:** the status line goes Opening the microphone… → Listening… →
   Thinking… → Speaking…, and the mic and text box are disabled while a turn runs. While the mic
   opens, the Speak button reads "⏳ Opening mic…", and it turns into Stop only once the recording has
-  really started, so the student doesn't start talking before the mic can hear them. After ~17 s
-  with no reply the page says "That took too long — try again or type it", and nothing is resent.
+  really started, so the student doesn't start talking before the mic can hear them. A Stop click
+  in the recording's first 400 ms is ignored, so a double-click on Speak doesn't end it at once.
+  After ~17 s with no reply the page says "That took too long — try again or type it", and nothing
+  is resent.
 - **Keep the mic on:** opening the mic can take a second, so after the first answer it stays on and
-  the next Speak starts recording at once. It is switched off a minute after the last recording,
-  when the tab is hidden or left, and at sign-out. iPhones and iPads switch it off after every
-  recording, because Safari plays the tutor's voice very quietly while the mic is on.
+  the next Speak starts recording at once. Its minute starts when the tutor has finished its reply
+  and it's the student's turn again (after a typed answer too), and pressing Speak cancels it; if
+  Speak isn't pressed within the minute, the mic is switched off. It is also switched off when the
+  tab is hidden or left, and at sign-out, and a mic that finishes opening while the tab is hidden
+  records nothing. On a touch-first device (any phone or tablet, whatever the brand: the browser reports a
+  finger, not a mouse, as its main pointer) the mic is switched off after every recording, because
+  phones turn the tutor's voice down while the mic is on; with a mouse or trackpad it stays on.
 - **Board and voice together:** each segment's board commands run as that segment's audio starts.
   If its audio isn't ready ~3 s after it's due, the browser's own voice reads it, so the board is
   never more than ~3 s behind the reply.
@@ -379,9 +385,9 @@ Known gaps, after the build:
 - **No duplicate-request guard.** A request sent twice would apply twice. The page never resends by
   itself, so this only matters if automatic retries are added.
 - **Push-to-talk only.** The student can't interrupt the tutor mid-sentence.
-- **The mic stays on between answers.** The browser shows its mic indicator for up to a minute after
-  the last recording, though nothing is recorded until Speak is pressed. iPhones and iPads don't keep
-  it on, so every answer there still waits for the mic to open.
+- **The mic stays on between answers.** The browser shows its mic indicator while the tutor replies
+  and for up to a minute of the student's turn after that, though nothing is recorded until Speak is
+  pressed. Phones and tablets don't keep it on, so every answer there still waits for the mic to open.
 - **Small, synthetic test sets:** 17 eval scenarios and 4 simulated students, and the simulated
   students are LLMs with their own biases. Real student sessions are the missing check.
 - **Hinglish speech is untested.** Two eval scenarios type Hinglish, but no Hinglish recording has

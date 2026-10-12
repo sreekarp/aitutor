@@ -106,6 +106,7 @@ async function runTurn(send) {   // send() makes the request and resolves to the
   }
   stopClickedAt = 0;   // (voice.js) only this turn's reply counts as the "first audio"
   setBusy(false);
+  startIdleTimer();   // (voice.js) the student's turn: a kept mic goes off if Speak isn't pressed within a minute
   if (typeIt) textBox.focus();
 }
 

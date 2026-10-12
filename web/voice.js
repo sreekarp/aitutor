@@ -6,7 +6,8 @@
 "use strict";
 
 const MAX_RECORDING_MS = 30000;   // a recording stops by itself after 30 s
-const MIC_IDLE_MS = 60000;        // the mic is switched off 1 minute after the last recording
+const MIC_IDLE_MS = 60000;        // the kept mic goes off if Speak isn't pressed within 1 minute of the student's turn
+const DOUBLE_CLICK_MS = 400;      // a Stop click this soon after the recording starts is a double-click: ignored
 const AUDIO_WAIT_MS = 3000;       // a segment's audio must start within ~3 s of being due, else the browser voice reads it
 const RECORDING_TYPES = ["audio/webm;codecs=opus", "audio/mp4;codecs=mp4a.40.2", "audio/mp4", "audio/ogg;codecs=opus"];
 const SILENCE = "data:audio/wav;base64,UklGRnQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVAAAACAgICAgICAgICAgICA" +
@@ -114,24 +115,26 @@ function takeFirstAudioMs() {   // hands the measurement to the next turn, once
 }
 
 // ---------- recording: click to start, click to stop ----------
-// After the first answer the mic stays on, so the next Speak records at once. It is switched off a minute after the
-// last recording, when the page is hidden or left (sign-out reloads it), or when its track ends by itself. Nothing
-// is recorded or sent unless Speak is pressed.
-// iPhones and iPads switch it off after each recording: Safari plays the tutor's voice very quietly while it's on.
-const iPhoneOrIPad = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);   // an iPad that says it's a Mac
+// After the first answer the mic stays on, so the next Speak records at once. It is switched off if Speak isn't
+// pressed within a minute of the student's turn starting, when the page is hidden or left (sign-out reloads it), or
+// when its track ends by itself. Nothing is recorded or sent unless Speak is pressed; a hidden page records nothing.
 let recorder = null;    // the MediaRecorder while recording
+let startedAt = 0;      // performance.now() when that recording really started; 0 until it has
 let micStream = null;   // the open mic, kept for the next answer
-let idleTimer = 0;      // switches the kept mic off MIC_IDLE_MS after the last recording
+let idleTimer = 0;      // switches the kept mic off MIC_IDLE_MS after the student's turn starts
 
 async function onMic() {
   unlockSound();   // first, while the click is still being handled
-  if (recorder) return stopRecording();
+  if (recorder) {   // the Stop click
+    if (performance.now() - startedAt < DOUBLE_CLICK_MS) return;   // the second click of a double-click: keep recording
+    return stopRecording();
+  }
   const clickedAt = performance.now();   // the first-ever click's mic_open_ms includes the browser's permission prompt
   setBusy(true);   // no typing, and no second recording, while recording
   clearTimeout(idleTimer);   // a new recording: the mic stays on
   try {
     if (!micIsLive()) await openMic();   // a kept mic records at once
+    if (document.visibilityState === "hidden") return cancelRecording();   // hidden while the mic opened: don't record
     startRecording(micStream, clickedAt);
   } catch (e) {
     releaseMic();
@@ -162,12 +165,25 @@ function releaseMic() {   // switch the mic off: stop every track and forget the
   micStream = null;
 }
 
-function afterRecording() {   // keep the mic on for the next answer; iPhones, iPads and a hidden page switch it off
-  if (iPhoneOrIPad || document.visibilityState === "hidden") return releaseMic();
-  idleTimer = setTimeout(releaseMic, MIC_IDLE_MS);
+function afterRecording() {   // keep the mic on for the next answer, except on a touch-first device or a hidden page
+  // A touch-first device (any phone or tablet) switches it off, because phones turn the tutor's voice down while the
+  // mic is on. With a mouse or trackpad it stays on.
+  if (matchMedia("(pointer: coarse)").matches || document.visibilityState === "hidden") releaseMic();
 }
 
-function onPageHidden() {   // the page is hidden or left: a recording in progress is still sent, then the mic is off
+function startIdleTimer() {   // the tutor has finished and it's the student's turn: the minute starts now
+  clearTimeout(idleTimer);
+  if (micStream) idleTimer = setTimeout(releaseMic, MIC_IDLE_MS);
+}
+
+function cancelRecording() {   // nothing to send: the mic is switched off and the controls come back
+  releaseMic();
+  showMic(false);
+  setBusy(false);
+  setStatus("Your turn.");
+}
+
+function onPageHidden() {   // hidden or left: a recording that has started is still sent, then the mic is off
   if (recorder) stopRecording();
   releaseMic();
 }
@@ -178,7 +194,7 @@ function startRecording(stream, clickedAt) {
   const mimeType = RECORDING_TYPES.find((type) => MediaRecorder.isTypeSupported(type));   // undefined: browser picks
   const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
   const chunks = [];
-  let startedAt = 0;   // performance.now() when the recording really started
+  startedAt = 0;   // until this recording really starts
   rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
   rec.onstart = () => {   // the recording has really started: only now is it safe to talk
     if (recorder !== rec) return;   // stopped already: the page was hidden as it started
@@ -190,10 +206,10 @@ function startRecording(stream, clickedAt) {
   rec.onstop = () => {
     const byItself = recorder === rec;   // no Stop click: its track ended (mic unplugged or permission taken back)
     if (byItself) { recorder = null; showMic(false); }   // so the next click starts a new recording
+    if (!startedAt) return cancelRecording();   // stopped before it really started (the page was hidden): not sent
     const stoppedAt = byItself ? performance.now() : stopClickedAt;
-    // -1 if it stopped before it really started: then neither time means anything
-    const micOpenMs = startedAt ? Math.round(startedAt - clickedAt) : -1;     // Speak click -> recording started
-    const recordingMs = startedAt ? Math.round(stoppedAt - startedAt) : -1;   // recording started -> stopped
+    const micOpenMs = Math.round(startedAt - clickedAt);     // Speak click -> recording started
+    const recordingMs = Math.round(stoppedAt - startedAt);   // recording started -> stopped
     afterRecording();
     sendRecording(new Blob(chunks, { type: rec.mimeType || mimeType || "audio/webm" }), micOpenMs, recordingMs);
   };
@@ -201,7 +217,7 @@ function startRecording(stream, clickedAt) {
   recorder = rec;
 }
 
-function stopRecording() {   // the stop click, 30 s, or the page hidden; onstop then sends the recording
+function stopRecording() {   // the stop click, 30 s, or the page hidden; onstop then sends it, if it had really started
   stopClickedAt = performance.now();
   recorder.stop();
   recorder = null;
@@ -217,8 +233,8 @@ function showMic(recording) {   // while recording, the mic button is a Stop but
 function sendRecording(blob, micOpenMs, recordingMs) {   // the recording and its mic timings, never the mic's name
   const form = new FormData();
   form.append("audio", blob, "recording");
-  if (micOpenMs >= 0) form.append("mic_open_ms", String(micOpenMs));        // only times that make sense
-  if (recordingMs >= 0) form.append("recording_ms", String(recordingMs));
+  form.append("mic_open_ms", String(micOpenMs));
+  form.append("recording_ms", String(recordingMs));
   const ms = takeFirstAudioMs();
   if (ms !== null) form.append("prev_first_audio_ms", String(ms));
   runTurn(async () => {

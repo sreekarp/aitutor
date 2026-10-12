@@ -44,11 +44,12 @@ uv run python -m app.cli                # type to the tutor in the terminal (--u
 
 On the page, sign in with a username, your first name and the access code, then press **Start**. Click
 the mic to speak and click again to stop (it stops by itself after 30 s), or type in the box. After your
-first answer the mic stays on, so the next click records at once; it switches off a minute after your last
-recording, when you leave the tab or sign out, and after every recording on iPhones and iPads. Nothing is
-recorded until you click. The whiteboard shows the working, the progress panel shows each concept, and
-**Why?** shows the reasons for the tutor's last five decisions. The mic only works on `localhost` or over
-https. Keep to one uvicorn worker: the breakers and SQLite assume a single process.
+first answer the mic stays on, so the next click records at once; it switches off if you don't click it
+within a minute of your turn starting, when you leave the tab or sign out, and after every recording on a
+phone or tablet. Nothing is recorded until you click. The whiteboard shows the working, the progress
+panel shows each concept, and **Why?** shows the reasons for the tutor's last five decisions. The mic
+only works on `localhost` or over https. Keep to one uvicorn worker: the breakers and SQLite assume a
+single process.
 
 The terminal tutor uses `DATABASE_URL` when it is set (in the environment or `.env`), and its own
 `data/cli.db` when it isn't.
