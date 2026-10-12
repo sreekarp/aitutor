@@ -135,10 +135,10 @@ Rollout:
 
 1. A new prompt is a new file (`respond.v2.md`); a version in use is never edited, because prompt
    files are read on every call.
-2. `uv run python -m evals --prompt-respond respond.v2` (or `--model-respond <id>`) runs the 14
-   tutor scenarios against it, 3 runs each. A scenario passes with a majority of passing runs; any
-   red scenario blocks the change. `uv run python -m sims` shows false advances over longer
-   conversations.
+2. `uv run python -m evals --prompt-understand understand.v2 --prompt-respond respond.v2` (or
+   `--model-respond <id>`) runs the 17 tutor scenarios against the new version, 3 runs each. A
+   scenario passes with a majority of passing runs; any red scenario blocks the change.
+   `uv run python -m sims` shows false advances over longer conversations.
 3. Switch `PROMPT_VERSIONS` (or `MODELS`) in `config.py` and deploy.
 4. Rollback is the same switch back. Because state isn't in the prompt, students mid-session move
    back on their next turn.
@@ -202,7 +202,7 @@ Alerts *(designed, not built; thresholds are targets to tune)*:
 
 **Finding out the tutor got worse before a student says so:**
 
-- **Evals before every change:** the 14 scenarios run against a new prompt or model, and a red
+- **Evals before every change:** the 17 scenarios run against a new prompt or model, and a red
   scenario blocks it. A run fails if the first output of either prompt was rejected, so the safety
   net (one retry, then scripted words) can't hide a bad prompt. *(Designed)* The same suite nightly
   against the live config, plus a simulation batch reporting the false advance rate (points given
@@ -349,7 +349,9 @@ Known gaps, after the build:
   one step at a time (after hints 1 and 2 the tutor says "Try that step, then tell me the roots."),
   and a right answer after any hint earns half a point. "Why …?" questions stay free (R7), so points
   still depend a little on how a request is worded. Scripted mode reads step requests this way;
-  UNDERSTAND's prompt v1 has no such rule yet, so with the LLM one can still be read as a question.
+  UNDERSTAND's prompt v1 has no such rule, so with the LLM one can still be read as a question. The
+  drafted `understand.v2.md` adds the rule, and `respond.v2.md` shows steps asked as a question on a
+  similar example, but `config.py` stays on v1 until both pass a Layer 2 run with the key.
 - **Scripted mode is cruder than the LLM** (it's the fallback and the mock): it spots mistakes only
   through trap answers, so it hints where the LLM might reteach; any "?" makes a reply a question,
   even "did India win yesterday?", unless it holds an answer, asks for help ("how do I solve
@@ -380,7 +382,7 @@ Known gaps, after the build:
 - **The mic stays on between answers.** The browser shows its mic indicator for up to a minute after
   the last recording, though nothing is recorded until Speak is pressed. iPhones and iPads don't keep
   it on, so every answer there still waits for the mic to open.
-- **Small, synthetic test sets:** 14 eval scenarios and 4 simulated students, and the simulated
+- **Small, synthetic test sets:** 17 eval scenarios and 4 simulated students, and the simulated
   students are LLMs with their own biases. Real student sessions are the missing check.
 - **Hinglish speech is untested.** Two eval scenarios type Hinglish, but no Hinglish recording has
   been through speech-to-text, and the voice ("sarah", chosen by listening) isn't Indian English.

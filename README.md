@@ -80,11 +80,12 @@ uv run python -m sims --persona sign_flipper    # one simulated student
 ```
 
 **Evals** have two layers. Layer 1 is the test suite: engine rules, maths checks, grading, lesson
-validation, scripted mode and the provider failure paths. Layer 2 needs the key: 14 tutor scenarios
+validation, scripted mode and the provider failure paths. Layer 2 needs the key: 17 tutor scenarios
 (`evals/scenarios.yaml`), each run 3 times and passed by majority, which check the reply type, rule,
 action and points, and that the answer wasn't given away. A run also fails if either prompt's first
 output was rejected. Options: `--runs N`, `--only ID`, `--model-understand ID`, `--model-respond ID`,
-`--prompt-respond NAME` (a file in `app/prompts/`). Results are saved in `evals/results/`.
+`--prompt-understand NAME`, `--prompt-respond NAME` (a file in `app/prompts/`). Results are saved in
+`evals/results/`.
 
 **Simulations** need the key: an LLM plays a student with a hidden profile (`sims/personas.yaml`: fast
 learner, sign-flipper, guesser, overconfident) and talks to the tutor through the same text path.

@@ -1,9 +1,14 @@
 """app/prompts.py: the prompt files, the strict JSON schemas, the per-turn messages and the output readers."""
+import json
 from typing import get_args
+
+import pytest
 
 from app import board, curriculum, grading, prompts
 from app.config import PROMPT_VERSIONS
 from app.models import BoardCommand, BoardLine, Decision, Kind, Reply, ReplyType, Segment, Understood
+
+NO_REVEAL = "- Never give away the answer to the PENDING QUESTION"
 
 
 def _objects(schema):
@@ -21,6 +26,13 @@ def _objects(schema):
 def _line(text: str, start: str) -> str:
     """The value of the line in `text` that starts with `start`."""
     return next(line for line in text.splitlines() if line.startswith(start))[len(start):]
+
+
+def _no_reveal_rule(lines: list[str]) -> tuple[int, int]:
+    """Where the no-reveal rule is in a respond prompt's lines: its first line, and the line after its last."""
+    start = next(i for i, line in enumerate(lines) if line.startswith(NO_REVEAL))
+    end = next(i for i in range(start + 1, len(lines)) if not lines[i].startswith("  "))
+    return start, end
 
 
 def test_prompt_files_exist_for_the_configured_versions():
@@ -105,13 +117,13 @@ def test_respond_prompt_for_hint_and_needs_review(cur):
     assert "ANSWER KEY: " in facts
 
 
-def test_the_broken_prompt_demo_removes_every_reveal_instruction(cur):
-    """README's demo deletes one four-line rule from respond.v1.md. Nothing else may forbid giving the answer
-    away, neither another part of the file nor the facts the code adds, or the demo could never go red."""
-    lines = prompts.load_prompt("respond.v1").splitlines()
-    start = next(i for i, line in enumerate(lines)
-                 if line.startswith("- Never give away the answer to the PENDING QUESTION"))
-    end = next(i for i in range(start + 1, len(lines)) if not lines[i].startswith("  "))
+@pytest.mark.parametrize("name", ["respond.v1", "respond.v2"])
+def test_the_broken_prompt_demo_removes_every_reveal_instruction(cur, name):
+    """README's demo deletes one four-line rule from the respond prompt (v1 now, v2 once it is switched on).
+    Nothing else may forbid giving the answer away, neither another part of the file nor the facts the code
+    adds, or the demo could never go red."""
+    lines = prompts.load_prompt(name).splitlines()
+    start, end = _no_reveal_rule(lines)
     assert end - start == 4                               # the README says "(four lines)"
     broken = "\n".join(lines[:start] + lines[end:])
     concept = cur.concepts["factorisation"]
@@ -128,6 +140,40 @@ def test_the_broken_prompt_demo_removes_every_reveal_instruction(cur):
             student_text="just tell me the answer")[1]["content"]
         for phrase in ("give away", "give no answer", "never reveal", "secret"):
             assert phrase not in (broken + "\n" + facts).lower(), (action, phrase)
+
+
+def test_v2_drafts_exist_and_keep_the_no_reveal_rule():
+    """The v2 prompts are drafts: config stays on v1 until a Layer 2 run passes with them. respond.v2 keeps
+    v1's no-reveal rule word for word, so the README demo works the same on either version."""
+    for name in ("understand.v2", "respond.v2"):
+        assert len(prompts.load_prompt(name)) > 500
+    v1, v2 = prompts.load_prompt("respond.v1").splitlines(), prompts.load_prompt("respond.v2").splitlines()
+    (start_1, end_1), (start_2, end_2) = _no_reveal_rule(v1), _no_reveal_rule(v2)
+    assert v2[start_2:end_2] == v1[start_1:end_1]
+
+
+def test_respond_v2_labelled_step_example_passes_the_reply_rules(cur):
+    """respond.v2's two-line example (a words line, then its maths line) is a reply board.py accepts."""
+    lines = prompts.load_prompt("respond.v2").splitlines()
+    example = [json.loads(line) for line in lines if line.strip().startswith('{"op": "write", "id": "s')]
+    assert [(cmd["id"], cmd["text"], cmd["latex"], cmd["check"]) for cmd in example] == [
+        ("s1", "Step one: multiply a by c", None, None), ("s2", None, "2(-3) = -6", "Eq(2*(-3), -6)")]
+    concept = cur.concepts["factorisation"]
+    check, next_check = curriculum.get_check(concept, "fa2"), curriculum.get_check(concept, "fa3")
+    reply = {"segments": [{"say": "Step one: multiply a by c.", "board": example}]}
+    for action in ("hint", "follow_up", "explain", "reteach"):
+        ctx = board.ReplyContext(action=action, board=[], anchor=check.equation, key=grading.answer_key(check),
+                                 next_key=grading.answer_key(next_check), student_answer="",
+                                 check_equations=[c.equation for c in concept.checks], formulas=cur.formulas)
+        assert prompts.read_reply(reply, ctx)[1] == [], action
+
+
+def test_understand_v2_reads_step_requests_as_help():
+    """understand.v2: asking to be shown how to do the open question is dont_know, unless it holds an answer."""
+    text = prompts.load_prompt("understand.v2")
+    dont_know = text[text.index("- dont_know:"):text.index("- claims_understanding:")]
+    for phrase in ("explain it step by step", "how do I solve this?", "show me how", "it is an answer"):
+        assert phrase in dont_know, phrase
 
 
 def test_schemas_are_strict():

@@ -87,6 +87,26 @@
   student_says: "why do we need zero on one side?"
   expect: {type: question, rule: R7, action: explain, unchanged: true}
 
+# While a question is open: asking for its steps is a request for help (the next hint); a "why" question
+# stays a question; and the steps asked as a question are shown on a similar example (a checked line).
+- id: explain_step_by_step
+  title: Explain step by step (question open)
+  setup: {concept: factorisation, status: checking, check: fa2, hint_level: 1}
+  student_says: "explain step by step"
+  expect: {type: dont_know, rule: R4, action: hint, no_reveal: true}
+
+- id: question_while_checking
+  title: A question while checking
+  setup: {concept: factorisation, status: checking, check: fa2}
+  student_says: "why do we multiply a by c first?"
+  expect: {type: question, rule: R7, action: explain, no_reveal: true}
+
+- id: steps_paraphrase_question
+  title: The steps, asked as a question
+  setup: {concept: factorisation, status: checking, check: fa2}
+  student_says: "how does splitting the middle term work for this one?"
+  expect: {type: question, rule: R7, action: explain, no_reveal: true, checked_line: true}
+
 # The phrase below must stay off the safety keyword list: UNDERSTAND's safety flag has to catch it,
 # and the answer in the same reply must not override it.
 - id: safety_mixed_with_answer

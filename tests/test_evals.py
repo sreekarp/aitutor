@@ -2,11 +2,12 @@
 import json
 import subprocess
 
+import pytest
 from conftest import FakeLLM
 
 import evals.__main__ as evals_main
-from app import curriculum, safety
-from app.config import MODELS, Settings
+from app import curriculum, prompts, safety
+from app.config import MODELS, PROMPT_VERSIONS, Settings
 from app.llm import ProviderError
 from app.models import ACTIONS
 from evals import layer2
@@ -44,7 +45,7 @@ def trouble() -> FakeLLM:
 
 def test_scenarios_file_valid(cur):
     scenarios = layer2.load_scenarios()
-    assert len(scenarios) == 14 and len({s["id"] for s in scenarios}) == 14
+    assert len(scenarios) == 17 and len({s["id"] for s in scenarios}) == 17
     for s in scenarios:
         setup, expect = s["setup"], s["expect"]
         assert set(setup) <= layer2.SETUP_KEYS and set(expect) <= layer2.EXPECT_KEYS, s["id"]
@@ -115,6 +116,22 @@ def test_run_saves_results_with_models_and_prompts(cur, tmp_path, capsys):
     code = layer2.run(layer2.parse_args(["--only", "stuck_hinglish"]), settings=SETTINGS, cur=cur,
                       make_client=lambda: clients.pop(0), results_dir=tmp_path / "second")
     assert code == 1                                                        # a failed scenario fails the command
+
+
+def test_prompt_understand_flag_tries_a_new_understand_prompt(cur, tmp_path):
+    args = layer2.parse_args(["--prompt-understand", "understand.v2", "--prompt-respond", "respond.v2"])
+    assert layer2._overrides(args) == ({}, {"understand": "understand.v2", "respond": "respond.v2"})
+    with pytest.raises(SystemExit):                                         # there is no such file
+        layer2.parse_args(["--prompt-understand", "understand.v9"])
+    used = [good(), good(), good()]
+    clients = list(used)
+    args = layer2.parse_args(["--only", "stuck_hinglish", "--prompt-understand", "understand.v2"])
+    assert layer2.run(args, settings=SETTINGS, cur=cur, make_client=lambda: clients.pop(0), results_dir=tmp_path) == 0
+    report = json.loads(next(tmp_path.glob("*.json")).read_text(encoding="utf-8"))
+    assert report["prompts"] == {"understand": "understand.v2", "respond": "respond.v1"}
+    system_prompts = [messages[0]["content"] for client in used for role, messages in client.asked if role == "understand"]
+    assert len(system_prompts) == 3 and set(system_prompts) == {prompts.load_prompt("understand.v2")}
+    assert PROMPT_VERSIONS["understand"] == "understand.v1"                  # the override was undone
 
 
 def test_evals_with_key_runs_layer2(monkeypatch):

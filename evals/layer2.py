@@ -39,14 +39,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--only", metavar="ID", help="run just this scenario")
     parser.add_argument("--model-understand", metavar="ID", help="use only this model for UNDERSTAND")
     parser.add_argument("--model-respond", metavar="ID", help="use only this model for RESPOND")
+    parser.add_argument("--prompt-understand", metavar="NAME", help="use app/prompts/NAME.md for UNDERSTAND")
     parser.add_argument("--prompt-respond", metavar="NAME", help="use app/prompts/NAME.md for RESPOND")
     args = parser.parse_args(argv or [])
     if args.runs < 2:
         parser.error("--runs must be at least 2: a scenario needs 2 scored runs")
     if args.only and args.only not in [scenario["id"] for scenario in load_scenarios()]:
         parser.error(f"no scenario has the id {args.only!r}")
-    if args.prompt_respond and not (PROMPTS_DIR / f"{args.prompt_respond}.md").exists():
-        parser.error(f"no prompt file app/prompts/{args.prompt_respond}.md")
+    for name in (args.prompt_understand, args.prompt_respond):
+        if name and not (PROMPTS_DIR / f"{name}.md").exists():
+            parser.error(f"no prompt file app/prompts/{name}.md")
     return args
 
 
@@ -189,7 +191,9 @@ def _overrides(args: argparse.Namespace) -> tuple[dict, dict]:
     """The MODELS and PROMPT_VERSIONS entries the flags ask for (empty: no change)."""
     models = {role: [_model(role, model_id)] for role, model_id in
               (("understand", args.model_understand), ("respond", args.model_respond)) if model_id}
-    return models, ({"respond": args.prompt_respond} if args.prompt_respond else {})
+    prompts = {role: name for role, name in
+               (("understand", args.prompt_understand), ("respond", args.prompt_respond)) if name}
+    return models, prompts
 
 
 def _model(role: str, model_id: str) -> dict:
