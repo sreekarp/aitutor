@@ -143,6 +143,23 @@ def test_say_again_after_a_lone_apology_at_a_topic_start_hears_the_start(tutor, 
     assert progress_of(db_engine, cur, student_id)["factorisation"].step_id is None      # still at the start
 
 
+def test_say_again_after_safety_and_a_failed_recording_hears_the_step(tutor, db_engine, cur):
+    """After a safety reply, a failed recording still gets just "didn't catch that" (no cue: it asks for the reply
+    itself), with the step's buttons; "say again" then replays the step and its cue, not the apology."""
+    student_id = new_student(db_engine, cur)
+    step = cur.concepts["factorisation"].steps[0]
+    tutor.start(student_id)
+    tutor.turn(student_id, "teach me")                           # step 1
+    assert tutor.turn(student_id, "my number is 9876543210").decision.rule == "R10"
+    sorry = tutor.turn(student_id, "", input_mode="voice", stt_failed=True)
+    assert [segment.say for segment in sorry.segments] == [DIDNT_CATCH]
+    assert sorry.choices == [Choice("Yes, go on", "yes go on"), Choice("Not sure", "not sure")]
+    again = tutor.turn(student_id, "say again")
+    assert again.decision.rule == "R8"
+    assert [segment.say for segment in again.segments] == [*[segment.say for segment in step.segments],
+                                                           replies.cue_line("step", step.id)]
+
+
 def test_continue_at_a_topic_start_ends_on_the_offer(tutor, db_engine, cur):
     student_id = new_student(db_engine, cur)
     tutor.start(student_id)

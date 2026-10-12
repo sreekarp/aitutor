@@ -8,8 +8,10 @@ from app.models import BoardCommand, Choice, Curriculum, Decision, Progress, Seg
 RESUMING = ("greet", "resume", "mastered", "needs_review", "jump")    # actions that go on to the current concept
 
 
-def compose(cur: Curriculum, ctx: TurnContext, decision: Decision, after: Progress) -> list[Segment]:
-    """The scripted parts after the words: a step, a question, the next concept, a re-ask, then the cue."""
+def compose(cur: Curriculum, ctx: TurnContext, decision: Decision, after: Progress,
+            with_cue: bool = True) -> list[Segment]:
+    """The scripted parts after the words: a step, a question, the next concept, a re-ask, then the cue (unless
+    with_cue is False: a lone "didn't catch that" asks for the reply itself, so it ends without one)."""
     concept = cur.concepts.get(decision.concept_id or "")
     parts: list[Segment] = []
     if decision.play_step_id:
@@ -30,7 +32,7 @@ def compose(cur: Curriculum, ctx: TurnContext, decision: Decision, after: Progre
     if decision.clear_board and parts:                # wipe the board just before the new part plays
         parts[0] = Segment(say=parts[0].say, board=[BoardCommand(op="clear"), *parts[0].board])
     cue, _ = cue_for(cur, after, shown_action(ctx, decision))
-    if cue and decision.rule not in NO_CUE and not _replays_a_cue(ctx, decision):
+    if with_cue and cue and decision.rule not in NO_CUE and not _replays_a_cue(ctx, decision):
         parts.append(cue)                             # the turn ends on a cue: never a dead end
     return parts
 
