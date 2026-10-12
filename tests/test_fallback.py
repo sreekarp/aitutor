@@ -61,6 +61,16 @@ def test_a_reply_about_being_hit_is_unclear_never_help(cur):
         assert understand(cur, text, "fa1").type == "unclear", text
 
 
+def test_short_and_passive_ways_of_being_hurt_are_unclear_never_help(cur):
+    """The forms the safety check catches are read the same way without the AI: "us" counts like "me", and the
+    student can say it the other way round ("I was beaten"). Unclear, even with an answer or a request for help."""
+    for text in ("he's been hitting me, help", "they'll hit me, I don't know", "my dad's been hitting me, no idea",
+                 "he beats us, I don't know", "my dad hits us. What should I do?", "I was beaten. I don't know",
+                 "I get hit at home, please help", "I got slapped, just tell me", "I have been hit, help",
+                 "I'm being hit, no idea", "I was beaten, 2 and 3"):
+        assert understand(cur, text, "fa1").type == "unclear", text
+
+
 def test_scripted_answer_odd_formats(cur):
     roots = {"x = 2, 3": "2, 3", "x=2,x=3": "2, 3", "x = 2 or x = 3": "2, 3", "minus 2 and 3": "-2, 3",
              "2 plus root 3": "2 + sqrt(3)", "one by three, D is zero": "1/3", "2 & 3": "2, 3", "−2": "-2",
@@ -113,6 +123,16 @@ def test_asking_for_the_steps_is_asking_for_help(cur):
     assert (said.type, said.answer, said.showed_working) == ("answer", "", True)
     assert understand(cur, "explain the solution", "fa2").type == "unclear"    # may mean the question just solved
     assert understand(cur, "why do we need zero on one side?", phase="teaching").type == "question"
+
+
+def test_step_by_step_asks_only_with_a_request_word(cur):
+    """"step by step" asks for the steps only with a request word in the reply (explain, show, teach, walk, take, go,
+    can you, please, help). Without one it is a statement: "I did it step by step" is asked again, with no hint."""
+    for text in ("Explain step by step.", "can you go step by step?", "step by step please", "show me how",
+                 "how do I solve this", "explain it step-by-step"):
+        assert understand(cur, text, "fa2").type == "dont_know", text
+    for text in ("I did it step by step", "I solved it step by step"):
+        assert understand(cur, text, "fa2").type == "unclear", text
 
 
 def test_understand_non_latin_and_long(cur):

@@ -354,10 +354,13 @@ Known gaps, after the build:
   "how do I solve this?" or "show me how" asks for help, like "help me solve this": the next hint,
   one step at a time (after hints 1 and 2 the tutor says "Try that step, then tell me the roots."),
   and a right answer after any hint earns half a point. "Why …?" questions stay free (R7), so points
-  still depend a little on how a request is worded. Scripted mode reads step requests this way;
-  UNDERSTAND's prompt v1 has no such rule, so with the LLM one can still be read as a question. The
-  drafted `understand.v2.md` adds the rule, and `respond.v2.md` shows steps asked as a question on a
-  similar example, but `config.py` stays on v1 until both pass a Layer 2 run with the key.
+  still depend a little on how a request is worded. Scripted mode reads step requests this way, with
+  "step by step" counting only when the reply also has a request word like "explain", "can you" or
+  "please" (so "I did it step by step" is asked again, not hinted, though "I know how to solve it"
+  still counts as asking); UNDERSTAND's prompt v1 has no such rule, so with the LLM one can still be
+  read as a question. The drafted `understand.v2.md` adds the rule, and `respond.v2.md` shows steps
+  asked as a question on a similar example, but `config.py` stays on v1 until both pass a Layer 2 run
+  with the key.
 - **Scripted mode is cruder than the LLM** (it's the fallback and the mock): it spots mistakes only
   through trap answers, so it hints where the LLM might reteach; any "?" makes a reply a question,
   even "did India win yesterday?", unless it holds an answer, asks for help ("how do I solve
@@ -370,16 +373,28 @@ Known gaps, after the build:
   more digits ("98765 43210", "011 2345 6789"), also after one lone digit like a trunk 0 or a
   country code ("0 98765 43210", "+1 987 654 3210"), or when every group is one digit, as when a
   number is said one by one ("nine eight seven six five four three"). Any other mix, like the factor
-  pairs "1 12 2 6 3 4", is maths. False alarms remain: "12 13 14 15", a hyphenated date like
-  "11-10-2026", 7 or more digits said one by one, "my head is hurting me", "my friend beat me to it",
-  "they're beating me at chess" and "honestly beats me" (any word before "beats me" except it, that,
-  this or question counts as a person, so that "Rohan beats me" is caught). Misses remain too: "He
-  gets drunk. Beats me.", "my dad has beaten me", numbers said with "double" or "oh", and a
-  Devanagari word before "beats me". With the LLM, UNDERSTAND's safety flag is the second net. In
-  scripted mode, a reply that mentions being hit, beaten, slapped, kicked, hurt or touched ("He gets
-  drunk. Beats me. I don't know") is read as unclear, even with an answer, a request for help or a
-  "?" in it: the tutor asks again and never gives a maths hint, so "Oh, now it hits me: 2 and 3" has
-  to be answered again.
+  pairs "1 12 2 6 3 4", is maths. Someone hurting the student is a person ("he", "they", "my dad",
+  "papa"…), perhaps a word or two like "keeps", "is", "has been" or "will", then hit, beat, slap,
+  kick, hurt, touch or abuse, in any form, then "me" or "us" ("he's been hitting me", "they'll hit
+  me", "my dad hits us"); or the student says it the other way round: I, I'm or I've, then was, am,
+  get, got, have been, been, being, am being or was being, then hit, beat, beaten, slapped, kicked,
+  hurt, touched or abused ("I was beaten", "I get hit at home"). False alarms remain: "12 13 14
+  15", a hyphenated date like "11-10-2026", 7 or more digits said one by one, "my head is hurting
+  me", "my friend beat me to it", "they're beating me at chess", "they beat us at cricket", "I got
+  hurt playing cricket", "I was hit by the ball", "what the hell, hit me with a hint" ("he'll"
+  arrives as "hell") and "honestly beats me" (any word before "beats me" except it, that, this or
+  question counts as a person, so that "Rohan beats me" is caught). Misses remain too: "He gets
+  drunk. Beats me.", "my dad has beaten me", "dad's been beating me" (no "my"), "my dad punches me",
+  "we get beaten at home", "being hit at home", "my dad beats my mom", "I'm scared of my dad",
+  numbers said with "double" or "oh", and a Devanagari word before "beats me". With the LLM,
+  UNDERSTAND's safety flag is the second net. In scripted mode, a reply with hit, beat, slap, kick,
+  hurt or touch, in any form, followed by "me" or "us", or with the student's "I was beaten" form
+  above, never gets a maths hint: the keywords give the safety reply, or, when they miss it ("He
+  gets drunk. Beats me. I don't know", "my dad has beaten me"), the reply is read as unclear, even
+  with an answer, a request for help or a "?" in it, and the tutor asks again (so "Oh, now it hits
+  me: 2 and 3" has to be answered again). A miss without such words can still get a maths hint in
+  scripted mode when it asks for help: "my dad punches me, I don't know", "we get beaten at home,
+  help", "being hit at home, help", "my dad beats my mom, help" or "I'm scared of my dad, help".
 - **One process only.** The breakers live in memory and SQLite wants one writer, so the app runs one
   uvicorn worker. More traffic means Postgres and shared breakers first.
 - **No duplicate-request guard.** A request sent twice would apply twice. The page never resends by

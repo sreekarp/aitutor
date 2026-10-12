@@ -26,7 +26,7 @@ The board commands:
    there as words: "Step one", not "Step 1". Words and maths never share a line, so a labelled step
    is two lines, the words first:
    {"op": "write", "id": "s1", "latex": null, "check": null, "relation": "equiv", "formula": null, "text": "Step one: multiply a by c", "target": null, "part": null}
-   {"op": "write", "id": "s2", "latex": "2(-3) = -6", "check": "Eq(2*(-3), -6)", "relation": "equiv", "formula": null, "text": null, "target": null, "part": null}
+   {"op": "write", "id": "s2", "latex": "4(-5) = -20", "check": "Eq(4*(-5), -20)", "relation": "equiv", "formula": null, "text": null, "target": null, "part": null}
 3. A general formula placed by name: "op": "write" with "formula" set to a name from FORMULAS.
 4. A highlight: {"op": "highlight", "target": "q-eq", "part": "-5x", ...all other fields null}.
    "target" is a line id from BOARD (or a line you wrote earlier in this reply). "part" is copied

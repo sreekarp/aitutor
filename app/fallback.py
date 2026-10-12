@@ -30,17 +30,27 @@ NEXT = _whole_reply("ok", "okay", "next", "go on", "continue", "yes", "haan", "h
                     "thik hai", "accha")
 SAY_AGAIN = _whole_reply("say again", "repeat", "repeat please", "phir se", "phir se bolo", "dobara", "once more",
                          "pardon", "sorry", "what", "come again")
-# Hit, beat, slap, kick, hurt or touch, in any form, then "me" ("beats me", "slapped me"). Someone may be hurting
-# the student and the safety check missed it ("He gets drunk. Beats me. I don't know"), so such a reply is unclear:
-# the question is asked again, and it never gets a maths hint.
-HURT_ME = re.compile(r"\b(?:hit|beat|slap|kick|hurt|touch)\w*\s+me\b")
+# Hit, beat, slap, kick, hurt or touch, in any form, then "me" or "us" ("beats me", "slapped us"), or the student
+# saying it the other way round (I_WAS_HIT). Someone may be hurting the student and the safety check missed it ("He
+# gets drunk. Beats me. I don't know"), so such a reply is unclear: the question is asked again, and it never gets
+# a maths hint.
+HURT_ME = re.compile(r"\b(?:hit|beat|slap|kick|hurt|touch)\w*\s+(?:me|us)\b")
+# The student saying it the other way round: I, then was, am, get, got, have been, been, being, am being or was
+# being, then hit, beat, beaten, slapped, kicked, hurt, touched or abused ("I was beaten", "I get hit at home", "I'm
+# being hit"; "I'm" and "I've" arrive as im and ive). safety.py uses it too.
+I_WAS_HIT = re.compile(r"\b(?:i|im|ive) (?:was|am|get|got|have been|been|being|am being|was being) "
+                       r"(?:hit|beat|beaten|slapped|kicked|hurt|touched|abused)\b")
 DONT_KNOW = phrases("dont know", "no idea", "just tell me", "hint", "help", "dont get it", "didnt get it",
                     "dont understand", "didnt understand", "not understood", "havent understood", "pata nahi",
                     "nahi pata", "samajh nahi")
-# Asking for the steps of the open question is asking for help: the next hint. Checked after answers, and not while
-# "how did you get that?" waits, so "step by step: 2 and 3" stays an answer and "step by step, I split it" stays
-# working. Not "explain the solution": it may mean the question just solved.
-STEP_ASK = phrases("step by step", "how do i solve", "how to solve", "show me how")
+# Asking for the steps of the open question is asking for help: the next hint. "step by step" asks only with a
+# request word in the reply ("explain step by step", "step by step please"): "I did it step by step" is not a
+# request. Checked after answers and not while "how did you get that?" waits, so answers and working still count.
+# Not "explain the solution": it may mean the question just solved.
+REQUEST_WORD = r"\b(?:explain|show|teach|walk|take|go|can you|please|help)\b"
+STEP_BY_STEP = r"\bstep\W+by\W+step\b"                                # "step-by-step" too
+STEP_ASK = re.compile(rf"\b(?:show me how|how do i solve|how to solve)\b"
+                      rf"|{REQUEST_WORD}.*{STEP_BY_STEP}|{STEP_BY_STEP}.*{REQUEST_WORD}")
 GET_IT = phrases("get it", "got it", "understood", "samajh gaya", "samajh gayi")
 QUESTION_START = re.compile(r"\s*(?:why|how|what|kyun|kaise)\b")
 # Method words, by their start: "factor" also finds "factorise" and "factorised".
@@ -92,7 +102,7 @@ def understand(text: str, *, phase: str, check: Check | None, awaiting_working: 
     clean = spoken_maths(text[:MAX_INPUT_CHARS])
     working = _showed_working(_drop_names(clean, check))
     answer = _answer(clean, check) if phase == "checking" and check else ""
-    if HURT_ME.search(clean):
+    if HURT_ME.search(clean) or I_WAS_HIT.search(clean):
         kind = "unclear"                                     # maybe a disclosure: asked again, never a hint
     elif DONT_KNOW.search(clean):
         kind = "dont_know"

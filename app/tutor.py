@@ -117,10 +117,11 @@ class Tutor:
         pending = before[concept_id].pending if concept_id else None
         said = [Segment(say=seg["say"]) for seg in last["tutor_output"]["segments"] if seg["say"]] if last else []
         step = curriculum.get_step(concept, before[concept_id].step_id) if concept and not pending else None
-        apology_only = [segment.say for segment in said] in ([DIDNT_CATCH], [MISHEARD])
+        apology_only = [segment.say for segment in said] == [DIDNT_CATCH]
         if step and last and (last["action"] in RESUMING or apology_only):
             # After a topic start or move-on, "say again" replays just the step: not the greeting, intro or praise.
-            # After a lone apology ("didn't catch that", "may have misheard"), the step too, not the apology.
+            # After a lone "didn't catch that", the step too, not the apology. (MISHEARD is never alone: it is only
+            # said while a question is open, and the question always follows it.)
             # Either way UNDERSTAND's "tutor's last line" is the step's last line: the line being answered.
             said = [Segment(say=segment.say) for segment in step.segments]
         ctx = TurnContext(

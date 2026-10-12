@@ -40,6 +40,19 @@ def test_more_ways_to_say_someone_is_hurting_me():
         assert safety.is_safety(text), text
 
 
+def test_short_and_passive_ways_to_say_someone_is_hurting_me():
+    """Apostrophes are dropped, so "he's", "they've", "they'll", "he'll" and "she'll" arrive as hes, theyve, theyll,
+    hell and shell; "been" can come between the person and the verb; "us" counts like "me"; and the student can say
+    it the other way round: I + was, am, get, got, have been, been or being + hit, beat(en), slapped, kicked, hurt,
+    touched or abused ("I'm" and "I've" arrive as im and ive)."""
+    for text in ("he's been hitting me", "they've been hitting me", "they'll hit me", "he'll hit me",
+                 "she'll slap me", "my dad's been hitting me", "I was beaten", "I get hit at home", "I got slapped",
+                 "I have been hit", "I'm being hit", "I've been beaten", "he beats us", "my dad hits us"):
+        assert safety.is_safety(text), text
+    for text in ("I have hit the target", "I was beating my own record", "it beats us"):
+        assert not safety.is_safety(text), text
+
+
 def test_factor_lists_are_not_phone_numbers():
     """A phone number is 7+ digits in groups of 2 or more ("98765 43210"), or said one by one ("9 8 7 6 5 4 3").
     A list that mixes 1-digit and longer numbers, like the factor pairs of 12, is maths."""

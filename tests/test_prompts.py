@@ -3,8 +3,9 @@ import json
 from typing import get_args
 
 import pytest
+from sympy import Poly, expand
 
-from app import board, curriculum, grading, prompts
+from app import board, curriculum, grading, mathcheck, prompts
 from app.config import PROMPT_VERSIONS
 from app.models import BoardCommand, BoardLine, Decision, Kind, Reply, ReplyType, Segment, Understood
 
@@ -152,12 +153,21 @@ def test_v2_drafts_exist_and_keep_the_no_reveal_rule():
     assert v2[start_2:end_2] == v1[start_1:end_1]
 
 
+def _a_times_c(equation: str):
+    """a × c of a question's equation (left side minus right side), or None when it isn't a quadratic."""
+    eq = mathcheck.parse_check(equation)
+    poly = Poly(expand((eq.lhs - eq.rhs).doit()), mathcheck.x)
+    return poly.coeff_monomial(mathcheck.x**2) * poly.coeff_monomial(1) if poly.degree() == 2 else None
+
+
 def test_respond_v2_labelled_step_example_passes_the_reply_rules(cur):
-    """respond.v2's two-line example (a words line, then its maths line) is a reply board.py accepts."""
+    """respond.v2's two-line example (a words line, then its maths line) is a reply board.py accepts. Its product
+    is no lesson question's a × c, so a model copying it into a hint can't mix it up with the question's numbers."""
     lines = prompts.load_prompt("respond.v2").splitlines()
     example = [json.loads(line) for line in lines if line.strip().startswith('{"op": "write", "id": "s')]
     assert [(cmd["id"], cmd["text"], cmd["latex"], cmd["check"]) for cmd in example] == [
-        ("s1", "Step one: multiply a by c", None, None), ("s2", None, "2(-3) = -6", "Eq(2*(-3), -6)")]
+        ("s1", "Step one: multiply a by c", None, None), ("s2", None, "4(-5) = -20", "Eq(4*(-5), -20)")]
+    assert -20 not in {_a_times_c(check.equation) for concept in cur.concepts.values() for check in concept.checks}
     concept = cur.concepts["factorisation"]
     check, next_check = curriculum.get_check(concept, "fa2"), curriculum.get_check(concept, "fa3")
     reply = {"segments": [{"say": "Step one: multiply a by c.", "board": example}]}
