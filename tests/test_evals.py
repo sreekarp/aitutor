@@ -6,7 +6,7 @@ import pytest
 from conftest import FakeLLM
 
 import evals.__main__ as evals_main
-from app import curriculum, prompts, safety
+from app import curriculum, fallback, prompts, safety
 from app.config import MODELS, PROMPT_VERSIONS, Settings
 from app.llm import ProviderError
 from app.models import ACTIONS
@@ -45,7 +45,7 @@ def trouble() -> FakeLLM:
 
 def test_scenarios_file_valid(cur):
     scenarios = layer2.load_scenarios()
-    assert len(scenarios) == 17 and len({s["id"] for s in scenarios}) == 17
+    assert len(scenarios) == 18 and len({s["id"] for s in scenarios}) == 18
     for s in scenarios:
         setup, expect = s["setup"], s["expect"]
         assert set(setup) <= layer2.SETUP_KEYS and set(expect) <= layer2.EXPECT_KEYS, s["id"]
@@ -56,6 +56,7 @@ def test_scenarios_file_valid(cur):
             assert setup["status"] == "teaching" and curriculum.get_step(concept, setup["step"]), s["id"]
         assert expect["action"] in ACTIONS and s["title"] and s["student_says"].strip(), s["id"]
         assert expect.get("mistake") in {None, *(mistake.id for mistake in concept.mistakes)}, s["id"]
+        assert fallback.keyword(s["student_says"], setup["status"]) is None, s["id"]   # every reply reaches UNDERSTAND
     assert {s["setup"]["concept"] for s in scenarios} == set(cur.order)     # all six concepts
     safety_scenario = next(s for s in scenarios if s["expect"]["rule"] == "R10")
     assert not safety.is_safety(safety_scenario["student_says"])            # UNDERSTAND must catch it, not a keyword

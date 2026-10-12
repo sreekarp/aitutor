@@ -69,6 +69,13 @@ def test_hint_follow_up_clarify_explain_and_reteach(cur):
     assert spoken(cur, "probe", fa1) == ["Right — how did you get that?"]
 
 
+def test_move_on_while_a_question_is_open_asks_it_first(cur):
+    """R8 after "move on": the open question comes first. Compose asks it again after these words."""
+    fa1 = check_of(cur, "fa1")
+    assert spoken(cur, "repeat", fa1, "factorisation", evidence={"type": "move_on"}) == ["Let's get this one first."]
+    assert spoken(cur, "repeat", fa1, "factorisation", evidence={"type": "unclear"}) == ["Let me ask that again."]
+
+
 def test_explain_while_a_question_is_open_says_a_lesson_hint(cur):
     """A question while a question is open, with no key or after RESPOND failed: where to start, or once a hint
     was given, that last hint again. Never a new hint: R7 adds no hint level, so it stays free."""

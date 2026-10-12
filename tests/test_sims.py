@@ -50,7 +50,7 @@ def test_load_personas_rejects_a_missing_field(tmp_path):
 
 
 def test_sim_stops_on_mastery(cur):
-    fake = student(said("I get it"), said(RT1_RIGHT), said(RT2_RIGHT), said("never sent"))
+    fake = student(said("test me"), said(RT1_RIGHT), said(RT2_RIGHT), said("never sent"))
     record = simulate(PERSONAS["fast_learner"], cur, SCRIPTED, fake, None, concept_id="roots")
     assert record["summary"] == {"turns": 3, "hints": 0, "reteaches": 0, "false_advances": 0,
                                  "outcome": "mastered"}
@@ -62,7 +62,7 @@ def test_sim_stops_on_mastery(cur):
 
 def test_sim_run_counts_false_advances(cur):
     fake = student(
-        said("I get it", True),       # R6: no points
+        said("test me", True),        # R6: no points
         said(RT1_WRONG, True),        # wrong -> R4 hint 1
         said(RT1_RIGHT, True),        # R1 (half a point) while still holding the mistake: a false advance
         said(RT2_RIGHT, False),       # R1, mistake gone
@@ -75,13 +75,13 @@ def test_sim_run_counts_false_advances(cur):
 
 
 def test_persona_without_mistakes_never_counts_false_advances(cur):
-    fake = student(said("I get it", True), said(RT1_RIGHT, True), said(RT2_RIGHT, True))
+    fake = student(said("test me", True), said(RT1_RIGHT, True), said(RT2_RIGHT, True))
     record = simulate(PERSONAS["fast_learner"], cur, SCRIPTED, fake, None, concept_id="roots")
     assert record["summary"]["false_advances"] == 0
 
 
 def test_sim_counts_reteaches_and_stops_at_turn_limit(cur):
-    fake = student(said("I get it"), *[said(RT1_WRONG, True)] * 4)    # hints 1-3, then a reteach
+    fake = student(said("test me"), *[said(RT1_WRONG, True)] * 4)    # hints 1-3, then a reteach
     record = simulate(PERSONAS["sign_flipper"], cur, SCRIPTED, fake, None, concept_id="roots", max_turns=5)
     assert record["summary"] == {"turns": 5, "hints": 3, "reteaches": 1, "false_advances": 0,
                                  "outcome": "turn_limit"}

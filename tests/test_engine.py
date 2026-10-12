@@ -10,12 +10,13 @@ import copy
 import re
 from dataclasses import replace
 from fractions import Fraction
+from typing import get_args
 
 import pytest
 
 from app import engine, sessions
 from app.models import (ACTIONS, Check, Concept, ConceptState, Curriculum, Decision, Grade, Mistake, Pending,
-                        Progress, Segment, Step, Understood)
+                        Progress, ReplyType, Segment, Step, Understood)
 
 
 # ---------- a tiny curriculum: 3 concepts, 2-3 steps and 3-4 checks each ----------
@@ -172,12 +173,70 @@ def test_last_step_starts_checking_with_fresh_pending():
 
 def test_claims_understanding_teaching_and_checking():
     decision, after = turn(progress_with(teaching_at("a_intro")), said("claims_understanding"))
-    assert (decision.rule, decision.action, decision.ask_check_id) == ("R6", "start_check", "a1")
-    assert after["alpha"].status == "checking" and after["alpha"].points == 0
+    assert (decision.rule, decision.action, decision.play_step_id) == ("R0", "next_step", "a_method")   # "got it"
+    assert after["alpha"].status == "teaching" and after["alpha"].points == 0
     progress = progress_with(asking("a2", hint_level=1))
     decision, after = turn(progress, said("claims_understanding"))
     assert (decision.rule, decision.action, decision.ask_check_id) == ("R6", "show_me", "a2")
     assert after == progress                                       # no points, same question
+
+
+# ---------- what the student asks for: test me, not sure, move on ----------
+def test_got_it_and_move_on_go_on_while_teaching():
+    """While teaching, "got it" and "move on" mean the same as "ok": the next step, the first question after the
+    last step, and step 1 at the topic start. Only "test me" skips the steps."""
+    for kind in ("claims_understanding", "move_on"):
+        decision, after = turn(progress_with(teaching_at("a_intro")), said(kind))
+        assert (decision.rule, decision.action, decision.play_step_id) == ("R0", "next_step", "a_method"), kind
+        assert (after["alpha"].status, after["alpha"].step_id) == ("teaching", "a_method")
+        decision, after = turn(progress_with(teaching_at("a_check")), said(kind))
+        assert (decision.rule, decision.action, decision.ask_check_id) == ("R0", "start_check", "a1"), kind
+        decision, _ = turn(progress_with(teaching_at(None)), said(kind))
+        assert (decision.rule, decision.play_step_id) == ("R0", "a_intro"), kind
+
+
+def test_test_me_skips_the_steps_from_the_topic_start_or_any_step():
+    for step_id in (None, "a_method"):
+        decision, after = turn(progress_with(teaching_at(step_id)), said("test_me"))
+        assert (decision.rule, decision.action, decision.ask_check_id) == ("R6", "start_check", "a1"), step_id
+        assert decision.clear_board and "tested" in decision.reason
+        state = after["alpha"]
+        assert (state.status, state.pending, state.last_check_id, state.points) == ("checking", Pending("a1"), "a1", 0)
+
+
+def test_not_sure_while_teaching_explains_the_step_again():
+    progress = progress_with(teaching_at("a_method"))
+    decision, after = turn(progress, said("not_sure"))
+    assert (decision.rule, decision.action, decision.reask) == ("R7", "explain", False)
+    assert "weren't sure" in decision.reason and after == progress
+    decision, _ = turn(progress_with(teaching_at(None)), said("not_sure"))     # at the topic start: step 1 itself
+    assert (decision.rule, decision.play_step_id) == ("R0", "a_intro")
+
+
+def test_test_me_not_sure_and_move_on_while_checking():
+    """While a question is open, "test me" is "show me", "not sure" gets the next hint as "I don't know" does, and
+    "move on" asks the question again: moving on comes after it."""
+    progress = progress_with(asking("a2", hint_level=1))
+    decision, after = turn(progress, said("test_me"))
+    assert (decision.rule, decision.action, decision.ask_check_id) == ("R6", "show_me", "a2") and after == progress
+    decision, after = turn(progress, said("not_sure"))
+    assert (decision.rule, decision.action, decision.hint_level, decision.reask) == ("R4", "hint", 2, True)
+    assert after["alpha"].pending.hint_level == 2 and after["alpha"].points == 0
+    decision, after = turn(progress, said("move_on"))
+    assert (decision.rule, decision.action, decision.ask_check_id) == ("R8", "repeat", "a2")
+    assert decision.reason == "Moving on comes after this question, so the question is asked again. Nothing changes."
+    assert (decision.evidence["type"], decision.clear_board) == ("move_on", False) and after == progress
+
+
+def test_every_reply_type_has_a_rule_wherever_the_student_is():
+    """No reply type raises: at the topic start, on a step, on the last step, or with a question open."""
+    assert {"test_me", "not_sure", "move_on"} <= set(get_args(ReplyType))
+    places = {"topic start": teaching_at(None), "on a step": teaching_at("a_method"),
+              "last step": teaching_at("a_check"), "checking": asking("a1")}
+    for place, state in places.items():
+        for kind in get_args(ReplyType):
+            decision, _ = turn(progress_with(state), said(kind))
+            assert decision.rule in ("R0", "R4", "R5", "R6", "R7", "R8"), (place, kind)
 
 
 def test_question_explains_and_keeps_state():
@@ -224,7 +283,7 @@ def test_a_concept_not_started_opens_at_its_start():
 
 
 def test_at_the_topic_start_a_reply_begins_step_1():
-    """At the topic start any reply begins step 1, which also answers a question. "I get it" goes straight to a
+    """At the topic start any reply begins step 1, which also answers a question. "Test me" goes straight to a
     question (R6). "Say again", and a reply that couldn't be read (a failed recording too), say the start again."""
     start = progress_with(ConceptState("alpha", status="teaching"))
     for reply in (said("next"), said("answer", "12", mistake="sign_flip"), said("question"), said("dont_know"),
@@ -232,7 +291,7 @@ def test_at_the_topic_start_a_reply_begins_step_1():
         decision, after = turn(start, reply)
         assert (decision.rule, decision.action, decision.play_step_id) == ("R0", "next_step", "a_intro"), reply
         assert after["alpha"] == ConceptState("alpha", status="teaching", step_id="a_intro"), reply
-    decision, after = turn(start, said("claims_understanding"))
+    decision, after = turn(start, said("test_me"))
     assert (decision.rule, decision.action, decision.ask_check_id) == ("R6", "start_check", "a1")
     for kind in ("say_again", "unclear"):
         decision, after = turn(start, said(kind))
@@ -689,7 +748,7 @@ def test_only_a_new_question_clears_the_board():
     partial = graded("partial", "11", detail="missing")
     cases = [   # (progress, reply, grade) -> (rule, action, clears the board)
         (progress_with(teaching_at("a_check")), said("next"), None, "R0", "start_check", True),
-        (progress_with(teaching_at("a_intro")), said("claims_understanding"), None, "R6", "start_check", True),
+        (progress_with(teaching_at("a_intro")), said("test_me"), None, "R6", "start_check", True),
         (progress_with(asking("a1")), said("answer", "7, 11", working=True), graded("correct", "7, 11"),
          "R1", "credit", True),
         (progress_with(asking("a1")), said("answer", "-7, -11"), TRAP, "R3", "reteach", True),

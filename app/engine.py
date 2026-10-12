@@ -11,7 +11,8 @@ from app.models import Concept, ConceptState, Curriculum, Decision, Grade, Pendi
 
 # How R8's reason starts, by reply type.
 REPEAT_CAUSE = {"next": "That reply didn't answer the question", "say_again": "You asked to hear it again",
-                "off_topic": "That reply was off-topic", "unclear": "That reply wasn't clear"}
+                "off_topic": "That reply was off-topic", "unclear": "That reply wasn't clear",
+                "move_on": "Moving on comes after this question"}
 
 
 def current_concept(progress: Progress, cur: Curriculum) -> str | None:
@@ -57,12 +58,15 @@ def end_decision() -> Decision:
 # ---------- the rules while teaching, and while checking ----------
 def _teaching(state: ConceptState, concept: Concept, understood: Understood) -> Decision:
     kind, total = understood.type, len(concept.steps)
-    if state.step_id is None and kind not in ("claims_understanding", "say_again", "unclear"):
+    if kind == "test_me":                          # the only reply that skips the steps
+        return _ask_next(state, concept, "R6", "start_check",
+                         "You asked to be tested, so the remaining steps are skipped and a question checks it.")
+    if state.step_id is None and kind not in ("say_again", "unclear"):
         kind = "next"            # the topic start: any other reply begins step 1, which answers a question too
     if kind == "answer" and understood.mistake in {mistake.id for mistake in concept.mistakes}:
         return make_decision("R7", "explain", state, "Your reply shows a known mistake, so it is explained before "
                              "moving on. Same step.", mistake=understood.mistake)
-    if kind in ("next", "answer"):
+    if kind in ("next", "answer", "claims_understanding", "move_on"):     # "got it" and "move on" go on, like "ok"
         step_id = next_step_id(concept, state.step_id)
         if step_id is None:
             return _ask_next(state, concept, "R0", "start_check",
@@ -71,9 +75,8 @@ def _teaching(state: ConceptState, concept: Concept, understood: Understood) -> 
         number = [step.id for step in concept.steps].index(step_id) + 1
         return make_decision("R0", "next_step", state, f"Teaching: you're ready, so step {number} of {total}.",
                              play_step_id=step_id)
-    if kind == "claims_understanding":
-        return _ask_next(state, concept, "R6", "start_check",
-                         "You said you get it, so the remaining steps are skipped and a question checks it.")
+    if kind == "not_sure":
+        return make_decision("R7", "explain", state, "You weren't sure, so this step is explained again.")
     if kind == "question":
         return make_decision("R7", "explain", state, "You asked a question, so it is answered. Same step.")
     if kind == "dont_know":
@@ -90,11 +93,12 @@ def _checking(after: Progress, cur: Curriculum, state: ConceptState, understood:
     if kind == "question":
         return make_decision("R7", "explain", state, "You asked a question, so it is answered first. Same question.",
                              reask=True)
-    if kind == "dont_know":
+    if kind in ("dont_know", "not_sure"):          # "I don't know" or "not sure": the next hint
         return _hint(after, cur, state, "You asked for help.", wrong_values=False)
-    if kind == "claims_understanding":
+    if kind in ("claims_understanding", "test_me"):
         return make_decision("R6", "show_me", state, "Points need an answer with working, so: show me. Same question.",
                              ask_check_id=check_id)
+    # "move on" too: this question comes first, so it is asked again (replies.words says "Let's get this one first.")
     return make_decision("R8", "repeat", state,
                          f"{REPEAT_CAUSE[kind]}, so the question is asked again. Nothing changes.",
                          ask_check_id=check_id)

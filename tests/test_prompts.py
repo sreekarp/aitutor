@@ -170,6 +170,20 @@ def test_understand_v2_reads_step_requests_as_help():
         assert phrase in dont_know, phrase
 
 
+def test_understand_v3_knows_every_reply_type_and_that_got_it_goes_on():
+    """understand.v3 (in use) lists every reply type once. While teaching, "got it" means go on and only an explicit
+    "test me" skips the steps; a bare "no" or "nahi" is not sure only while teaching."""
+    assert PROMPT_VERSIONS["understand"] == "understand.v3"
+    lines = prompts.load_prompt("understand.v3").splitlines()
+    assert sorted(line[2:line.index(":")] for line in lines if line.startswith("- ")) == sorted(get_args(ReplyType))
+    text = " ".join(" ".join(lines).split())                               # line breaks don't matter
+    assert ('While PHASE is teaching, "got it", "understood" and "yes" mean go on: next or claims_understanding. '
+            'Only an explicit request like "test me" or "I already know this" is test_me.') in text
+    not_sure = text[text.index("- not_sure:"):text.index("- claims_understanding:")]
+    for phrase in ('"not sure"', '"another example"', 'While PHASE is teaching, a bare "no" or "nahi" is not_sure'):
+        assert phrase in not_sure, phrase
+
+
 def test_schemas_are_strict():
     for schema in (prompts.UNDERSTAND_SCHEMA, prompts.RESPOND_SCHEMA):
         objects = list(_objects(schema))

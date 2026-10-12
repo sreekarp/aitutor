@@ -86,8 +86,8 @@ class Curriculum(BaseModel):
 
 
 # ---------- one reply, as understood ----------
-ReplyType = Literal["next", "answer", "question", "dont_know", "claims_understanding",
-                    "off_topic", "unclear", "say_again"]
+ReplyType = Literal["next", "answer", "question", "dont_know", "claims_understanding", "test_me", "not_sure",
+                    "move_on", "off_topic", "unclear", "say_again"]
 
 
 class Understood(BaseModel):

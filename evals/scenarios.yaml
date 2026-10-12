@@ -13,7 +13,13 @@
   title: Claims understanding
   setup: {concept: factorisation, status: teaching, step: split_middle}
   student_says: "yeah I get it"
-  expect: {type: claims_understanding, rule: R6, action: start_check, points: 0}
+  expect: {type: claims_understanding, rule: R0, action: next_step, points: 0}
+
+- id: already_know_test_me
+  title: Already knows it (test me)
+  setup: {concept: quadratic_formula, status: teaching, step: the_formula}
+  student_says: "I already know this, can you test me?"
+  expect: {type: test_me, rule: R6, action: start_check, points: 0}
 
 - id: no_working_hinglish
   title: No working (Hinglish)

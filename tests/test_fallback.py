@@ -20,6 +20,38 @@ def test_keyword_whole_reply_only():
     assert fallback.keyword("ok", "checking") is None                     # while checking, "ok" isn't "next"
 
 
+def test_keyword_reads_got_it_test_me_not_sure_and_move_on():
+    """Whole replies, read with no model call. "got it" goes on while teaching (while a question is open UNDERSTAND
+    reads it), and "no" and "nahi" mean not sure only while teaching: while a question is open they are answers."""
+    for text in ("got it", "Got it.", "Understood!", "samajh gaya", "I get it", "I get it.", "Makes sense"):
+        assert (fallback.keyword(text, "teaching"), fallback.keyword(text, "checking")) == \
+            ("claims_understanding", None), text
+    for text in ("carry on", "Carry on.", "teach me", "Yes quiz me", "yes, quiz me"):
+        assert (fallback.keyword(text, "teaching"), fallback.keyword(text, "checking")) == ("next", None), text
+    for text in ("not sure", "I'm not sure", "didn't get it", "Didn’t get it", "don't understand",
+                 "another example", "explain again", "confused"):
+        assert fallback.keyword(text, "teaching") == fallback.keyword(text, "checking") == "not_sure", text
+    for text in ("no", "No.", "nahi"):
+        assert (fallback.keyword(text, "teaching"), fallback.keyword(text, "checking")) == ("not_sure", None), text
+    for text in ("move on", "Move on!", "no thanks", "stop here", "next topic"):
+        assert fallback.keyword(text, "teaching") == fallback.keyword(text, "checking") == "move_on", text
+    for text in ("test me", "Test me first", "quiz me", "I already know this", "I already know it.",
+                 "skip to the questions"):
+        assert fallback.keyword(text, "teaching") == fallback.keyword(text, "checking") == "test_me", text
+    for text in ("no, it's 3", "not sure, maybe 2 and 3", "move on to factorisation", "test me on roots",
+                 "that makes sense, why is it zero?"):
+        assert fallback.keyword(text, "teaching") is None, text           # longer replies go to UNDERSTAND
+
+
+def test_yes_and_no_while_a_question_is_open_are_answers_never_go_on_or_not_sure():
+    """A yes/no question ("is it a quadratic?") is answered with "yes", "no", "haan" or "nahi". The fast path must
+    leave all of them to be graded, however they're spelled; only while teaching do they mean go on / not sure."""
+    for text in ("yes", "Yes.", "no", "No!", "haan", "Haan ji", "nahi", "Nahi."):
+        assert fallback.keyword(text, "checking") is None, text
+    assert fallback.keyword("yes", "teaching") == "next"
+    assert fallback.keyword("haan", "teaching") == "next"
+
+
 def test_pardon_sorry_what_and_come_again_ask_to_hear_it_again():
     """On their own, with or without "?", they mean "say that again". In a longer reply they don't."""
     for text in ("pardon", "Pardon?", "sorry", "Sorry?", "what", "What?", "come again", "Come again?", "Sorry, what?"):
@@ -42,6 +74,19 @@ def test_understand_order_and_negations(cur):
     assert understand(cur, "I know it is yes", "rt1").answer == "yes"     # ... and "know" isn't "no"
     assert understand(cur, "I don't know, maybe 2").type == "dont_know"   # dont_know is checked first
     assert understand(cur, "2 and 3", phase="teaching").type == "unclear"  # answers are read only while checking
+
+
+def test_understand_reads_test_me_not_sure_and_move_on_in_longer_replies(cur):
+    teaching = {"I already know this, can you test me?": "test_me", "can you quiz me now": "test_me",
+                "I get it, test me": "test_me", "I'm not sure I follow that": "not_sure",
+                "I'm a bit confused": "not_sure", "can you show another example?": "not_sure",
+                "ok let's move on": "move_on", "can we move on?": "move_on"}
+    for text, kind in teaching.items():
+        assert understand(cur, text, phase="teaching").type == kind, text
+    said = understand(cur, "not sure, maybe 2 and 3")                    # an answer beats "not sure"
+    assert (said.type, said.answer) == ("answer", "2, 3")
+    assert understand(cur, "I already know it, it's 2 and 3").type == "answer"
+    assert understand(cur, "I don't know, test me later").type == "dont_know"     # dont_know is still read first
 
 
 def test_my_number_is_an_answer_and_beats_me_is_unclear(cur):

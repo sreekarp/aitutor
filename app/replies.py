@@ -48,6 +48,8 @@ def words(decision: Decision, *, cur: Curriculum, progress: Progress, check: Che
         return _say(_praise(decision, check, concept))
     if action == "probe":
         return _say("Right — how do you know?" if check.kind in YES_NO_KINDS else "Right — how did you get that?")
+    if action == "repeat" and decision.evidence.get("type") == "move_on":
+        return _say("Let's get this one first.")            # compose asks the open question again
     if action == "repeat":
         return _say("Let me ask that again." if check else "Let me say that again.")
     if action == "clarify":

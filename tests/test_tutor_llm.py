@@ -243,6 +243,31 @@ def test_after_a_topic_start_understand_still_reads_the_real_last_line(cur, db_e
     assert step_1.isdisjoint(segment.say for segment in result.segments)
 
 
+def test_got_it_test_me_not_sure_and_move_on_need_no_understand_call(cur, db_engine):
+    """The logged reply "Got it." goes on to the next step, as "ok" does. "test me" skips to a question, "not sure"
+    gets the step explained again or the question's next hint, and "move on" asks the open question again. None of
+    them calls UNDERSTAND: RESPOND is called only for the explanation and the hint."""
+    fake = FakeLLM(understand=[], respond=[HINT, HINT])
+    tutor = Tutor(cur, db_engine, SETTINGS, llm=fake)
+    student_id = new_student(db_engine, cur)
+    with db_engine.begin() as conn:                       # Asha is on factorisation's second step
+        progress = db.load_progress(conn, student_id, cur)
+        progress["factorisation"].status, progress["factorisation"].step_id = "teaching", "split_middle"
+        db.save_progress(conn, student_id, progress, cur.version)
+    tutor.start(student_id)
+    got_it = tutor.turn(student_id, "Got it.")
+    assert (got_it.decision.rule, got_it.decision.play_step_id) == ("R0", "a_not_one")
+    assert tutor.turn(student_id, "not sure").decision.rule == "R7"
+    tested = tutor.turn(student_id, "test me").decision
+    assert (tested.rule, tested.action, tested.ask_check_id) == ("R6", "start_check", "fa1")
+    moved = tutor.turn(student_id, "move on")
+    fa1 = cur.concepts["factorisation"].checks[0]
+    assert moved.decision.rule == "R8" and [s.say for s in moved.segments] == ["Let's get this one first.", fa1.say]
+    hinted = tutor.turn(student_id, "not sure").decision
+    assert (hinted.rule, hinted.action) == ("R4", "hint")
+    assert roles(fake) == ["respond", "respond"]
+
+
 # ---------- spoken replies the tutor can't place: the mic may have misheard ----------
 @pytest.mark.parametrize("kind, heard", [("unclear", "Кама майна."), ("off_topic", "Experience is the best teacher.")])
 def test_spoken_reply_nobody_can_place_while_checking_may_be_misheard(cur, db_engine, kind, heard):

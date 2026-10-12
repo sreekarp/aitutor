@@ -26,8 +26,8 @@ def _whole_reply(*phrases: str) -> re.Pattern:
 
 
 # ---------- word lists ----------
-NEXT = _whole_reply("ok", "okay", "next", "go on", "continue", "yes", "haan", "han", "haan ji", "theek hai",
-                    "thik hai", "accha")
+NEXT = _whole_reply("ok", "okay", "next", "go on", "carry on", "continue", "yes", "haan", "han", "haan ji",
+                    "theek hai", "thik hai", "accha", "teach me", "yes quiz me")      # the last two: the choice buttons
 SAY_AGAIN = _whole_reply("say again", "repeat", "repeat please", "phir se", "phir se bolo", "dobara", "once more",
                          "pardon", "sorry", "what", "come again")
 # Hit, beat, slap, kick, punch, smack, thrash, hurt or touch, in any form, then "me" or "us" ("beats me", "slapped
@@ -57,7 +57,20 @@ STEP_BY_STEP = re.compile(r"\bstep\W+by\W+step\b")                     # "step-b
 # "I did it", "I solved it", "I've done it", "let me go", "I'll take it", "I'm doing it" (but not "I did not").
 MY_OWN_STEPS = re.compile(r"\b(?:i (?:did|solved|worked)(?! not)|ive (?:done|solved|worked)|(?:let me|ill|i will)"
                           r" (?:go|do|take|solve|work|show)|(?:im|i am) (?:going|doing|solving|working))\b")
-GET_IT = phrases("get it", "got it", "understood", "samajh gaya", "samajh gayi")
+GET_IT = phrases("i get it", "get it", "got it", "makes sense", "understood", "samajh gaya", "samajh gayi")
+# What the student wants next: skip to the questions, or stop this topic. Read as a whole reply (keyword) and in
+# longer replies (understand).
+TEST_ME = phrases("test me", "test me first", "quiz me", "i already know this", "i already know it",
+                  "skip to the questions")
+MOVE_ON = phrases("move on", "no thanks", "stop here", "next topic")
+# Not following what was just explained. As a whole reply, "no" and "nahi" count only while teaching (NOT_SURE):
+# while a question is open they are answers (NOT_SURE_ASKED). In a longer reply UNSURE is read after answers, as
+# "not sure, maybe 2 and 3" is an answer; there "didn't get it" and "don't understand" are DONT_KNOW, read first.
+NOT_SURE_WORDS = ("not sure", "im not sure", "didnt get it", "dont understand", "another example", "explain again",
+                  "confused")
+NOT_SURE = _whole_reply(*NOT_SURE_WORDS, "no", "nahi")
+NOT_SURE_ASKED = _whole_reply(*NOT_SURE_WORDS)
+UNSURE = phrases(*NOT_SURE_WORDS)
 QUESTION_START = re.compile(r"\s*(?:why|how|what|kyun|kaise)\b")
 # Method words, by their start: "factor" also finds "factorise" and "factorised".
 METHOD = re.compile(r"\b(?:d|formula|discriminant|(?:factor|split|bracket|substitut|put|multipl|expand|simplif"
@@ -78,12 +91,18 @@ WORD_CHOICES = {"is_quadratic": grading.YES_NO_WORDS, "is_root": grading.YES_NO_
 
 # ---------- fast paths ----------
 def keyword(text: str, phase: str) -> str | None:
-    """"next" or "say_again" when the WHOLE reply is listed phrases; anything longer goes to UNDERSTAND."""
-    clean = " ".join(re.sub(r"[^a-z0-9]+", " ", text.lower()).split())
+    """A reply type when the WHOLE reply is listed phrases ("ok next", "got it", "not sure"); anything longer goes
+    to UNDERSTAND. "ok", "yes", "no" and "nahi" count only while teaching: while a question is open they're answers."""
+    clean = " ".join(re.sub(r"[^a-z0-9]+", " ", text.lower().replace("'", "").replace("’", "")).split())
     if SAY_AGAIN.fullmatch(clean):
         return "say_again"
-    if phase == "teaching" and NEXT.fullmatch(clean):
-        return "next"
+    if phase == "teaching":
+        lists = [(NEXT, "next"), (GET_IT, "claims_understanding"), (NOT_SURE, "not_sure")]
+    else:
+        lists = [(NOT_SURE_ASKED, "not_sure")]
+    for pattern, kind in lists + [(MOVE_ON, "move_on"), (TEST_ME, "test_me")]:
+        if pattern.fullmatch(clean):
+            return kind
     return None
 
 
@@ -114,6 +133,12 @@ def understand(text: str, *, phase: str, check: Check | None, awaiting_working: 
         kind = "dont_know"
     elif answer:
         kind = "answer"
+    elif TEST_ME.search(clean):
+        kind = "test_me"                                     # "I already know this, can you test me?"
+    elif UNSURE.search(clean):
+        kind = "not_sure"
+    elif MOVE_ON.search(clean):
+        kind = "move_on"
     elif GET_IT.search(clean):
         kind = "claims_understanding"
     elif _asks_for_steps(clean) and not awaiting_working:
