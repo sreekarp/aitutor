@@ -213,6 +213,32 @@ def test_unclear_while_teaching_repeats_last_reply():
         assert after == progress
 
 
+def test_a_concept_not_started_opens_at_its_start():
+    """activate(): a topic opens at its start, step_id None (its intro is said; step 1 waits for a reply).
+    A paused concept carries on just where it stopped."""
+    after = progress_with(ConceptState("beta", status="paused", step_id="b_cases"))
+    engine.activate(after, CUR, "alpha")
+    engine.activate(after, CUR, "beta")
+    assert after["alpha"] == ConceptState("alpha", status="teaching")
+    assert after["beta"] == ConceptState("beta", status="teaching", step_id="b_cases")
+
+
+def test_at_the_topic_start_a_reply_begins_step_1():
+    """At the topic start any reply begins step 1, which also answers a question. "I get it" goes straight to a
+    question (R6). "Say again", and a reply that couldn't be read (a failed recording too), say the start again."""
+    start = progress_with(ConceptState("alpha", status="teaching"))
+    for reply in (said("next"), said("answer", "12", mistake="sign_flip"), said("question"), said("dont_know"),
+                  said("off_topic")):
+        decision, after = turn(start, reply)
+        assert (decision.rule, decision.action, decision.play_step_id) == ("R0", "next_step", "a_intro"), reply
+        assert after["alpha"] == ConceptState("alpha", status="teaching", step_id="a_intro"), reply
+    decision, after = turn(start, said("claims_understanding"))
+    assert (decision.rule, decision.action, decision.ask_check_id) == ("R6", "start_check", "a1")
+    for kind in ("say_again", "unclear"):
+        decision, after = turn(start, said(kind))
+        assert (decision.rule, decision.action, after) == ("R8", "repeat", start), kind
+
+
 # ---------- checking: right answers and the "how did you get that?" probe ----------
 def test_correct_with_working_gives_point_and_next_question():
     decision, after = turn(progress_with(asking("a1")), said("answer", "7, 11", working=True),
@@ -237,7 +263,7 @@ def test_mastery_resumes_next_concept_with_clear():
     assert (decision.rule, decision.action, decision.concept_id) == ("R1", "mastered", "alpha")
     assert (decision.resume_concept_id, decision.clear_board, decision.ask_check_id) == ("beta", True, None)
     assert after["alpha"].status == "mastered" and after["alpha"].pending is None and after["alpha"].points == 2.0
-    assert after["beta"].status == "teaching" and after["beta"].step_id == "b_what"
+    assert after["beta"] == ConceptState("beta", status="teaching")             # at its start: step_id None
 
 
 def test_mastering_last_concept_resumes_none():
@@ -457,7 +483,7 @@ def test_fourth_reteach_is_needs_review():
     assert (decision.strategy, decision.mistake) == (None, "sign_flip")
     state = after["alpha"]
     assert (state.status, state.pending, state.points, state.reteach_count) == ("needs_review", None, 1.5, 3)
-    assert after["beta"].status == "teaching" and after["beta"].step_id == "b_what"
+    assert after["beta"] == ConceptState("beta", status="teaching")             # at its start: step_id None
     # the same gate after hint 3 (the R4 route); on the last concept nothing is left to resume
     progress = progress_with(mastered("alpha"), mastered("beta"),
                              asking("g1", cid="gamma", hint_level=3, reteach_count=3))
@@ -484,10 +510,10 @@ def test_s0_resets_every_needs_review_and_keeps_last_check():
     assert after["beta"] == ConceptState("beta", status="teaching", step_id="b_what", last_check_id="b2")
     assert after["gamma"] == ConceptState("gamma", status="teaching", step_id="g_plan", last_check_id="g1")
     assert after["alpha"] == before["alpha"] and progress == before         # input unchanged
-    # a brand-new student starts the first concept at step 1
+    # a brand-new student opens the first concept at its start (step_id None); a review above restarts at step 1
     decision, after = sessions.start(progress_with(), CUR, new_session=True)
     assert decision.resume_concept_id == "alpha"
-    assert after["alpha"] == ConceptState("alpha", status="teaching", step_id="a_intro")
+    assert after["alpha"] == ConceptState("alpha", status="teaching")
 
 
 def test_s1_continues_without_clear():
@@ -527,7 +553,7 @@ def test_jump_pauses_the_current_concept_and_starts_the_picked_one():
     assert (decision.resume_concept_id, decision.clear_board, decision.evidence["from"]) == ("gamma", True, "alpha")
     assert after["alpha"] == ConceptState("alpha", status="paused", points=1.0, pending=Pending("a2", hint_level=2),
                                           last_check_id="a2")             # everything kept, just paused
-    assert after["gamma"] == ConceptState("gamma", status="teaching", step_id="g_plan")
+    assert after["gamma"] == ConceptState("gamma", status="teaching")           # at its start: step_id None
     assert engine.current_concept(after, CUR) == "gamma"
 
 
@@ -553,8 +579,8 @@ def test_jump_to_a_finished_concept_starts_it_again():
     progress = progress_with(mastered("alpha"), needs_review("beta", "b_cases", "b2"), asking("g1", cid="gamma"))
     for cid, last_check in (("alpha", None), ("beta", "b2")):
         decision, after = jump(progress, cid)
-        assert after[cid] == ConceptState(cid, status="teaching", step_id=CUR.concepts[cid].steps[0].id,
-                                          last_check_id=last_check)     # points reset; the next question follows on
+        # at its start, points reset; the next question follows on from the last one asked
+        assert after[cid] == ConceptState(cid, status="teaching", last_check_id=last_check)
         assert "again" in decision.reason and after["gamma"].status == "paused"
 
 
@@ -595,6 +621,12 @@ def test_reconcile_missing_step_while_teaching():
     checking.step_id = "a_method"                                  # a step only matters while teaching
     progress = progress_with(checking)
     assert sessions.reconcile(progress, edited("alpha", step="a_method")) == (progress, [], False)
+
+
+def test_reconcile_leaves_a_topic_start_alone():
+    """step_id None means "at the topic start", not a removed step: teaching or paused there, nothing changes."""
+    progress = progress_with(ConceptState("alpha", status="teaching"), ConceptState("beta", status="paused"))
+    assert sessions.reconcile(progress, CUR) == (progress, [], False)
 
 
 def test_reconcile_missing_pending_check_asks_next_fresh():

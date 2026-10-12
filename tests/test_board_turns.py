@@ -33,8 +33,8 @@ def with_a_hint_line(cur, db_engine, *understand, respond=()):
     tutor = Tutor(cur, db_engine, LLM, llm=fake)
     student_id = new_student(db_engine, cur)
     tutor.start(student_id)
-    for _ in cur.concepts["factorisation"].steps:
-        tutor.turn(student_id, "ok")                                    # the last "ok" asks fa1
+    for _ in range(len(cur.concepts["factorisation"].steps) + 1):
+        tutor.turn(student_id, "ok")                                    # step 1, ...; the last "ok" asks fa1
     hinted = tutor.turn(student_id, "no idea")
     assert hinted.board[-1].id == "h1"
     return tutor, student_id, hinted.board
@@ -45,7 +45,7 @@ def test_first_question_starts_a_clean_board(cur, db_engine):
     tutor = Tutor(cur, db_engine, make_settings())
     student_id = new_student(db_engine, cur)
     tutor.start(student_id)
-    for _ in cur.concepts["factorisation"].steps:
+    for _ in range(len(cur.concepts["factorisation"].steps) + 1):      # step 1, ..., then the first question
         result = tutor.turn(student_id, "ok")
     assert result.decision.action == "start_check" and ids(result) == ["q-label", "q-eq"]
 
@@ -111,7 +111,7 @@ def test_scripted_reteach_replays_its_step_then_starts_clean(cur, db_engine):
     tutor = Tutor(cur, db_engine, make_settings())
     student_id = new_student(db_engine, cur)
     tutor.start(student_id)
-    for _ in cur.concepts["factorisation"].steps:
+    for _ in range(len(cur.concepts["factorisation"].steps) + 1):
         tutor.turn(student_id, "ok")
     result = tutor.turn(student_id, "minus 2 and minus 3")
     assert (result.decision.rule, result.decision.strategy) == ("R3", "replay")
@@ -149,4 +149,4 @@ def test_needs_review_answer_does_not_follow_into_the_next_concept(cur, db_engin
         progress["factorisation"].reteach_count = 3
         db.save_progress(conn, student_id, progress, cur.version)
     result = tutor.turn(student_id, "minus 2 and minus 3")
-    assert result.decision.rule == "R9" and ids(result) == ["tf1"]     # the quadratic formula's first line
+    assert result.decision.rule == "R9" and ids(result) == []          # the quadratic formula opens at its start

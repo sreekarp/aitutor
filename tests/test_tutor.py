@@ -23,9 +23,10 @@ def tutor(cur, db_engine):
 
 
 def to_first_question(tutor, cur, student_id):
-    """Start, then "ok" through every factorisation step; returns the turn that asked the first question."""
+    """Start (factorisation opens at its start), then "ok" to step 1 and on through every step; returns the turn
+    that asked the first question."""
     tutor.start(student_id)
-    for _ in cur.concepts["factorisation"].steps:
+    for _ in range(len(cur.concepts["factorisation"].steps) + 1):
         result = tutor.turn(student_id, "ok")
     return result
 
@@ -34,8 +35,8 @@ def test_full_pass_through_factorisation_scripted(tutor, db_engine, cur):
     student_id = new_student(db_engine, cur)
     concept = cur.concepts["factorisation"]
     assert tutor.start(student_id).decision.rule == "S0"
-    assert progress_of(db_engine, cur, student_id)["factorisation"].step_id == concept.steps[0].id
-    for step in concept.steps[1:]:
+    assert progress_of(db_engine, cur, student_id)["factorisation"].step_id is None      # at the topic start
+    for step in concept.steps:
         result = tutor.turn(student_id, "ok")
         assert (result.decision.rule, result.decision.action) == ("R0", "next_step")
         assert progress_of(db_engine, cur, student_id)["factorisation"].step_id == step.id
@@ -59,15 +60,14 @@ def test_full_pass_through_factorisation_scripted(tutor, db_engine, cur):
     assert progress["factorisation"].status == "mastered" and progress["factorisation"].pending is None
     following = cur.order[cur.order.index("factorisation") + 1]
     assert result.decision.resume_concept_id == following
-    assert progress[following].status == "teaching"
-    assert progress[following].step_id == cur.concepts[following].steps[0].id
+    assert progress[following].status == "teaching" and progress[following].step_id is None     # at its start
     says = [segment.say for segment in result.segments]
     assert says[0].endswith("! You've mastered solving by factorisation.")
     assert says[1] == f"Now let's move on to the quadratic formula. {cur.concepts[following].intro}"
-    assert says[2:] == [segment.say for segment in cur.concepts[following].steps[0].segments]
-    assert says[2] == "Here is the formula. Read a, b and c from the standard form and put them in."   # no repeat
     assert "q-eq" not in [line.id for line in result.board]     # the board was cleared for the new concept
     assert result.calls == []
+    step_1 = tutor.turn(student_id, "ok")                       # "ok" at its start: step 1
+    assert step_1.segments[0].say == "Here is the formula. Read a, b and c from the standard form and put them in."
 
 
 def test_wrong_trap_answer_reteaches_and_asks_next(tutor, db_engine, cur):
@@ -197,7 +197,8 @@ def test_stt_failed_turn_asks_to_type(tutor, db_engine, cur):
 def test_say_again_after_didnt_catch_replays_the_step(tutor, db_engine, cur):
     """While teaching, "say again" right after a lone "didn't catch that" replays the step, not the apology."""
     student_id = new_student(db_engine, cur)
-    tutor.start(student_id)                                      # greeting, intro, step 1
+    tutor.start(student_id)                                      # greeting, intro
+    tutor.turn(student_id, "ok")                                 # step 1
     sorry = tutor.turn(student_id, "", input_mode="voice", stt_failed=True)
     assert [segment.say for segment in sorry.segments] == [DIDNT_CATCH]
     again = tutor.turn(student_id, "say again")
@@ -210,8 +211,9 @@ def test_payload_shape(tutor, db_engine, cur):
     assert page.state(tutor, student_id)["board"] == [] and page.state(tutor, student_id)["why"] == []
     tutor.start(student_id)
     teaching = {row["concept_id"]: row for row in page.state(tutor, student_id)["progress"]}["factorisation"]
-    assert (teaching["status"], teaching["step_index"], teaching["current"]) == ("teaching", 0, True)
-    for _ in cur.concepts["factorisation"].steps:
+    assert (teaching["status"], teaching["step_index"], teaching["at_start"], teaching["current"]) == \
+        ("teaching", None, True, True)
+    for _ in range(len(cur.concepts["factorisation"].steps) + 1):   # step 1, every step, then the first question
         tutor.turn(student_id, "ok")
     check = cur.concepts["factorisation"].checks[0]
     result = tutor.turn(student_id, check.traps["sign_flip"])   # a wrong answer: a reteach
@@ -231,8 +233,8 @@ def test_payload_shape(tutor, db_engine, cur):
     assert [row["concept_id"] for row in data["progress"]] == cur.order
     rows = {row["concept_id"]: row for row in data["progress"]}
     assert rows["factorisation"] == {"concept_id": "factorisation", "title": cur.concepts["factorisation"].title,
-                                     "status": "checking", "step_index": None, "step_count": 4, "points": 0.0,
-                                     "hint_level": 0, "reteach_count": 1, "current": True}
+                                     "status": "checking", "step_index": None, "step_count": 4, "at_start": False,
+                                     "points": 0.0, "hint_level": 0, "reteach_count": 1, "current": True}
     assert rows["roots"]["status"] == "mastered" and not rows["roots"]["current"]
 
     text = json.dumps(data)                                      # no answer keys anywhere
@@ -243,6 +245,20 @@ def test_payload_shape(tutor, db_engine, cur):
     formula = Segment(say="Here is the formula.", board=[BoardCommand(op="write", id="f1", formula="discriminant")])
     cmd = page.payload(tutor, student_id, replace(result, segments=[formula]))["segments"][0]["board"][0]
     assert (cmd["formula"], cmd["latex"]) == ("discriminant", cur.formulas["discriminant"])   # LaTeX filled in
+
+
+def test_progress_rows_mark_a_topic_at_its_start(tutor, db_engine, cur):
+    """The progress panel: a topic at its start, current or paused there, has at_start and no step yet."""
+    student_id = new_student(db_engine, cur)
+    tutor.start(student_id)                                      # factorisation opens at its start
+    tutor.jump(student_id, "discriminant")                       # ... and is paused there
+    rows = {row["concept_id"]: row for row in page.state(tutor, student_id)["progress"]}
+    assert [(rows[cid]["status"], rows[cid]["step_index"], rows[cid]["at_start"])
+            for cid in ("factorisation", "discriminant", "word_problems")] == [
+        ("paused", None, True), ("teaching", None, True), ("not_started", None, False)]
+    tutor.turn(student_id, "ok")                                 # the discriminant's step 1
+    row = {row["concept_id"]: row for row in page.state(tutor, student_id)["progress"]}["discriminant"]
+    assert (row["step_index"], row["at_start"]) == (0, False)
 
 
 def test_safety_turn_keeps_pending_and_flags_review(tutor, db_engine, cur):

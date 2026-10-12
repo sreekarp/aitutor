@@ -57,6 +57,8 @@ def end_decision() -> Decision:
 # ---------- the rules while teaching, and while checking ----------
 def _teaching(state: ConceptState, concept: Concept, understood: Understood) -> Decision:
     kind, total = understood.type, len(concept.steps)
+    if state.step_id is None and kind not in ("claims_understanding", "say_again", "unclear"):
+        kind = "next"            # the topic start: any other reply begins step 1, which answers a question too
     if kind == "answer" and understood.mistake in {mistake.id for mistake in concept.mistakes}:
         return make_decision("R7", "explain", state, "Your reply shows a known mistake, so it is explained before "
                              "moving on. Same step.", mistake=understood.mistake)
@@ -233,12 +235,13 @@ def resume_next(after: Progress, cur: Curriculum) -> str | None:
 
 
 def activate(after: Progress, cur: Curriculum, cid: str) -> None:
-    """A paused concept carries on where it stopped; one not started yet begins at its first step."""
+    """A paused concept carries on where it stopped; one not started yet opens at its start (step_id None):
+    its intro is said, and step 1 waits for the student's reply."""
     state = after[cid]
     if state.status == "paused":
         state.status = "checking" if state.pending else "teaching"
     elif state.status == "not_started":
-        state.status, state.step_id = "teaching", next_step_id(cur.concepts[cid], None)
+        state.status, state.step_id = "teaching", None
 
 
 def make_decision(rule: str, action: str, state: ConceptState | None, reason: str, **extra) -> Decision:

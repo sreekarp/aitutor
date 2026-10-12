@@ -94,9 +94,9 @@ def reask(check: Check, awaiting_working: bool, hint_level: int = 0) -> Segment:
 
 
 def opening(concept: Concept, action: str, from_top: bool) -> list[Segment]:
-    """Said as a concept is picked up, before its step or question. From step 1: its intro (not on Continue).
-    Right after R1 or R9 ended another concept, or a picked topic (S2): first that we move on to it, or go back to
-    it if already started."""
+    """Said as a concept is picked up, before its step or question. From the top (its start, or step 1): its
+    intro (not on Continue). Right after R1 or R9 ended another concept, or a picked topic (S2): first that we move
+    on to it, or go back to it if already started."""
     title, moved_on = _lower_first(concept.title), action in ("mastered", "needs_review", "jump")
     if not from_top:                                         # no "Now" here: some steps start with it
         return _say(f"Let's get back to {title}, where we left off.") if moved_on else []
@@ -147,7 +147,7 @@ def _greeting(decision: Decision, cur: Curriculum, progress: Progress, first_nam
     state, title = progress[cid], _lower_first(cur.concepts[cid].title)
     if decision.action == "resume":                          # S1: no name, so its audio is cached for everyone
         return f"Welcome back! Let's carry on with {title} from where we left off."
-    if state.pending or state.step_id != cur.concepts[cid].steps[0].id:      # S0 part-way through
+    if state.pending or state.step_id not in (None, cur.concepts[cid].steps[0].id):   # S0 part-way through
         return f"Welcome back, {first_name}! Let's carry on with {title} from where we left off."
     if state.status == "teaching" and state.last_check_id:   # S0 reset it from needs review (it keeps last_check_id)
         return f"Hi {first_name}! Last time, {title} needed more practice, so let's go over it again."

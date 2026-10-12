@@ -31,7 +31,8 @@ WORKED = {"segments": [{"say": "This one is tricky, and that's fine. Here it is 
 
 
 def at_first_question(cur, db_engine, fake: FakeLLM) -> tuple[Tutor, str]:
-    """Asha starts factorisation (earlier concepts mastered) and says "ok" through its steps: question fa1."""
+    """Asha starts factorisation (earlier concepts mastered) and says "ok" to step 1 and on through its steps:
+    question fa1."""
     tutor = Tutor(cur, db_engine, SETTINGS, llm=fake)
     with db_engine.begin() as conn:
         student_id = db.get_or_create_student(conn, "asha", "Asha")["id"]
@@ -40,7 +41,7 @@ def at_first_question(cur, db_engine, fake: FakeLLM) -> tuple[Tutor, str]:
             progress[concept_id].status, progress[concept_id].points = "mastered", POINTS_TO_MASTER
         db.save_progress(conn, student_id, progress, cur.version)
     tutor.start(student_id)
-    for _ in cur.concepts["factorisation"].steps:
+    for _ in range(len(cur.concepts["factorisation"].steps) + 1):
         tutor.turn(student_id, "ok")
     assert fake.asked == []                       # "ok" while teaching is a fast path: no LLM call
     return tutor, student_id
@@ -227,18 +228,19 @@ def test_llm_needs_review_on_the_last_topic_says_we_come_back_once(cur, db_engin
 
 
 def test_after_a_topic_start_understand_still_reads_the_real_last_line(cur, db_engine):
-    """Right after Start, UNDERSTAND gets the tutor's real last line (the end of step 1), and a reply it finds
-    unclear hears just step 1 again: not the greeting and the intro."""
+    """Right after Start, UNDERSTAND gets the tutor's real last line (the end of the intro: step 1 waits), and a
+    reply it finds unclear says the start again: no step is played yet."""
     fake = FakeLLM(understand=[understood("unclear")])
     tutor = Tutor(cur, db_engine, SETTINGS, llm=fake)
     with db_engine.begin() as conn:
         student_id = db.get_or_create_student(conn, "asha", "Asha")["id"]
-    first = tutor.start(student_id)                       # standard form: greeting, intro, step 1
+    first = tutor.start(student_id)                       # standard form: greeting, intro
     result = tutor.turn(student_id, "hmm, which one")
     assert roles(fake) == ["understand"]
     assert f"TUTOR'S LAST LINE: {first.segments[-1].say}" in fake.asked[0][1][1]["content"]
-    step_1 = cur.concepts["standard_form"].steps[0].segments
-    assert [segment.say for segment in result.segments] == [segment.say for segment in step_1]
+    assert (result.decision.rule, result.decision.action) == ("R8", "repeat")
+    step_1 = {segment.say for segment in cur.concepts["standard_form"].steps[0].segments}
+    assert step_1.isdisjoint(segment.say for segment in result.segments)
 
 
 # ---------- spoken replies the tutor can't place: the mic may have misheard ----------
@@ -259,10 +261,12 @@ def test_spoken_off_topic_reply_while_teaching_still_replays_the_step(cur, db_en
     """While teaching, a spoken reply nobody can place replays the step as before, and "say again" still works."""
     tutor = Tutor(cur, db_engine, SETTINGS, llm=FakeLLM(understand=[understood("off_topic")]))
     student_id = new_student(db_engine, cur)
-    tutor.start(student_id)                               # greeting, intro, step 1
+    tutor.start(student_id)                               # greeting, intro
+    tutor.turn(student_id, "ok")                          # step 1 ("ok" is a fast path: no LLM call)
     step_1 = [segment.say for segment in cur.concepts["factorisation"].steps[0].segments]
     heard = tutor.turn(student_id, "Experience is the best teacher.", input_mode="voice")
     again = tutor.turn(student_id, "say again")
+    assert heard.decision.rule == "R8"
     assert [segment.say for segment in heard.segments] == step_1 == [segment.say for segment in again.segments]
 
 

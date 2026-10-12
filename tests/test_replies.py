@@ -92,7 +92,7 @@ def test_praise_greeting_and_summary(cur):
     # The very last mastery (nothing to resume): the END summary right after it says what's mastered.
     assert spoken(cur, "mastered", check_of(cur, "di3"), "discriminant") == ["Right — no real roots."]
     progress = fresh_progress(cur)
-    progress["standard_form"] = ConceptState("standard_form", status="teaching", step_id="hook")   # as S0 leaves it
+    progress["standard_form"] = ConceptState("standard_form", status="teaching", step_id="hook")   # on step 1
     greeting = spoken(cur, "greet", None, "standard_form", progress, resume_concept_id="standard_form")
     assert greeting == ["Hi Asha! Let's start today with standard form and recognising a quadratic."]
     progress["discriminant"] = ConceptState("discriminant", status="teaching", step_id="what_is_d")
@@ -125,9 +125,17 @@ def test_welcome_back_lines(cur):
         assert spoken(cur, action, progress=progress) == ["Welcome back!"], action
 
 
+def test_greeting_at_a_topic_start_starts_the_topic(cur):
+    """A topic at its start (step_id None, where Start leaves a new student) is started, not carried on."""
+    progress = fresh_progress(cur)
+    progress["roots"] = ConceptState("roots", status="teaching")
+    assert spoken(cur, "greet", None, "roots", progress, resume_concept_id="roots") == [
+        "Hi Asha! Let's start today with roots and checking by substitution."]
+
+
 def test_names_typed_in_one_case_get_capitals(cur):
     progress = fresh_progress(cur)
-    progress["roots"] = ConceptState("roots", status="teaching", step_id="definition")     # as S0 leaves it
+    progress["roots"] = ConceptState("roots", status="teaching", step_id="definition")     # on step 1
     for typed, said in (("sreekar", "Sreekar"), ("SREEKAR", "Sreekar"), ("sai kiran", "Sai Kiran"),
                         ("McDonald", "McDonald")):                                        # mixed case is kept
         greeting = spoken(cur, "greet", None, "roots", progress, first_name=typed, resume_concept_id="roots")

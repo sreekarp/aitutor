@@ -33,12 +33,13 @@ def compose(cur: Curriculum, ctx: TurnContext, decision: Decision, after: Progre
 
 
 def resume(cur: Curriculum, concept_id: str, after: Progress, action: str) -> list[Segment]:
-    """Pick a concept up where it stands: its opening (replies.opening), then its pending question,
-    else its step (step 1 if none)."""
+    """Pick a concept up where it stands: its opening (replies.opening), then its pending question, else its
+    step. At the topic start (step_id None) just the opening: step 1 waits for the student's reply."""
     concept, state = cur.concepts[concept_id], after[concept_id]
-    step = curriculum.get_step(concept, state.step_id) or concept.steps[0]
-    opening = replies.opening(concept, action, from_top=not state.pending and step.id == concept.steps[0].id)
+    step = curriculum.get_step(concept, state.step_id)              # None at the topic start
+    from_top = not state.pending and (step is None or step.id == concept.steps[0].id)
+    opening = replies.opening(concept, action, from_top=from_top)
     if state.pending:
         check = curriculum.get_check(concept, state.pending.check_id)
         return opening + [curriculum.ask_segment(check, cur.formulas)]
-    return opening + list(step.segments)
+    return opening + (list(step.segments) if step else [])

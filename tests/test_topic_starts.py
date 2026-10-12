@@ -1,5 +1,5 @@
-"""Whole turns as a session or topic starts, in scripted mode: the greeting or move-on line, the topic's intro,
-then its step. "Say again" right after a topic starts replays just the step: not the greeting, intro or praise."""
+"""Whole turns as a session or topic starts, in scripted mode: the greeting or move-on line and the topic's intro;
+step 1 waits for the student's reply. "Say again" right after Continue replays just the step: not the greeting."""
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -8,7 +8,7 @@ from conftest import make_settings, new_student, progress_of, said_with_working
 from app import curriculum, db
 from app.config import SESSION_GAP_MIN
 from app.models import ConceptState, Pending
-from app.tutor import Tutor
+from app.tutor import DIDNT_CATCH, Tutor
 
 RIGHT_B = "minus 7 because I moved every term"     # the answer to sf2 ("what is b?"), with working
 
@@ -32,14 +32,15 @@ def sf2_open(db_engine, cur, *, mastered=(), points=0.0, hint_level=0, reteach_c
 
 
 def test_session_start_greets_then_opens_the_concept(tutor, db_engine, cur):
-    """A new session from step 1: greeting, intro, step 1. Continue (S1) within 30 minutes, and a new session
-    part-way through, say "Welcome back" and carry on with the step: no intro."""
+    """A new student: greeting and intro, and step 1 waits for a reply. Continue (S1) within 30 minutes, and a new
+    session part-way through, say "Welcome back" and carry on with the step: no intro."""
     student_id = new_student(db_engine, cur)
     concept = cur.concepts["factorisation"]
     first = tutor.start(student_id)
     assert [segment.say for segment in first.segments] == [
-        "Hi Asha! Let's start today with solving by factorisation.", concept.intro,
-        *[segment.say for segment in concept.steps[0].segments]]
+        "Hi Asha! Let's start today with solving by factorisation.", concept.intro]
+    step_1 = tutor.turn(student_id, "ok")
+    assert [segment.say for segment in step_1.segments] == [segment.say for segment in concept.steps[0].segments]
     tutor.turn(student_id, "ok")                                 # now on step 2
     step_2 = [segment.say for segment in concept.steps[1].segments]
     carry_on = "Let's carry on with solving by factorisation from where we left off."
@@ -56,7 +57,8 @@ def test_session_start_greets_then_opens_the_concept(tutor, db_engine, cur):
 def test_start_twice_is_one_session(tutor, db_engine, cur):
     student_id = new_student(db_engine, cur)
     first = tutor.start(student_id)
-    tutor.turn(student_id, "ok")                                 # now on step 2
+    for _ in range(2):                                           # step 1, then step 2
+        tutor.turn(student_id, "ok")
     again = tutor.start(student_id)                              # a second click, or a page reload
     assert again.decision.rule == "S1" and again.session_id == first.session_id
     with db_engine.connect() as conn:
@@ -101,45 +103,66 @@ def test_review_pass_goes_back_to_the_open_question(tutor, db_engine, cur):
     assert result.segments[2:] == [curriculum.ask_segment(rt2, cur.formulas)]     # then its question again
 
 
-def test_say_again_after_a_topic_start_replays_just_the_step(tutor, db_engine, cur):
-    """Start, then "say again": step 1's speech, without its board commands; not the greeting and intro again.
-    The same after Continue, and for a reply the tutor can't read, like "hi"."""
+def test_say_again_at_a_topic_start_and_after_continue(tutor, db_engine, cur):
+    """Start, then "say again": the start is said again, without board commands, and no step is played yet.
+    After Continue on a step, a reply the tutor can't read, like "hi", replays just the step: not the greeting."""
     student_id = new_student(db_engine, cur)
     steps = cur.concepts["factorisation"].steps
-    first = tutor.start(student_id)                              # greeting, intro, step 1
+    first = tutor.start(student_id)                              # greeting, intro
     again = tutor.turn(student_id, "say again")
-    assert again.decision.rule == "R8"
-    assert [segment.say for segment in again.segments] == [segment.say for segment in steps[0].segments]
+    assert (again.decision.rule, again.decision.action) == ("R8", "repeat")
+    assert progress_of(db_engine, cur, student_id)["factorisation"].step_id is None      # still at the start
     assert all(segment.board == [] for segment in again.segments) and again.board == first.board
-    tutor.turn(student_id, "ok")                                 # step 2
+    for _ in range(2):                                           # step 1, then step 2
+        tutor.turn(student_id, "ok")
     tutor.start(student_id)                                      # Continue: "Welcome back! …", then step 2
     unclear = tutor.turn(student_id, "hi")
     assert unclear.decision.rule == "R8"
     assert [segment.say for segment in unclear.segments] == [segment.say for segment in steps[1].segments]
 
 
+def test_a_reply_nobody_can_read_at_a_topic_start_never_begins_step_1(tutor, db_engine, cur):
+    """A spoken reply nobody can place hears the start again, and a failed recording gets "Sorry, I didn't catch
+    that". Either way the topic stays at its start; only a reply that can be read begins step 1."""
+    student_id = new_student(db_engine, cur)
+    concept = cur.concepts["factorisation"]
+    first = tutor.start(student_id)                              # greeting, intro
+    heard = tutor.turn(student_id, "hi", input_mode="voice")     # a spoken reply the tutor can't place
+    assert (heard.decision.rule, heard.decision.action) == ("R8", "repeat")
+    assert [segment.say for segment in heard.segments] == [segment.say for segment in first.segments]
+    assert progress_of(db_engine, cur, student_id)["factorisation"].step_id is None
+    sorry = tutor.turn(student_id, "", input_mode="voice", stt_failed=True)
+    assert (sorry.decision.rule, sorry.decision.action, sorry.input_hint) == ("R8", "repeat", "type")
+    assert [segment.say for segment in sorry.segments] == [DIDNT_CATCH]
+    assert progress_of(db_engine, cur, student_id)["factorisation"].step_id is None
+    step_1 = tutor.turn(student_id, "ok")
+    assert [segment.say for segment in step_1.segments] == [segment.say for segment in concept.steps[0].segments]
+
+
 @pytest.mark.parametrize("state, reply, action", [
     ({"points": 1.0}, RIGHT_B, "mastered"),                                   # R1: the second point
     ({"hint_level": 3, "reteach_count": 3}, "I don't know", "needs_review"),  # R9: no hints or reteaches left
 ], ids=["mastered", "needs_review"])
-def test_say_again_after_moving_on_replays_just_the_new_step(tutor, db_engine, cur, state, reply, action):
-    """Standard form ends and roots begins. "Say again" then gives just roots' step 1: not the praise or the
-    worked answer, and not the move-on line and roots' intro."""
+def test_moving_on_opens_the_next_topic_at_its_start(tutor, db_engine, cur, state, reply, action):
+    """Standard form ends and roots opens at its start: the move-on line and roots' intro, and no step yet.
+    "ok" then plays roots' step 1."""
     student_id = sf2_open(db_engine, cur, **state)
     tutor.start(student_id)
     moved_on = tutor.turn(student_id, reply)
     assert (moved_on.decision.action, moved_on.decision.resume_concept_id) == (action, "roots")
-    again = tutor.turn(student_id, "say again")
-    assert again.decision.rule == "R8"
-    step_1 = cur.concepts["roots"].steps[0].segments
-    assert [segment.say for segment in again.segments] == [segment.say for segment in step_1]
+    roots = cur.concepts["roots"]
+    move_on = f"Now let's move on to roots and checking by substitution. {roots.intro}"
+    assert move_on in [segment.say for segment in moved_on.segments]
+    assert progress_of(db_engine, cur, student_id)["roots"].step_id is None
+    step_1 = tutor.turn(student_id, "ok")
+    assert (step_1.decision.rule, step_1.decision.play_step_id) == ("R0", roots.steps[0].id)
 
 
 def test_say_again_after_any_other_reply_replays_that_reply(tutor, db_engine, cur):
     """Not right after a topic start, the last reply is said again as it was: a step, or an answered question."""
     student_id = new_student(db_engine, cur)
     tutor.start(student_id)
-    for text in ("ok", "why is that?"):           # R0: step 2. R7: "Good question …", then step 2 again
+    for text in ("ok", "why is that?"):           # R0: step 1. R7: "Good question …", then step 1 again
         reply = tutor.turn(student_id, text)
         again = tutor.turn(student_id, "say again")
         assert again.decision.rule == "R8", text
@@ -181,13 +204,12 @@ def test_picking_a_topic_pauses_this_one_and_comes_back_to_it(tutor, db_engine, 
     assert (picked.decision.rule, picked.decision.action) == ("S2", "jump")
     assert [segment.say for segment in picked.segments] == [
         "Sure. Standard form and recognising a quadratic is saved just where you left it.",
-        f"Now let's move on to the discriminant and the nature of roots. {concept.intro}",
-        *[segment.say for segment in concept.steps[0].segments]]
+        f"Now let's move on to the discriminant and the nature of roots. {concept.intro}"]
     assert picked.segments[1].board[0].op == "clear"            # wiped as the picked topic opens
     saved = progress_of(db_engine, cur, student_id)
     assert saved["standard_form"] == ConceptState("standard_form", status="paused", points=1.0,
                                                   pending=Pending("sf2", hint_level=1), last_check_id="sf2")
-    assert saved["discriminant"].status == "teaching"
+    assert saved["discriminant"].status == "teaching" and saved["discriminant"].step_id is None
     back = tutor.jump(student_id, "standard_form")
     sf2 = curriculum.get_check(cur.concepts["standard_form"], "sf2")
     assert back.segments[1].say == "Let's get back to standard form and recognising a quadratic, where we left off."

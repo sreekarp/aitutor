@@ -32,7 +32,7 @@ def start(progress: Progress, cur: Curriculum, *, new_session: bool,
 
 def jump(progress: Progress, cur: Curriculum, concept_id: str) -> tuple[Decision, Progress]:
     """S2: the student picked a concept. Every other active concept is paused just as it stands; the picked
-    one carries on where it stopped, or starts again from step 1 if it was mastered or marked for review."""
+    one carries on where it stopped, or starts again from its start if it was mastered or marked for review."""
     after = copy.deepcopy(progress)
     left = current_concept(after, cur)
     if left and after[left].status not in ("teaching", "checking"):
@@ -45,7 +45,7 @@ def jump(progress: Progress, cur: Curriculum, concept_id: str) -> tuple[Decision
     if again:                                        # a fresh pass; the next question follows the last one asked
         after[concept_id] = ConceptState(concept_id, last_check_id=picked.last_check_id)
     activate(after, cur, concept_id)
-    reason = f"You picked {title}" + (", so it starts again from step 1." if again else ".")
+    reason = f"You picked {title}" + (", so it starts again from the beginning." if again else ".")
     if left and left != concept_id:
         reason += f" {cur.concepts[left].title} is paused just as it stands."
     return make_decision("S2", "jump", after[concept_id], reason, resume_concept_id=concept_id, clear_board=True,
@@ -58,7 +58,8 @@ def reconcile(progress: Progress, cur: Curriculum) -> tuple[Progress, list[str],
     current = current_concept(after, cur)
     for cid in cur.order:
         state, concept = after[cid], cur.concepts[cid]
-        if state.status in ("teaching", "paused") and not state.pending and get_step(concept, state.step_id) is None:
+        lost = state.step_id is not None and get_step(concept, state.step_id) is None   # None: at the topic start
+        if state.status in ("teaching", "paused") and not state.pending and lost:
             state.step_id, changed = next_step_id(concept, None), True       # back to the first step
         if state.pending and get_check(concept, state.pending.check_id) is None:
             check_id = next_check_id(concept, state.last_check_id)          # check 1 if that id is gone too

@@ -98,8 +98,8 @@ function topicDetail(row) {   // the small line under a topic: where it stands
     return `hint ${row.hint_level}/${MAX_HINTS} · reteach ${row.reteach_count}/${MAX_RETEACHES}`;
   }
   const step = Number.isInteger(row.step_index) ? `step ${row.step_index + 1} of ${row.step_count}` : "";
-  if (row.status === "paused") return `saved at ${step || "a question"}`;
-  return row.current ? step : "";
+  if (row.status === "paused") return `saved at ${step || (row.at_start ? "the start" : "a question")}`;
+  return row.current ? step || (row.at_start ? "starting" : "") : "";
 }
 
 function drawPanels(data) {
