@@ -11,13 +11,13 @@ never in an LLM conversation, which is what makes the rest of this document poss
 **How a lesson goes.** The rules are in `engine.py` (after a reply) and `sessions.py` (Start, Continue,
 a new topic); every turn saves its rule and reason, and the page's "Why?" panel shows them. While
 teaching, every reply ends on a check-in question, and every reply comes with buttons for the usual
-answers. A button sends the words the student could type or say, and the keyword rules read them, so a
-tap needs no model call.
+answers. A button sends the words the student could type or say, and the keyword rules read them, so
+reading a tap needs no model call (only a solved example calls RESPOND).
 
 | Where the student is | They say, or tap | What happens |
 | --- | --- | --- |
 | A topic's start: its intro, then "Shall I teach it? Or say 'test me' if you already know it." | "test me", "quiz me", "I already know this" (**Test me first**) | R6: the questions start now |
-| | Anything else: "teach me", "ok", "no", a question (**Teach me**) | R0: step 1 |
+| | Anything else: "teach me", "ok", "no", a question (**Teach me**) | R0: step 1. An unclear reply or a failed recording gets R8: the intro and the offer again |
 | A step, ending "Did that make sense? Shall we go on?" (the last step: "Ready for a question?") | "yes", "ok", "got it", "understood", "move on" (**Yes, go on**, **Yes, quiz me**) | R0: the next step, or after the last one the first question |
 | | "not sure", "no", "didn't get it", "another example" (**Not sure**) | R7 `example`: RESPOND solves a similar equation on the board (SymPy checks each line; never a lesson question), then "Shall we go on, or shall I do another example?" (**Go on**, **Another example**). Scripted: "Let's go over that step again." and the step is replayed |
 | | "test me", "skip to the questions" | R6: the questions start now; the other steps are skipped |
@@ -29,9 +29,9 @@ tap needs no model call.
 | Anywhere | "Can we skip to the factorization topic?", "move on to the discriminant" | S2: that topic, as if it was picked in Topics |
 | | "say again", "pardon?" | R8: the last reply again, check-in included |
 
-"Yes" and "no" are read this way only while teaching: while a question is open they are answers, because
-several questions are yes or no. A spoken topic switch has to start the reply: only a few polite lead-in
-words (ok, so, please, can we, I want to, let's) may come before a move word (skip, go, move, jump,
+"Yes", "no", "ok" and "haan" are read this way only while teaching: while a question is open they are
+answers, because several questions are yes or no. A spoken topic switch has to start the reply: only a
+few polite lead-in words (ok, so, please, can we, I want to, let's) may come before a move word (skip, go, move, jump,
 switch, change, take me), then "to" and a topic's name from the `aliases` in its lesson file, at the end
 of the reply (unique, checked at startup). Free text before "go to" ("I'm stuck, skip to roots") goes to
 UNDERSTAND as usual. The switch is read after the safety check, so "move on to the discriminant" switches
@@ -355,10 +355,10 @@ What the student perceives, and what we do about it:
 - **Speak while synthesising:** the audio for every segment is requested at once, so segment 2 is
   being made while segment 1 plays.
 - **Skip work:** short replies made only of listed phrases ("ok", "haan", "not sure", "test me", "say
-  again", "pardon?"; "yes" and "no" only while teaching), a spoken topic switch ("skip to
+  again", "pardon?"; "ok", "haan", "yes" and "no" only while teaching), a spoken topic switch ("skip to
   factorisation") and every button tap (each sends such a phrase) never reach a model, and scripted
-  actions (the next step, a new question, praise, "how did you get that?") need no RESPOND. So an
-  "ok" uses no model, a right answer one (UNDERSTAND), a tap on **Not sure** while teaching one
+  actions (the next step, a new question, praise, "how did you get that?") need no RESPOND. So, while
+  teaching, an "ok" uses no model, a right answer one (UNDERSTAND), a tap on **Not sure** while teaching one
   (RESPOND's solved example), and a wrong answer or a question two. Audio
   is cached on disk by model, voice and text, so lesson steps and scripted lines play at once after
   the first time.
@@ -403,7 +403,9 @@ Known gaps, after the build:
   and streaming, retained mastery, a duplicate-request guard, and fairer passing (two clean answers in
   a row, a Move on button, review questions).
 - **Passing is still the old rule.** Wrong answers never count against a student: right, wrong, wrong,
-  wrong, right is mastered, and so are four right answers after hints (half a point each). A student who
+  wrong, right can be mastered (when each wrong answer is a known mistake, so each gets a fresh question; with
+  unknown mistakes the same question is hinted and the last right answer earns half a point), and so are four
+  right answers after hints (half a point each). A student who
   taps **Test me first** and then gets a question wrong gets hints like anyone else, not the lesson, and
   "move on" while a question is open only gets the question again.
 - **The check-ins are a few fixed lines, and some replies are read roughly.** Each check-in rotates

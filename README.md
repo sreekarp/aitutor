@@ -59,7 +59,7 @@ questions. Each step ends with "Did that make sense? Shall we go on?": tap **Yes
 for a solved example of the same kind on the board, then **Go on** or **Another example**. After the last
 step, **Yes, quiz me** starts the questions; while a question is open, **Not sure** gets a hint. A button
 sends the words you could type or say yourself ("teach me", "not sure"), and those are read without the
-AI, so the tutor answers at once.
+AI. Only a solved example (**Not sure** or **Another example** while teaching) needs it.
 
 The terminal tutor uses `DATABASE_URL` when it is set (in the environment or `.env`), and its own
 `data/cli.db` when it isn't.
@@ -80,7 +80,8 @@ What it does differently from the LLM: it spots a known mistake only when the an
 lesson's trap answers; any reply with "?" is treated as a question, unless it holds an answer, asks
 for help ("how do I solve this?" gets the next hint) or mentions being hit or beaten (asked again,
 never a hint); a question while a question is open gets a lesson hint instead of an answer; a second
-reply isn't merged with the first; and replies that mix several things are read more crudely.
+reply isn't merged with the first; replies that mix several things are read more crudely; and **Not sure**
+while teaching replays the step ("Let's go over that step again.") instead of solving an example.
 
 ## Tests, evals and simulations
 
