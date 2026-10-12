@@ -30,27 +30,33 @@ NEXT = _whole_reply("ok", "okay", "next", "go on", "continue", "yes", "haan", "h
                     "thik hai", "accha")
 SAY_AGAIN = _whole_reply("say again", "repeat", "repeat please", "phir se", "phir se bolo", "dobara", "once more",
                          "pardon", "sorry", "what", "come again")
-# Hit, beat, slap, kick, hurt or touch, in any form, then "me" or "us" ("beats me", "slapped us"), or the student
-# saying it the other way round (I_WAS_HIT). Someone may be hurting the student and the safety check missed it ("He
-# gets drunk. Beats me. I don't know"), so such a reply is unclear: the question is asked again, and it never gets
-# a maths hint.
-HURT_ME = re.compile(r"\b(?:hit|beat|slap|kick|hurt|touch)\w*\s+(?:me|us)\b")
-# The student saying it the other way round: I, then was, am, get, got, have been, been, being, am being or was
-# being, then hit, beat, beaten, slapped, kicked, hurt, touched or abused ("I was beaten", "I get hit at home", "I'm
-# being hit"; "I'm" and "I've" arrive as im and ive). safety.py uses it too.
-I_WAS_HIT = re.compile(r"\b(?:i|im|ive) (?:was|am|get|got|have been|been|being|am being|was being) "
-                       r"(?:hit|beat|beaten|slapped|kicked|hurt|touched|abused)\b")
+# Hit, beat, slap, kick, punch, smack, thrash, hurt or touch, in any form, then "me" or "us" ("beats me", "slapped
+# us"), or the student saying it the other way round (I_WAS_HIT). Someone may be hurting the student and the safety
+# check missed it ("He gets drunk. Beats me. I don't know"), so such a reply is unclear: the question is asked
+# again, and it never gets a maths hint.
+HURT_ME = re.compile(r"\b(?:hit|beat|slap|kick|punch|smack|thrash|hurt|touch)\w*\s+(?:me|us)\b")
+# The student saying it the other way round: I was, I am, I'm, I get, I got, I keep, I have been, I've been or I
+# been, perhaps then being or getting, then hit, beaten, beat up, slapped, kicked, punched, smacked, thrashed, hurt,
+# touched or abused ("I was beaten", "I'm getting hit at home", "I keep getting beaten"; "I'm" and "I've" arrive as
+# im and ive). Not when the maths did it ("I got beaten by this question", "hit with a tough sum"), and "I'm beat"
+# means tired. safety.py uses it too.
+BY_THE_MATHS = (r" (?:by|with)(?: (?:this|that|the|these|those|a|an|such a|so many))?"
+                r"(?: (?:hard|tough|tricky|difficult))? (?:question|sum|problem|equation|quadratic)s?\b")
+I_WAS_HIT = re.compile(r"\b(?:i (?:was|am|get|got|keep|have been|been)|im|ive been)(?: being| getting)? (?:hit"
+                       r"|beaten|beat up|slapped|kicked|punched|smacked|thrashed|hurt|touched|abused)\b"
+                       rf"(?!{BY_THE_MATHS})")
 DONT_KNOW = phrases("dont know", "no idea", "just tell me", "hint", "help", "dont get it", "didnt get it",
                     "dont understand", "didnt understand", "not understood", "havent understood", "pata nahi",
                     "nahi pata", "samajh nahi")
-# Asking for the steps of the open question is asking for help: the next hint. "step by step" asks only with a
-# request word in the reply ("explain step by step", "step by step please"): "I did it step by step" is not a
-# request. Checked after answers and not while "how did you get that?" waits, so answers and working still count.
+# Asking for the steps of the open question is asking for help: the next hint. "step by step" asks unless the
+# student says they did it or will do it themselves (MY_OWN_STEPS: "I did it step by step", "let me go step by
+# step"). Checked after answers and not while "how did you get that?" waits, so answers and working still count.
 # Not "explain the solution": it may mean the question just solved.
-REQUEST_WORD = r"\b(?:explain|show|teach|walk|take|go|can you|please|help)\b"
-STEP_BY_STEP = r"\bstep\W+by\W+step\b"                                # "step-by-step" too
-STEP_ASK = re.compile(rf"\b(?:show me how|how do i solve|how to solve)\b"
-                      rf"|{REQUEST_WORD}.*{STEP_BY_STEP}|{STEP_BY_STEP}.*{REQUEST_WORD}")
+HOW_TO = phrases("show me how", "how do i solve", "how to solve")
+STEP_BY_STEP = re.compile(r"\bstep\W+by\W+step\b")                     # "step-by-step" too
+# "I did it", "I solved it", "I've done it", "let me go", "I'll take it", "I'm doing it" (but not "I did not").
+MY_OWN_STEPS = re.compile(r"\b(?:i (?:did|solved|worked)(?! not)|ive (?:done|solved|worked)|(?:let me|ill|i will)"
+                          r" (?:go|do|take|solve|work|show)|(?:im|i am) (?:going|doing|solving|working))\b")
 GET_IT = phrases("get it", "got it", "understood", "samajh gaya", "samajh gayi")
 QUESTION_START = re.compile(r"\s*(?:why|how|what|kyun|kaise)\b")
 # Method words, by their start: "factor" also finds "factorise" and "factorised".
@@ -110,7 +116,7 @@ def understand(text: str, *, phase: str, check: Check | None, awaiting_working: 
         kind = "answer"
     elif GET_IT.search(clean):
         kind = "claims_understanding"
-    elif STEP_ASK.search(clean) and not awaiting_working:
+    elif _asks_for_steps(clean) and not awaiting_working:
         kind = "dont_know"                                   # "explain it step by step": the next hint
     elif "?" in clean or QUESTION_START.match(clean):
         kind = "question"
@@ -135,6 +141,11 @@ def _drop_names(text: str, check: Check | None) -> str:
 def _showed_working(text: str) -> bool:
     """A method word, "because" / "since", or an "=" that's left (so and as don't count)."""
     return bool(METHOD.search(text) or BECAUSE.search(text) or "=" in text)
+
+
+def _asks_for_steps(text: str) -> bool:
+    """"show me how", "how do I solve this?", or "step by step" unless the student did it or will do it themselves."""
+    return bool(HOW_TO.search(text) or (STEP_BY_STEP.search(text) and not MY_OWN_STEPS.search(text)))
 
 
 def _answer(text: str, check: Check) -> str:

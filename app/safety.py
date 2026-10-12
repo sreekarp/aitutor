@@ -8,21 +8,25 @@ import re
 
 from app.fallback import I_WAS_HIT, phrases, spoken_maths
 
-# Distress, abuse and personal details, as whole words ("self harm" also finds "self-harm").
+# Distress and personal details, as whole words ("self harm" also finds "self-harm").
 SAFETY = phrases("kill myself", "suicide", "want to die", "end my life", "hurt myself", "self harm", "cut myself",
-                 "suicidal", "wanna die", "hurting myself", "cutting myself", "abuse", "abused", "abusive",
-                 "bullied", "bully me", "bullies me", "bad touch", "scared to go home", "my address",
-                 "my phone number", "my mobile number", "i live at", "marna chahta", "marna chahti")
-# Someone hurting the student: "my dad beats me", "he's been hitting me", "they'll hit me", "my dad hits us".
-# Apostrophes are dropped, so "he's", "she's", "they're", "they've", "they'll", "he'll" and "she'll" arrive as hes,
-# shes, theyre, theyve, theyll, hell and shell. It reads the words without punctuation, so "my dad... beats me"
-# counts too. ("Beats me" alone means "I don't know".) The student can also say it the other way round, "I was
-# beaten": that is I_WAS_HIT, kept in fallback.py so the scripted reading can use it too (fallback.py can't import
-# this file).
-HURT = re.compile(r"\b(?:he|she|hes|shes|hell|shell|they|theyre|theyve|theyll|someone|somebody|my \w+|papa|mummy"
-                  r"|mom|dad|mother|father|brother|sister|uncle|teacher|friend)(?: (?:always|sometimes|often|still"
-                  r"|also|really|even|would|used to|keeps|keep|is|are|was|were|has been|have been|been|will))?"
-                  r" (?:hit|beat|slap|kick|hurt|touch|abus)\w* (?:me|us)\b")
+                 "suicidal", "wanna die", "hurting myself", "cutting myself", "bullied", "bully me", "bullies me",
+                 "bad touch", "scared to go home", "my address", "my phone number", "my mobile number", "i live at",
+                 "marna chahta", "marna chahti")
+# Abuse, rape or molesting, in any form: "abused", "abusing", "raped", "rapist", "molester".
+ABUSE = re.compile(r"\b(?:abus\w*|molest\w*|rap(?:e|ed|es|ing|ist|ists))\b")
+# Someone hurting the student: a person, up to two words like "is always" or "has been", then hit, beat, slap, kick,
+# punch, smack, thrash, hurt or touch, in any form, then "me" or "us": "my dad beats me", "he's been hitting me",
+# "my dad is always beating me", "they'll hit us". Apostrophes are dropped, so "he's", "she's", "they're",
+# "they've", "they'll", "he'll", "she'll" and "dad's" arrive as hes, shes, theyre, theyve, theyll, hell, shell and
+# dads. It reads the words without punctuation, so "my dad... beats me" counts too. ("Beats me" alone means "I don't
+# know".) The student can also say it the other way round, "I was beaten": that is I_WAS_HIT, kept in fallback.py
+# so the scripted reading can use it too (fallback.py can't import this file).
+HURT = re.compile(r"\b(?:he|she|hes|shes|hell|shell|they|theyre|theyve|theyll|someone|somebody|my \w+"
+                  r"|(?:papa|mummy|mom|dad|mother|father|brother|sister|uncle|teacher|friend)s?)"
+                  r"(?: (?:always|sometimes|often|still|also|really|even|would|used to|keeps on|keep on|keeps|keep"
+                  r"|is|are|was|were|has|have|had|been|will)){0,2}"
+                  r" (?:hit|beat|slap|kick|punch|smack|thrash|hurt|touch)\w* (?:me|us)\b")
 # Any word, then "hits me" / "beats me": "Rohan beats me", "and beats me". Not it, that, this or question:
 # "it beats me" and "this question beats me" mean "I don't know".
 HITS_ME = re.compile(r"\b(?!(?:it|that|this|question)\b)\w+ (?:hits|beats) me\b")
@@ -38,7 +42,7 @@ def is_safety(text: str) -> bool:
     """True for a distress phrase, someone hurting the student, or personal details like a phone number."""
     clean = " ".join(spoken_maths(text).split())       # lower case, "nine eight" -> "9 8", single spaces
     words = " ".join(re.findall(r"\w+", clean))        # punctuation gone: "my dad... beats me" -> "my dad beats me"
-    return (any(rule.search(clean) for rule in (SAFETY, HITS_ME, MY_NUMBER))
+    return (any(rule.search(clean) for rule in (SAFETY, ABUSE, HITS_ME, MY_NUMBER))
             or any(rule.search(words) for rule in (HURT, I_WAS_HIT)) or _has_phone_number(clean))
 
 

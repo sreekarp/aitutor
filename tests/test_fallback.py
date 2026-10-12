@@ -67,8 +67,12 @@ def test_short_and_passive_ways_of_being_hurt_are_unclear_never_help(cur):
     for text in ("he's been hitting me, help", "they'll hit me, I don't know", "my dad's been hitting me, no idea",
                  "he beats us, I don't know", "my dad hits us. What should I do?", "I was beaten. I don't know",
                  "I get hit at home, please help", "I got slapped, just tell me", "I have been hit, help",
-                 "I'm being hit, no idea", "I was beaten, 2 and 3"):
+                 "I'm being hit, no idea", "I was beaten, 2 and 3", "I'm beaten at home, help",
+                 "I'm getting beaten at home, please help", "I keep getting hit, I don't know",
+                 "I have been getting hit, help", "my dad punches me, I don't know"):
         assert understand(cur, text, "fa1").type == "unclear", text
+    for text in ("I got beaten by this question, I don't know", "I'm beat, help"):     # the maths, or tired
+        assert understand(cur, text, "fa1").type == "dont_know", text
 
 
 def test_scripted_answer_odd_formats(cur):
@@ -125,13 +129,17 @@ def test_asking_for_the_steps_is_asking_for_help(cur):
     assert understand(cur, "why do we need zero on one side?", phase="teaching").type == "question"
 
 
-def test_step_by_step_asks_only_with_a_request_word(cur):
-    """"step by step" asks for the steps only with a request word in the reply (explain, show, teach, walk, take, go,
-    can you, please, help). Without one it is a statement: "I did it step by step" is asked again, with no hint."""
+def test_step_by_step_asks_unless_the_student_did_it_themselves(cur):
+    """"step by step" asks for the steps (the next hint), unless the student says they did it or will do it
+    themselves: "I did it step by step" or "let me go step by step" is asked again, with no hint."""
     for text in ("Explain step by step.", "can you go step by step?", "step by step please", "show me how",
-                 "how do I solve this", "explain it step-by-step"):
+                 "how do I solve this", "explain it step-by-step", "Tell me step by step.", "Step by step.",
+                 "solve it step by step", "could you do it step by step", "I want it step by step",
+                 "let's do it step by step", "step by step pls", "how do I do it step by step?", "show me  how"):
         assert understand(cur, text, "fa2").type == "dont_know", text
-    for text in ("I did it step by step", "I solved it step by step"):
+    for text in ("I did it step by step", "I solved it step by step", "Let me go step by step.",
+                 "I'll go step by step", "I will take it step by step", "I'm going to go step by step",
+                 "please wait, I'm doing it step by step", "I'll show you step by step"):
         assert understand(cur, text, "fa2").type == "unclear", text
 
 

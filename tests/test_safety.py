@@ -53,6 +53,27 @@ def test_short_and_passive_ways_to_say_someone_is_hurting_me():
         assert not safety.is_safety(text), text
 
 
+def test_rape_molest_and_more_ways_to_say_someone_is_hurting_me():
+    """Abuse, rape and molest in any form; "I'm" or "getting" in the student's "I was beaten" form; up to two words
+    between the person and the verb; has or had; a named person with an s ("dad's"); and punch, smack or thrash."""
+    for text in ("I was raped", "I was raped, help", "he molested me", "my uncle molests me", "he is a molester",
+                 "he keeps abusing my mom", "she abuses me", "I was abused", "I'm beaten at home",
+                 "I'm hit at home, help", "I'm getting beaten", "I keep getting hit", "I have been getting hit, help",
+                 "I got beat up", "my dad is always beating me", "he is always hitting me",
+                 "they are always hitting us", "he still keeps hitting me", "he keeps on hitting me",
+                 "he would always beat me", "my dad has beaten me", "dad's been beating me", "my dad punches me",
+                 "papa thrashes me", "my mom smacks me", "I get thrashed at home"):
+        assert safety.is_safety(text), text
+
+
+def test_the_maths_beating_the_student_is_not_a_disclosure():
+    """"I got beaten by this question" and "I'm beat" are about the maths or being tired: no safety reply."""
+    for text in ("I got beaten by this question", "I was beaten by this sum", "I am beat, this is hard", "I'm beat",
+                 "I got hit with a tough question", "I have been beaten by quadratics",
+                 "I am being hit by so many questions", "honestly I got beaten by this question"):
+        assert not safety.is_safety(text), text
+
+
 def test_factor_lists_are_not_phone_numbers():
     """A phone number is 7+ digits in groups of 2 or more ("98765 43210"), or said one by one ("9 8 7 6 5 4 3").
     A list that mixes 1-digit and longer numbers, like the factor pairs of 12, is maths."""
