@@ -28,8 +28,12 @@ def _whole_reply(*phrases: str) -> re.Pattern:
 # ---------- word lists ----------
 NEXT = _whole_reply("ok", "okay", "next", "go on", "continue", "yes", "haan", "han", "haan ji", "theek hai",
                     "thik hai", "accha")
-SAY_AGAIN = _whole_reply("say again", "repeat", "repeat please", "phir se", "phir se bolo", "dobara", "once more")
-# Not "beats me": a disclosure the safety check misses ("He gets drunk. Beats me.") must never get a hint.
+SAY_AGAIN = _whole_reply("say again", "repeat", "repeat please", "phir se", "phir se bolo", "dobara", "once more",
+                         "pardon", "sorry", "what", "come again")
+# Hit, beat, slap, kick, hurt or touch, in any form, then "me" ("beats me", "slapped me"). Someone may be hurting
+# the student and the safety check missed it ("He gets drunk. Beats me. I don't know"), so such a reply is unclear:
+# the question is asked again, and it never gets a maths hint.
+HURT_ME = re.compile(r"\b(?:hit|beat|slap|kick|hurt|touch)\w*\s+me\b")
 DONT_KNOW = phrases("dont know", "no idea", "just tell me", "hint", "help", "dont get it", "didnt get it",
                     "dont understand", "didnt understand", "not understood", "havent understood", "pata nahi",
                     "nahi pata", "samajh nahi")
@@ -88,7 +92,9 @@ def understand(text: str, *, phase: str, check: Check | None, awaiting_working: 
     clean = spoken_maths(text[:MAX_INPUT_CHARS])
     working = _showed_working(_drop_names(clean, check))
     answer = _answer(clean, check) if phase == "checking" and check else ""
-    if DONT_KNOW.search(clean):
+    if HURT_ME.search(clean):
+        kind = "unclear"                                     # maybe a disclosure: asked again, never a hint
+    elif DONT_KNOW.search(clean):
         kind = "dont_know"
     elif answer:
         kind = "answer"

@@ -13,11 +13,13 @@ SAFETY = phrases("kill myself", "suicide", "want to die", "end my life", "hurt m
                  "suicidal", "wanna die", "hurting myself", "cutting myself", "abuse", "abused", "abusive",
                  "bullied", "bully me", "bullies me", "bad touch", "scared to go home", "my address",
                  "my phone number", "my mobile number", "i live at", "marna chahta", "marna chahti")
-# Someone hurting the student: "my dad beats me", "he's hitting me" ("he's" arrives as "hes"). It reads the words
-# without punctuation, so "my dad... beats me" counts too. ("Beats me" alone means "I don't know".)
-HURT = re.compile(r"\b(?:he|she|hes|shes|they|someone|somebody|my \w+|papa|mummy|mom|dad|mother|father|brother"
-                  r"|sister|uncle|teacher|friend)(?: (?:always|sometimes|often|still|also|really|even|would"
-                  r"|used to|keeps|is|was))? (?:hit|beat|slap|kick|hurt|touch|abus)\w* me\b")
+# Someone hurting the student: "my dad beats me", "he's hitting me", "they are hitting me", "he has been hitting me"
+# ("he's" and "they're" arrive as "hes" and "theyre"). It reads the words without punctuation, so "my dad... beats
+# me" counts too. ("Beats me" alone means "I don't know".)
+HURT = re.compile(r"\b(?:he|she|hes|shes|they|theyre|someone|somebody|my \w+|papa|mummy|mom|dad|mother|father"
+                  r"|brother|sister|uncle|teacher|friend)(?: (?:always|sometimes|often|still|also|really|even|would"
+                  r"|used to|keeps|keep|is|are|was|were|has been|have been|will))?"
+                  r" (?:hit|beat|slap|kick|hurt|touch|abus)\w* me\b")
 # Any word, then "hits me" / "beats me": "Rohan beats me", "and beats me". Not it, that, this or question:
 # "it beats me" and "this question beats me" mean "I don't know".
 HITS_ME = re.compile(r"\b(?!(?:it|that|this|question)\b)\w+ (?:hits|beats) me\b")
@@ -39,10 +41,13 @@ def is_safety(text: str) -> bool:
 
 def _has_phone_number(text: str) -> bool:
     """True for a run of 7+ digits whose groups all have 2+ digits ("98765 43210", "011 2345 6789"), or are all
-    1 digit, as when a number is said one by one ("9 8 7 6 5 4 3"). A run that mixes them is maths, like the
-    factor pairs "1 12 2 6 3 4"."""
+    1 digit, as when a number is said one by one ("9 8 7 6 5 4 3"). One digit in front of 2+-digit groups, like
+    a trunk 0 or a country code ("0 98765 43210", "+1 987 654 3210"), is set aside first. Any other mix is maths,
+    like the factor pairs "1 12 2 6 3 4"."""
     for run in DIGIT_RUN.findall(text):
         groups = re.split("[ -]", run)
+        if len(groups[0]) == 1 and all(len(group) >= 2 for group in groups[1:]):
+            groups = groups[1:]                       # a trunk 0 or a country code like +1: the number follows
         all_long = all(len(group) >= 2 for group in groups)
         all_single = all(len(group) == 1 for group in groups)
         if sum(len(group) for group in groups) >= 7 and (all_long or all_single):

@@ -156,3 +156,17 @@ def test_the_last_mastery_says_mastered_once(tutor, db_engine, cur):
         "Nice work!", "That's everything for now, Asha! You've mastered standard form and recognising a quadratic, "
         "roots and checking by substitution, solving by factorisation, the quadratic formula, the discriminant and "
         "the nature of roots and word problems."]
+
+
+def test_the_last_needs_review_says_we_come_back_once(tutor, db_engine, cur):
+    """Nothing is left to teach, so after the worked answer only the END summary says what comes back next session."""
+    student_id = sf2_open(db_engine, cur, mastered=cur.order[1:], hint_level=3, reteach_count=3)
+    tutor.start(student_id)
+    result = tutor.turn(student_id, "I don't know")              # no hints or reteaches left: R9
+    assert (result.decision.action, result.decision.resume_concept_id) == ("needs_review", None)
+    sf2 = curriculum.get_check(cur.concepts["standard_form"], "sf2")
+    assert [segment.say for segment in result.segments] == [
+        f"{sf2.hints[-1]} Here is the answer.",
+        "That's everything for now, Asha! You've mastered roots and checking by substitution, solving by "
+        "factorisation, the quadratic formula, the discriminant and the nature of roots and word problems.",
+        "Next session we'll come back to standard form and recognising a quadratic."]

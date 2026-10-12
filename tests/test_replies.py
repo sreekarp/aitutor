@@ -162,10 +162,20 @@ def test_answer_line_is_checked_or_text(cur):
         else:
             assert (line.latex, line.check, line.text) == (None, None, grading.key_text(check)), check.id
     fa1 = check_of(cur, "fa1")
-    shown = replies.words(Decision("R9", "needs_review", "factorisation", "test"), cur=cur,
-                          progress=fresh_progress(cur), check=fa1, grade=None, first_name="Asha")
+    moving_on = Decision("R9", "needs_review", "factorisation", "test", resume_concept_id="quadratic_formula")
+    shown = replies.words(moving_on, cur=cur, progress=fresh_progress(cur), check=fa1, grade=None, first_name="Asha")
     assert shown[0] == Segment(say=f"{fa1.hints[-1]} Here is the answer.", board=[replies.answer_line(fa1)])
     assert "come back to this next time" in shown[1].say
+
+
+def test_needs_review_says_we_come_back_unless_nothing_is_left(cur):
+    """R9: the worked answer, then "we'll come back to this next time" as the next topic starts. After the very last
+    topic, the END summary right after it says "Next session we'll come back to …", so it isn't said twice."""
+    fa1 = check_of(cur, "fa1")
+    worked = f"{fa1.hints[-1]} Here is the answer."
+    moving_on = spoken(cur, "needs_review", fa1, "factorisation", resume_concept_id="quadratic_formula")
+    assert moving_on == [worked, replies.REVIEW_LATER]
+    assert spoken(cur, "needs_review", fa1, "factorisation") == [worked]          # nothing left to teach
 
 
 def test_reask_per_kind(cur):

@@ -67,9 +67,9 @@ def words(decision: Decision, *, cur: Curriculum, progress: Progress, check: Che
         fix = next((m.fix for m in concept.mistakes if m.id == decision.mistake), "")
         lead = _say(f"Let's look at it another way. {fix}".strip())
         return lead + _segments(get_step(concept, concept.reteach_step))
-    if action == "needs_review":
-        return [Segment(say=f"{check.hints[-1]} Here is the answer.", board=[answer_line(check)]),
-                Segment(say=REVIEW_LATER)]
+    if action == "needs_review":                             # if no topic follows, END's summary says we come back
+        worked = Segment(say=f"{check.hints[-1]} Here is the answer.", board=[answer_line(check)])
+        return [worked, Segment(say=REVIEW_LATER)] if decision.resume_concept_id else [worked]
     if action == "end":
         return _summary(cur, progress, first_name)
     raise ValueError(f"no scripted words for action {action!r}")

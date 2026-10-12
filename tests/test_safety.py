@@ -31,6 +31,15 @@ def test_punctuation_between_the_person_and_the_verb():
         assert safety.is_safety(text), text
 
 
+def test_more_ways_to_say_someone_is_hurting_me():
+    """"They're" is a person too, and are, were, has been, have been, keep or will can come between the person and
+    the verb."""
+    for text in ("they're hitting me", "they’re beating me", "they are hitting me", "my parents are beating me",
+                 "he has been hitting me", "they keep hitting me", "they were hitting me",
+                 "my brothers have been beating me", "my dad will beat me"):
+        assert safety.is_safety(text), text
+
+
 def test_factor_lists_are_not_phone_numbers():
     """A phone number is 7+ digits in groups of 2 or more ("98765 43210"), or said one by one ("9 8 7 6 5 4 3").
     A list that mixes 1-digit and longer numbers, like the factor pairs of 12, is maths."""
@@ -39,3 +48,12 @@ def test_factor_lists_are_not_phone_numbers():
     for text in ("91 98765 43210", "011 2345 6789", "987-654-3210", "9876543210", "9 8 7 6 5 4 3"):
         assert safety.is_safety(text), text
     assert safety.is_safety("11-10-2026")        # a false alarm DESIGN.md owns up to: a date looks like a phone number
+
+
+def test_one_digit_in_front_of_a_phone_number():
+    """A trunk 0 or a country code like +1, then groups of 2+ digits, is still a phone number. A factor list has
+    several 1-digit numbers, so it stays maths, and so does one digit before fewer than 7 more ("1 12 13 14")."""
+    for text in ("+1 987 654 3210", "0 98765 43210", "+1-987-654-3210", "call me on 0 9876543210"):
+        assert safety.is_safety(text), text
+    for text in ("1 12 2 6 3 4", "1 192 2 96 3 64 4 48 6 32 8 24 12 16", "1 132", "5 12 13", "1 12 13 14"):
+        assert not safety.is_safety(text), text

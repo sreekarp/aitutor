@@ -197,6 +197,8 @@ def test_unclear_while_teaching_repeats_last_reply():
         decision, after = turn(progress, said(kind))
         assert (decision.rule, decision.action, decision.play_step_id, decision.ask_check_id) == \
             ("R8", "repeat", None, None)
+        # True whether the last reply is said again or, right after a topic start, just the step
+        assert decision.reason == f"{engine.REPEAT_CAUSE[kind]}, so it is said again. Nothing changes.", kind
         assert after == progress
 
 

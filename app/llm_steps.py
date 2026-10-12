@@ -86,6 +86,8 @@ def _llm_respond(llm, cur: Curriculum, ctx: TurnContext, decision: Decision, und
 
     words = llm.chat_json("respond", messages, "reply", prompts.RESPOND_SCHEMA, validate,
                           deadline=ctx.deadline, calls=ctx.calls)
-    if decision.action == "needs_review":            # the worked answer, then this scripted line
+    # The worked answer, then "we'll come back to this next time": not after the very last topic, where END's summary
+    # right after it says so.
+    if decision.action == "needs_review" and decision.resume_concept_id:
         words = words + [Segment(say=replies.REVIEW_LATER)]
     return words

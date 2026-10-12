@@ -66,10 +66,10 @@ reads the answer from the words before "because", "since", "so", "as" or "=", an
 answers like "x = 2, 3", "D = 25", "one by three", "minus 2", "yes" or "haan", and "no real roots".
 
 What it does differently from the LLM: it spots a known mistake only when the answer is one of the
-lesson's trap answers; any reply with "?" is treated as a question, unless it holds an answer or asks
-for help ("how do I solve this?" gets the next hint); a question while a question is open gets a
-lesson hint instead of an answer; a second reply isn't merged with the first; and replies that mix
-several things are read more crudely.
+lesson's trap answers; any reply with "?" is treated as a question, unless it holds an answer, asks
+for help ("how do I solve this?" gets the next hint) or mentions being hit or beaten (asked again,
+never a hint); a question while a question is open gets a lesson hint instead of an answer; a second
+reply isn't merged with the first; and replies that mix several things are read more crudely.
 
 ## Tests, evals and simulations
 

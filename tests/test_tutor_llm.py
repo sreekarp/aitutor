@@ -24,6 +24,12 @@ def write(line_id: str, latex: str, check: str, relation: str = "equiv") -> dict
     return {"op": "write", "id": line_id, "latex": latex, "check": check, "relation": relation}
 
 
+# RESPOND's worked answer to fa1 for R9 (needs review): it must end on the answer.
+WORKED = {"segments": [{"say": "This one is tricky, and that's fine. Here it is step by step.", "board": [
+    write("w1", "(x-2)(x-3) = 0", "Eq((x-2)*(x-3), 0)"),
+    write("w2", r"x = 2 \text{ or } x = 3", "Or(Eq(x, 2), Eq(x, 3))")]}]}
+
+
 def at_first_question(cur, db_engine, fake: FakeLLM) -> tuple[Tutor, str]:
     """Asha starts factorisation (earlier concepts mastered) and says "ok" through its steps: question fa1."""
     tutor = Tutor(cur, db_engine, SETTINGS, llm=fake)
@@ -166,10 +172,7 @@ def test_llm_reteach_is_checked_against_the_next_question(cur, db_engine):
 
 
 def test_llm_needs_review_shows_worked_answer_then_moves_on(cur, db_engine):
-    worked = {"segments": [{"say": "This one is tricky, and that's fine. Here it is step by step.", "board": [
-        write("w1", "(x-2)(x-3) = 0", "Eq((x-2)*(x-3), 0)"),
-        write("w2", r"x = 2 \text{ or } x = 3", "Or(Eq(x, 2), Eq(x, 3))")]}]}
-    fake = FakeLLM(understand=[understood("answer", "-2, -3")], respond=[worked])
+    fake = FakeLLM(understand=[understood("answer", "-2, -3")], respond=[WORKED])
     tutor, student_id = at_first_question(cur, db_engine, fake)
     with db_engine.begin() as conn:                                        # three reteaches already happened
         progress = db.load_progress(conn, student_id, cur)
@@ -177,9 +180,26 @@ def test_llm_needs_review_shows_worked_answer_then_moves_on(cur, db_engine):
         db.save_progress(conn, student_id, progress, cur.version)
     result = tutor.turn(student_id, "minus 2 and minus 3")
     assert (result.decision.rule, result.decision.action) == ("R9", "needs_review")
-    assert [segment.say for segment in result.segments[:2]] == [worked["segments"][0]["say"], REVIEW_LATER]
+    assert [segment.say for segment in result.segments[:2]] == [WORKED["segments"][0]["say"], REVIEW_LATER]
     assert result.issues == [] and result.decision.resume_concept_id == "quadratic_formula"
     assert factorisation_state(db_engine, cur, student_id).status == "needs_review"
+
+
+def test_llm_needs_review_on_the_last_topic_says_we_come_back_once(cur, db_engine):
+    """Nothing is left to teach: after the LLM's worked answer, only the END summary says what comes back."""
+    fake = FakeLLM(understand=[understood("answer", "-2, -3")], respond=[WORKED])
+    tutor, student_id = at_first_question(cur, db_engine, fake)
+    with db_engine.begin() as conn:                     # three reteaches already happened; the rest is mastered
+        progress = db.load_progress(conn, student_id, cur)
+        progress["factorisation"].reteach_count = 3
+        for concept_id in cur.order[cur.order.index("factorisation") + 1:]:
+            progress[concept_id].status, progress[concept_id].points = "mastered", POINTS_TO_MASTER
+        db.save_progress(conn, student_id, progress, cur.version)
+    result = tutor.turn(student_id, "minus 2 and minus 3")
+    assert (result.decision.action, result.decision.resume_concept_id) == ("needs_review", None)
+    says = [segment.say for segment in result.segments]
+    assert says[0] == WORKED["segments"][0]["say"] and REVIEW_LATER not in says and result.issues == []
+    assert says[-1] == "Next session we'll come back to solving by factorisation."
 
 
 def test_after_a_topic_start_understand_still_reads_the_real_last_line(cur, db_engine):

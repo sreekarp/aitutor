@@ -20,6 +20,14 @@ def test_keyword_whole_reply_only():
     assert fallback.keyword("ok", "checking") is None                     # while checking, "ok" isn't "next"
 
 
+def test_pardon_sorry_what_and_come_again_ask_to_hear_it_again():
+    """On their own, with or without "?", they mean "say that again". In a longer reply they don't."""
+    for text in ("pardon", "Pardon?", "sorry", "Sorry?", "what", "What?", "come again", "Come again?", "Sorry, what?"):
+        assert fallback.keyword(text, "teaching") == fallback.keyword(text, "checking") == "say_again", text
+    for text in ("what is b?", "sorry, I don't know", "sorry, it's 2 and 3", "what do I do next?"):
+        assert fallback.keyword(text, "checking") is None, text
+
+
 # ---------- scripted understanding ----------
 def test_understand_order_and_negations(cur):
     teaching = {"I don't get it": "dont_know", "I haven't understood": "dont_know", "samajh nahi aaya": "dont_know",
@@ -41,6 +49,16 @@ def test_my_number_is_an_answer_and_beats_me_is_unclear(cur):
     assert (said.type, said.answer) == ("answer", "7")
     # Asked again, never hinted: a disclosure the safety check misses can end in "beats me" too.
     assert understand(cur, "Beats me.", "sf2").type == "unclear"
+
+
+def test_a_reply_about_being_hit_is_unclear_never_help(cur):
+    """The safety check misses "He gets drunk. Beats me." (no person right before "beats me"). Read without the AI,
+    any mention of being hit or beaten makes the reply unclear, even with "I don't know", "help" or a "?" in it:
+    the question is asked again, and a possible disclosure never gets a maths hint."""
+    for text in ("he gets drunk. beats me. i dont know", "He gets drunk. Beats me. Please help",
+                 "He gets drunk. Beats me. What should I do?", "Hits me when he is drunk. I don't know",
+                 "slapped me again, just tell me", "kicked me, no idea", "it hurts me, help", "touched me, why?"):
+        assert understand(cur, text, "fa1").type == "unclear", text
 
 
 def test_scripted_answer_odd_formats(cur):

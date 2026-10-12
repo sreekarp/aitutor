@@ -118,7 +118,8 @@ def _teaching(state: ConceptState, concept: Concept, understood: Understood) -> 
         return _make("R7", "explain", state, "You asked a question, so it is answered. Same step.")
     if kind == "dont_know":
         return _make("R7", "explain", state, "You said you don't follow, so this step is explained again.")
-    return _make("R8", "repeat", state, f"{REPEAT_CAUSE[kind]}, so the last reply is said again. Nothing changes.")
+    # "it": the last reply, or just the step after a topic start or a lone apology (tutor._context picks which)
+    return _make("R8", "repeat", state, f"{REPEAT_CAUSE[kind]}, so it is said again. Nothing changes.")
 
 
 def _checking(after: Progress, cur: Curriculum, state: ConceptState, understood: Understood,

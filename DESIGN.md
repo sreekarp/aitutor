@@ -282,10 +282,11 @@ What the student perceives, and what we do about it:
   never more than ~3 s behind the reply.
 - **Speak while synthesising:** the audio for every segment is requested at once, so segment 2 is
   being made while segment 1 plays.
-- **Skip work:** "ok", "next", "haan" and "say again" never reach a model, and scripted actions (the
-  next step, a new question, praise, "how did you get that?") need no RESPOND. So an "ok" uses no
-  model, a right answer one (UNDERSTAND), and a wrong answer or a question two. Audio is cached on
-  disk by model, voice and text, so lesson steps and scripted lines play at once after the first time.
+- **Skip work:** "ok", "next", "haan", "say again" and "pardon?" never reach a model, and scripted
+  actions (the next step, a new question, praise, "how did you get that?") need no RESPOND. So an
+  "ok" uses no model, a right answer one (UNDERSTAND), and a wrong answer or a question two. Audio
+  is cached on disk by model, voice and text, so lesson steps and scripted lines play at once after
+  the first time.
 - **Short replies:** at most three segments of at most 60 words each.
 - *(Designed)* Stream the LLM's output and check segments as they arrive; let the student interrupt.
 
@@ -351,22 +352,26 @@ Known gaps, after the build:
   UNDERSTAND's prompt v1 has no such rule yet, so with the LLM one can still be read as a question.
 - **Scripted mode is cruder than the LLM** (it's the fallback and the mock): it spots mistakes only
   through trap answers, so it hints where the LLM might reteach; any "?" makes a reply a question,
-  even "did India win yesterday?", unless it holds an answer or asks for help ("how do I solve
-  this?"); a question asked while a question is open gets a lesson hint, not an answer to it (where
-  to start, or the last hint again, adding no hint level); a second reply isn't merged with the
-  first ("0 too" after "3"); and mixed replies are read roughly. Without a key, students have to say
-  the answer first.
+  even "did India win yesterday?", unless it holds an answer, asks for help ("how do I solve
+  this?") or mentions being hit (see the safety check below); a question asked while a question is
+  open gets a lesson hint, not an answer to it (where to start, or the last hint again, adding no
+  hint level); a second reply isn't merged with the first ("0 too" after "3"); and mixed replies are
+  read roughly. Without a key, students have to say the answer first.
 - **The keyword safety check has rare false alarms and misses.** `app/safety.py` reads 7 or more
   digits, in groups split by single spaces or hyphens, as a phone number when every group has 2 or
-  more digits ("98765 43210", "011 2345 6789") or every group is one digit, as when a number is said
-  one by one ("nine eight seven six five four three"). A list that mixes the two, like the factor
+  more digits ("98765 43210", "011 2345 6789"), also after one lone digit like a trunk 0 or a
+  country code ("0 98765 43210", "+1 987 654 3210"), or when every group is one digit, as when a
+  number is said one by one ("nine eight seven six five four three"). Any other mix, like the factor
   pairs "1 12 2 6 3 4", is maths. False alarms remain: "12 13 14 15", a hyphenated date like
-  "11-10-2026", 7 or more digits said one by one, "my head is hurting me", "my friend beat me to it"
-  and "honestly beats me" (any word before "beats me" except it, that, this or question counts as a
-  person, so that "Rohan beats me" is caught). Misses remain too: "He gets drunk. Beats me.", numbers
-  said with "double" or "oh", and a Devanagari word before "beats me". With the LLM, UNDERSTAND's
-  safety flag is the second net; in scripted mode "beats me" isn't read as "I don't know", so the
-  tutor asks again instead of giving a hint.
+  "11-10-2026", 7 or more digits said one by one, "my head is hurting me", "my friend beat me to it",
+  "they're beating me at chess" and "honestly beats me" (any word before "beats me" except it, that,
+  this or question counts as a person, so that "Rohan beats me" is caught). Misses remain too: "He
+  gets drunk. Beats me.", "my dad has beaten me", numbers said with "double" or "oh", and a
+  Devanagari word before "beats me". With the LLM, UNDERSTAND's safety flag is the second net. In
+  scripted mode, a reply that mentions being hit, beaten, slapped, kicked, hurt or touched ("He gets
+  drunk. Beats me. I don't know") is read as unclear, even with an answer, a request for help or a
+  "?" in it: the tutor asks again and never gives a maths hint, so "Oh, now it hits me: 2 and 3" has
+  to be answered again.
 - **One process only.** The breakers live in memory and SQLite wants one writer, so the app runs one
   uvicorn worker. More traffic means Postgres and shared breakers first.
 - **No duplicate-request guard.** A request sent twice would apply twice. The page never resends by

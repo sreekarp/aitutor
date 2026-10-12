@@ -256,6 +256,17 @@ def test_safety_turn_keeps_pending_and_flags_review(tutor, db_engine, cur):
         assert progress_of(db_engine, cur, student_id) == before, text
 
 
+def test_a_missed_disclosure_never_gets_a_maths_hint(tutor, db_engine, cur):
+    """The keywords miss "He gets drunk. Beats me." With "I don't know" or "help" after it, the question is asked
+    again: no hint, and no hint level used."""
+    student_id = new_student(db_engine, cur)
+    to_first_question(tutor, cur, student_id)
+    for text in ("He gets drunk. Beats me. I don't know", "He gets drunk. Beats me. Please help"):
+        result = tutor.turn(student_id, text)
+        assert (result.decision.rule, result.decision.action) == ("R8", "repeat"), text
+    assert progress_of(db_engine, cur, student_id)["factorisation"].pending.hint_level == 0
+
+
 def test_my_number_is_seven_is_graded_not_flagged(tutor, db_engine, cur):
     student_id = new_student(db_engine, cur, mastered=[])
     with db_engine.begin() as conn:                              # standard form's question sf2 ("what is b?") is open
