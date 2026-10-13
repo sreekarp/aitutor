@@ -3,6 +3,7 @@
 Every helper takes an open connection, so the caller decides what goes into one transaction."""
 from __future__ import annotations
 
+import re
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -89,8 +90,15 @@ decisions_table = Table(
 )
 
 
+def with_driver(url: str) -> str:
+    """A Postgres URL as Neon or Render give it ("postgresql://…" or "postgres://…") with the installed driver,
+    psycopg 3, named: "postgresql+psycopg://…". Any other URL is returned unchanged."""
+    return re.sub(r"^postgres(?:ql)?://", "postgresql+psycopg://", url)
+
+
 def connect(url: str) -> Engine:
     """Open the database: create the SQLite file's folder if missing, then any missing tables."""
+    url = with_driver(url)
     parsed = make_url(url)
     options = {}
     if parsed.get_backend_name() == "sqlite":
@@ -99,6 +107,8 @@ def connect(url: str) -> Engine:
             options = {"poolclass": StaticPool, "connect_args": {"check_same_thread": False}}
         else:
             Path(parsed.database).parent.mkdir(parents=True, exist_ok=True)
+    else:
+        options = {"pool_pre_ping": True}   # a hosted database (Neon) closes idle connections: test before reuse
     engine = create_engine(url, **options)
     metadata.create_all(engine)
     return engine

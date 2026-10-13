@@ -21,6 +21,12 @@ def cookie_flags(response) -> list[str]:
     return [part.strip().lower() for part in parts]
 
 
+def test_health_check_needs_no_sign_in(cur):
+    """The host's health check and an uptime pinger call /healthz: no sign-in needed."""
+    r = make_client(cur).get("/healthz")
+    assert (r.status_code, r.json()) == (200, {"ok": True})
+
+
 def test_login_wrong_code_403(cur):
     client = make_client(cur)
     r = client.post("/api/login", json={"username": "asha", "first_name": "Asha", "access_code": "wrong"})

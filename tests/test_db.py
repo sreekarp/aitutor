@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from sqlalchemy import func, inspect, select
+from sqlalchemy import create_engine, func, inspect, select
 
 from app import db
 from app.models import BoardLine, ConceptState, Decision, Pending
@@ -27,6 +27,27 @@ def make_turn(session_id, student_id):
 
 def count(conn, table):
     return conn.execute(select(func.count()).select_from(table)).scalar()
+
+
+def test_a_postgres_url_gets_the_installed_driver():
+    """Neon and Render hand out "postgresql://" or "postgres://" URLs, and SQLAlchemy would then look for psycopg2,
+    which isn't installed. So the app names psycopg (version 3). Other URLs are left alone."""
+    for url in ("postgresql://u:p@host/db?sslmode=require", "postgres://u:p@host/db?sslmode=require",
+                "postgresql+psycopg://u:p@host/db?sslmode=require"):
+        assert db.with_driver(url) == "postgresql+psycopg://u:p@host/db?sslmode=require", url
+    for url in ("sqlite://", "sqlite:///data/tutor.db"):
+        assert db.with_driver(url) == url
+    create_engine(db.with_driver("postgresql://u:p@localhost/db"))   # the driver loads; nothing connects yet
+
+
+def test_a_server_database_checks_a_connection_before_using_it(monkeypatch):
+    """Neon closes idle connections (its free database sleeps after 5 minutes), so the pool tests a connection
+    before reusing it."""
+    made = {}
+    monkeypatch.setattr(db, "create_engine", lambda url, **options: made.update(url=url, **options) or "engine")
+    monkeypatch.setattr(db.metadata, "create_all", lambda engine: None)
+    db.connect("postgres://u:p@localhost/db")
+    assert made == {"url": "postgresql+psycopg://u:p@localhost/db", "pool_pre_ping": True}
 
 
 def test_connect_creates_folder(tmp_path):

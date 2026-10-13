@@ -1,5 +1,7 @@
 # Kept out of the image: secrets, local data, this machine's virtualenv and caches, notes and the NCERT PDF.
 .env
+crredits.py
+.claude/
 .git/
 .venv/
 data/

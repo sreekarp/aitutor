@@ -150,22 +150,35 @@ instruction says what a hint is. The model doesn't choose the move, so one delet
 
 ## Deploy
 
-Two hosting options, still to choose between: Railway (Hobby), or Render + Neon. The `DATABASE_URL`
-setting means no code change either way. The `Dockerfile` installs the locked packages with uv and
-starts one uvicorn worker on `$PORT` (8000 if it isn't set):
+It runs on Render's free web service, with progress in a free Neon Postgres database: a free server's
+own disk is wiped whenever it restarts, so progress can't live in a SQLite file there. The `Dockerfile`
+installs the locked packages with uv and starts one uvicorn worker on `$PORT` (8000 if it isn't set).
+To try the image locally:
 
 ```
 docker build -t aitutor .
 docker run -p 8000:8000 --env-file .env -v aitutor-data:/app/data aitutor
 ```
 
-- **Railway:** mount a volume at `/app/data` (matching the default `sqlite:///data/tutor.db`), or set
-  `DATABASE_URL` to an absolute path on the volume; otherwise every redeploy wipes all progress. The
-  text-to-speech cache (`data/tts/`) is on the same volume. One worker.
-- **Render + Neon:** add the Postgres driver (`uv add "psycopg[binary]"`) and set `DATABASE_URL` to a
-  `postgresql+psycopg://` URL.
-- **Either way:** serve over https (the mic needs it), and set `HTTPS_ONLY=true`, a long random
-  `SESSION_SECRET` and your own `ACCESS_CODE`.
+1. **Neon:** create a project and copy its connection string (`postgresql://…?sslmode=require`). The app
+   adds the driver's name itself and creates its tables on the first start.
+2. **Render:** a new Web Service from this GitHub repo, with runtime Docker, instance type Free and
+   health check path `/healthz`. Set these environment variables:
+   - `DATABASE_URL`: the Neon connection string
+   - `OPENROUTER_API_KEY`: your key (leave it out for scripted mode)
+   - `ACCESS_CODE`: the sign-in code you give to testers
+   - `SESSION_SECRET`: a long random string
+   - `HTTPS_ONLY`: `true` (Render serves https, which the mic needs)
+   - `MAX_TURNS_PER_DAY`: `200`, which keeps the worst case near $1 a day (a turn costs under a cent)
+3. **Keeping it awake:** a free Render service sleeps after 15 minutes without visitors, and the next
+   visit waits about a minute. A free uptime monitor that opens `/healthz` every 10 minutes keeps it
+   awake; Render's 750 free hours a month cover one service all month.
+
+What the free tiers change: the voice cache (`data/tts/`) starts empty after each restart, so a reused
+line is paid for once more; and Neon's free database sleeps after 5 minutes idle and wakes in about a
+second (the app tests a connection before reusing it). Keep one worker: the breakers live in memory.
+For no sleeping at all, Railway's $5-a-month Hobby plan works too: mount a volume at `/app/data` and
+keep the default SQLite file.
 
 ## What's where
 

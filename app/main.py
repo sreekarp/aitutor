@@ -126,6 +126,11 @@ def create_app(settings: Settings | None = None, *, llm=None, cur: Curriculum | 
             raise HTTPException(status_code=503, detail="No server voice right now; the browser voice reads it.")
         return Response(content=audio, media_type="audio/mpeg")
 
+    @app.get("/healthz")
+    def healthz() -> dict:
+        """For the host's health check and an uptime pinger: no sign-in and no database, so it stays cheap."""
+        return {"ok": True}
+
     app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")   # last, so the /api routes win
     return app
 
