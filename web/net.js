@@ -13,13 +13,19 @@ class ApiError extends Error {
   }
 }
 
-// Resolves to the reply's JSON, or throws ApiError. onWait(line) gets each waiting line as soon as it arrives.
+// Resolves to the reply's JSON, or throws ApiError. onWait(line) gets each waiting line as soon as it arrives; the
+// time limit starts again then, as the server is busy with the AI and has its own deadline.
 async function request(path, options = {}, onWait = () => {}) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REPLY_TIMEOUT_MS);
+  let timer = setTimeout(() => controller.abort(), REPLY_TIMEOUT_MS);
+  const waiting = (line) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => controller.abort(), REPLY_TIMEOUT_MS);
+    onWait(line);
+  };
   try {
     const res = await fetch(path, { ...options, signal: controller.signal });
-    if (res.ok) return await readLines(res, onWait);
+    if (res.ok) return await readLines(res, waiting);
     const data = await res.json().catch(() => ({}));
     const fallback = res.status === 422 ? "Please check what you typed." : "Something went wrong. Please try again.";
     throw new ApiError(res.status, typeof data.detail === "string" ? data.detail : fallback);

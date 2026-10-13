@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from sympy import Eq, Or
+from sympy import Eq, Or, Rational
 
 from app import grading, mathcheck
 from app.config import BOARD_MAX_LINES, MAX_SEGMENTS, SAY_MAX_WORDS
@@ -160,12 +160,52 @@ def _command_problems(cmd: BoardCommand, ctx: ReplyContext, latex_of: dict[str, 
 
 
 def _uses_check_equation(check: str, equations: list[str]) -> bool:
-    """Rule 7: is this line one of the questions, rearranged, factorised or solved?"""
+    """Rule 7: is this line one of the questions, rearranged, factorised or solved? Every topic's questions are
+    compared, so the quick look (_could_be_same) goes first: same_maths is slow (a second or more per reply)."""
     try:
         line = mathcheck.parse_check(check)
-        return any(mathcheck.same_maths(line, mathcheck.parse_check(equation)) for equation in equations)
+        return any(_could_be_same(line, question) and mathcheck.same_maths(line, question)
+                   for question in map(mathcheck.parse_check, equations))
     except mathcheck.CheckError:
         return False                               # an unreadable check is already reported by rule 3
+
+
+SAMPLE_X = (Rational(13, 7), Rational(-29, 11))     # x values to compare two equations at (roots of no lesson's)
+
+
+def _could_be_same(a, b) -> bool:
+    """A quick look before mathcheck.same_maths, which is slow: False only when a and b certainly differ. Two
+    equations in x differ when, at a sample x, their sides (left minus right) differ either way round; a root claim
+    ("x = 2 or x = 5") and an equation differ when a claimed root doesn't solve the equation. Anything else: True,
+    and same_maths decides. A real match is never ruled out."""
+    if isinstance(a, Or) != isinstance(b, Or):                  # a root claim and an equation
+        claim, other = (a, b) if isinstance(a, Or) else (b, a)
+        if not (isinstance(other, Eq) and other.free_symbols):
+            return True
+        try:
+            roots = mathcheck.solutions(claim)                            # a claim's own values: nothing is solved
+        except mathcheck.CheckError:
+            return True
+        values = [_at(other.lhs - other.rhs, root) for root in roots]
+        return all(value is None or abs(value) < 1e-9 for value in values)
+    if not (isinstance(a, Eq) and isinstance(b, Eq) and a.free_symbols and b.free_symbols):
+        return True
+    for sample in SAMPLE_X:
+        u, v = _at(a.lhs - a.rhs, sample), _at(b.lhs - b.rhs, sample)
+        if u is None or v is None:
+            return True                                         # not a number there: can't tell
+        tolerance = 1e-9 * max(1.0, abs(u), abs(v))
+        if abs(u - v) > tolerance and abs(u + v) > tolerance:
+            return False
+    return True
+
+
+def _at(expr, value) -> complex | None:
+    """expr at x = value, as a number; None when it isn't one there."""
+    try:
+        return complex(expr.subs(mathcheck.x, value))
+    except (TypeError, ValueError, ZeroDivisionError):
+        return None
 
 
 def _answer_problems(segments: list[Segment], maths: list[dict], ctx: ReplyContext) -> list[str]:

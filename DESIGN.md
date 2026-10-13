@@ -383,7 +383,13 @@ What the student perceives, and what we do about it:
   page says it in the tutor's voice: "Sure, let me think of one.", "Good question. Let me think." or "Hmm,
   let me think." (`replies.WAIT`). The turn's JSON comes as lines (the waiting line, then the turn), so
   one request carries both. Replies that need no AI (a button, a known phrase, a graded answer) get no
-  such line, so it never becomes a habit. It shortens no time; it makes the wait feel like thinking.
+  such line, so it never becomes a habit. It shortens no time; it makes the wait feel like thinking. The
+  page's 17 s limit starts again when the line arrives: the server is busy, and has its own deadline.
+- **Keep the checks cheap:** every line RESPOND writes is compared with every topic's questions (34; an
+  example on one would give a later answer away), and SymPy's comparison is slow. A quick numeric look
+  first (`board._could_be_same`: the two sides at a sample x, or a claimed root put back in) skips the
+  questions a line can't be. Checking a 5-line example went from 2.1 s to 0.19 s on a laptop. Render's
+  free tier has a tenth of a CPU, so there it was about 20 s, past the page's limit, when first deployed.
 - **Show progress immediately:** the status line goes Opening the microphone… → Listening… →
   Thinking… → Speaking…, and the mic and text box are disabled while the page waits for the server
   (while the tutor speaks they work, and cut it short). While the mic

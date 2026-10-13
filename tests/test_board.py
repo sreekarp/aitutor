@@ -229,3 +229,28 @@ def test_needs_review_must_end_on_key():
     kept = write("w2", "x = 5", "Eq(x, 5)", relation="select")
     assert problems(both, kept, **hall) == []
     assert any("must end with a root claim" in p for p in problems(both, **hall))
+
+
+def test_the_lesson_question_rule_is_cheap_with_every_topics_questions(cur, monkeypatch):
+    """Rule 7 compares each line with every topic's questions (34): the slow symbolic check runs only for a
+    question the line could be, so a reply is checked in well under a second even on a slow server."""
+    calls = []
+    real = board.mathcheck.same_maths
+    monkeypatch.setattr(board.mathcheck, "same_maths", lambda a, b: calls.append(1) or real(a, b))
+    every = [c.equation for concept in cur.concepts.values() for c in concept.checks]
+    assert board._uses_check_equation("Eq(2*x**2 - 5*x + 3, 0)", every) is False
+    assert calls == []                                                 # none of the 34 could be it
+    assert board._uses_check_equation("Eq(x**2 + 10, 7*x)", every) is True    # qf4, rearranged
+
+
+def test_could_be_same_rules_out_different_equations_cheaply():
+    """A quick look before same_maths: two equations whose sides differ at a sample point (either way round) can't
+    be the same, so the slow symbolic check is skipped. It never rules out a real match, so results don't change."""
+    p = board.mathcheck.parse_check
+    question = p("Eq(x**2 - 7*x + 10, 0)")
+    for same in ("Eq(x**2 - 7*x + 10, 0)", "Eq(x**2 + 10, 7*x)", "Eq(-x**2 + 7*x - 10, 0)", "Eq((x-2)*(x-5), 0)"):
+        assert board._could_be_same(p(same), question) and board.mathcheck.same_maths(p(same), question), same
+    for other in ("Eq(x**2 - 9*x + 20, 0)", "Eq(2*x**2 - 5*x + 3, 0)", "Eq(x - 2, 0)"):
+        assert not board._could_be_same(p(other), question), other
+    assert board._could_be_same(p("Or(Eq(x, 2), Eq(x, 5))"), question)      # its roots: could be its solution
+    assert not board._could_be_same(p("Or(Eq(x, 3/2), Eq(x, 1))"), question)  # a root that doesn't solve it
