@@ -13,6 +13,7 @@ from sqlalchemy import Engine
 from app import board, compose, db, engine, fallback, safety
 from app.models import (PINNED_IDS, BoardCommand, BoardLine, Choice, Curriculum, Decision, Progress, Segment, Stopped,
                         TurnContext)
+from app.replies import APOLOGIES
 
 # "continue", "carry on", "resume" or "keep going", maybe with "ok" or "yes" before or "please" after.
 CONTINUE = re.compile(r"(?:(?:ok|okay|yes|yeah|please)\s+)?(?:continue|carry on|resume|keep going)(?:\s+please)?")
@@ -41,8 +42,9 @@ def record(db_engine: Engine, cur: Curriculum, student_id: str, turn_id: str, he
 
 
 def find(turn: dict | None) -> Stopped | None:
-    """The turn's reply if the student stopped it part-way (a row from db.last_turn), else None."""
-    if turn is None or turn["heard"] is None:
+    """The turn's reply if the student stopped it part-way (a row from db.last_turn), else None. A stopped "sorry"
+    counts as no stop: "say again" or Continue then go back to the lesson itself, not to the apology."""
+    if turn is None or turn["heard"] is None or turn["tutor_output"]["segments"][0]["say"] in APOLOGIES:
         return None
     output = turn["tutor_output"]
     return Stopped(segments=[Segment.model_validate(segment) for segment in output["segments"]], heard=turn["heard"],

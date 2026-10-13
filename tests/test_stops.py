@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from app import board, curriculum, db, fallback, page, stops
 from app.main import create_app
-from app.replies import SAFETY_REPLY
+from app.replies import MISHEARD, SAFETY_REPLY
 from app.tutor import Tutor
 
 
@@ -268,3 +268,36 @@ def test_an_answer_over_a_question_already_on_the_board_is_graded(tutor, db_engi
     stop(tutor, student_id, back, heard=0, shown=1)
     answer = tutor.turn(student_id, said_with_working(check_of(cur, asked.decision.ask_check_id)))
     assert answer.decision.rule == "R1"
+
+
+def test_a_stopped_sorry_is_never_said_again(tutor, db_engine, cur):
+    """Stopping "Sorry, I may have misheard you" and asking to hear it again gets the step, not the apology; Continue
+    later resumes the lesson as usual."""
+    student_id, _, step = on_step_one(tutor, db_engine, cur)
+    sorry = tutor.turn(student_id, "hi", input_mode="voice")
+    assert says(sorry)[0] == MISHEARD
+    stop(tutor, student_id, sorry, 0)
+    assert says(tutor.turn(student_id, "say again")) == says(step)
+    stop(tutor, student_id, tutor.turn(student_id, "hi", input_mode="voice"), 0)
+    assert tutor.start(student_id).decision.action == "resume"
+
+
+def test_a_reply_nobody_can_place_after_the_safety_reply_hears_it_again(tutor, db_engine, cur):
+    """No "I may have misheard you" in front of the safety reply, as if the reply were a disclosure: just the safety
+    reply again, with no buttons, as before."""
+    student_id, _, _ = on_step_one(tutor, db_engine, cur)
+    tutor.turn(student_id, "I want to die")
+    heard = tutor.turn(student_id, "hi", input_mode="voice")
+    assert says(heard) == [SAFETY_REPLY] and heard.choices == []
+
+
+def test_buttons_after_a_sorry_and_say_again_match_a_reload(tutor, db_engine, cur):
+    """After a solved example, "sorry" then "say again" keep the example's check-in and buttons, live and after a
+    reload."""
+    student_id, _, _ = on_step_one(tutor, db_engine, cur)
+    example = tutor.turn(student_id, "not sure")
+    for text in ("hi", "say again"):
+        result = tutor.turn(student_id, text)
+        live = page.payload(tutor, student_id, result)["choices"]
+        assert live == page.state(tutor, student_id)["choices"] == [vars(choice) for choice in example.choices], text
+        assert says(result)[-1] == says(example)[-1], text

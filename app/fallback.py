@@ -118,6 +118,14 @@ def plain(text: str) -> str:
     return " ".join(re.sub(r"[^a-z0-9]+", " ", text.lower().replace("'", "").replace("’", "")).split())
 
 
+def foreign_letters(text: str) -> bool:
+    """True when a letter is from an alphabet the lessons never use: not English (accents like é included), Hindi
+    (Devanagari, or Urdu script, which speech-to-text may write it in) or the Greek of maths (α, β). Speech-to-text
+    writes a short reply it misheard that way ("Ичми" for a clipped "teach me")."""
+    allowed = ((0, 0xFF), (0x370, 0x3FF), (0x600, 0x6FF), (0x900, 0x97F))   # Latin-1, Greek, Urdu, Devanagari
+    return any(char.isalpha() and not any(low <= ord(char) <= high for low, high in allowed) for char in text)
+
+
 def keyword(text: str, phase: str) -> str | None:
     """A reply type when the WHOLE reply is listed phrases ("ok next", "got it", "not sure"); anything longer goes
     to UNDERSTAND. "ok", "yes", "no" and "nahi" count only while teaching: while a question is open they're answers."""

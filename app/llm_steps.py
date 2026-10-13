@@ -1,5 +1,6 @@
 """The turn's two LLM steps, UNDERSTAND and RESPOND: the LLM first, the scripted version when it fails.
-A fallback is noted in ctx.issues, and after a failed UNDERSTAND the rest of the turn is scripted."""
+A fallback is noted in ctx.issues, and after a failed UNDERSTAND the rest of the turn is scripted. Also the grading
+of UNDERSTAND's answer, which checks a right answer against the student's own words."""
 from __future__ import annotations
 
 from dataclasses import replace
@@ -41,6 +42,23 @@ def respond(llm, cur: Curriculum, ctx: TurnContext, decision: Decision, after: P
     words = replies.words(decision, cur=cur, progress=after, check=ctx.check, grade=grade,
                           first_name=ctx.student["first_name"])
     return words, decision, after
+
+
+def grade(ctx: TurnContext, understood: Understood) -> tuple[Understood, Grade]:
+    """SymPy grades UNDERSTAND's answer. UNDERSTAND can write down the right answer when the student said a wrong
+    one, so a right answer is checked against the student's own words, read by the scripted rules: when UNDERSTAND
+    named a mistake, or those words are a trap answer, and they aren't right, the student's words are graded."""
+    grade = grading.grade(ctx.check, understood.answer)
+    if grade.verdict != "correct" or ctx.scripted:
+        return understood, grade
+    pending = ctx.before[ctx.concept.id].pending
+    own = fallback.understand(ctx.text, phase=ctx.phase, check=ctx.check,
+                              awaiting_working=pending.awaiting_working).answer
+    own_grade = grading.grade(ctx.check, own) if own else grade
+    if own_grade.verdict != "correct" and (understood.mistake or own_grade.trap):
+        ctx.issues.append("answer_rewritten")
+        return understood.model_copy(update={"answer": own}), own_grade
+    return understood, grade
 
 
 def _llm_understand(llm, ctx: TurnContext, pending: Pending | None) -> Understood:

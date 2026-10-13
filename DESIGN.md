@@ -17,7 +17,7 @@ reading a tap needs no model call (only a solved example calls RESPOND).
 | Where the student is | They say, or tap | What happens |
 | --- | --- | --- |
 | A topic's start: its intro, then "Shall I teach it? Or say 'test me' if you already know it." | "test me", "quiz me", "I already know this" (**Test me first**) | R6: the questions start now |
-| | Anything else: "teach me", "ok", "no", a question (**Teach me**) | R0: step 1. An unclear reply gets R8: the intro and the offer again. A failed recording gets only "Sorry, I didn't catch that..." (with the offer's buttons) |
+| | Anything else: "teach me", "ok", "no", a question (**Teach me**) | R0: step 1. An unclear reply gets R8: "Sorry, I may have misheard you..." (spoken) or "Sorry, I didn't follow that." (typed), then just the offer again. A failed recording gets only "Sorry, I didn't catch that..." (with the offer's buttons) |
 | A step, ending "Did that make sense? Shall we go on?" (the last step: "Ready for a question?") | "yes", "yeah", "sure", "go ahead", "ok", "got it", "understood", "move on" (**Yes, go on**, **Yes, quiz me**) | R0: the next step, or after the last one the first question |
 | | "not sure", "no", "nope", "not really", "didn't get it", "another example" (**Not sure**) | R7 `example`: RESPOND solves a similar equation on the board (SymPy checks each line; never a lesson question), then "Shall we go on, or shall I do another example?" (**Go on**, **Another example**). Scripted: "Let's go over that step again." and the step is replayed |
 | | "test me", "skip to the questions" | R6: the questions start now; the other steps are skipped |
@@ -27,7 +27,7 @@ reading a tap needs no model call (only a solved example calls RESPOND).
 | | "got it", "test me" | R6: "show me", because points need an answer with working |
 | | "move on" | R8: "Let's get this one first", and the question again |
 | Anywhere | "Can we skip to the factorization topic?", "move on to the discriminant" | S2: that topic, as if it was picked in Topics |
-| | "say again", "pardon?", "can you repeat that?" | R8: the last reply again, a hint or an explanation included. While teaching it ends on its check-in; while a question is open, on the question (after a greeting or "didn't catch that", just the question) |
+| | "say again", "pardon?", "can you repeat that?" | R8: the last reply again, a hint or an explanation included. While teaching it ends on its check-in (after a "sorry", the whole step); while a question is open, on the question (after a greeting or a "sorry", just the question) |
 | Right after the student stopped the tutor part-way | "repeat", "say again" (**↻ Repeat**); "continue", "carry on", "resume" (**▶ Continue**) | R8: the stopped reply again, from its start or from the line it stopped on, with its board and its buttons. Any other reply moves on as usual, and the part not said is dropped |
 
 "Yes", "yeah", "sure", "ok", "haan", "no", "nope" and "not really" (and "that makes sense") are read this way only
@@ -367,8 +367,9 @@ What the student perceives, and what we do about it:
 - **Show progress immediately:** the status line goes Opening the microphone… → Listening… →
   Thinking… → Speaking…, and the mic and text box are disabled while the page waits for the server
   (while the tutor speaks they work, and cut it short). While the mic
-  opens, the Speak button reads "⏳ Opening mic…", and it turns into Stop only once the recording has
-  really started, so the student doesn't start talking before the mic can hear them. A Stop click
+  opens, the Speak button reads "⏳ Opening mic…", and it turns into Stop, with a soft tick, only once the
+  recording has really started, so the student doesn't start talking before the mic can hear them (a
+  short reply cut at its start, like "(t)each me", comes back as "Ичми" or "Mi."). A Stop click
   in the recording's first 400 ms is ignored, so a double-click on Speak doesn't end it at once.
   After ~17 s with no reply the page says "That took too long — try again or type it", and nothing
   is resent.
@@ -534,15 +535,20 @@ Known gaps, after the build:
   students are LLMs with their own biases. Real student sessions are the missing check.
 - **Hinglish speech is untested.** Two eval scenarios type Hinglish, but no Hinglish recording has
   been through speech-to-text, and the voice ("sarah", chosen by listening) isn't Indian English.
-- **Speech-to-text can mishear,** sometimes into words nobody said or another script. While a
-  question is open, a spoken reply UNDERSTAND can't place (unclear or off-topic) gets "Sorry, I may
-  have misheard you. Say it again, or type it." and the question again; no transcript at all gets
-  "Sorry, I didn't catch that. Say it again, or type it." A mishearing that reads as a real reply,
-  like a wrong number or "I don't know", is still taken at its word.
+- **Speech-to-text can mishear,** sometimes into words nobody said or another script, most often when
+  the start of a short reply was cut off. A spoken reply UNDERSTAND can't place (unclear or off-topic),
+  or one in an alphabet the lessons never use (not English, Hindi or the Greek of maths: no UNDERSTAND
+  call), gets "Sorry, I may have misheard you. Say it again, or type it." and then the question, or
+  while teaching just the check-in; no transcript at all gets "Sorry, I didn't catch that. Say it
+  again, or type it." A mishearing that reads as a real reply, like a wrong number or "I don't know",
+  is still taken at its word. A vocabulary hint for speech-to-text (the button words) was tried and
+  left out: it fixed most cut-off replies, but on a clip with almost no speech it wrote "Teach me."
+  anyway, and a cut-off "teach me" became "Yes, go on". A reply the student never said is worse than
+  "say it again".
 - **UNDERSTAND can tidy up a wrong answer.** In the first eval run with the key, the student said
   the sign-flipped roots and UNDERSTAND, though it named the sign-flip mistake, wrote down the right
   ones, so SymPy marked them right. The prompt already said "never correct it". Now a right answer is
-  checked against the student's own words, read by the scripted rules (`tutor._grade`): when
+  checked against the student's own words, read by the scripted rules (`llm_steps.grade`): when
   UNDERSTAND named a mistake, or those words are a trap answer, they are what gets graded, and the
   turn records `answer_rewritten`. A rewrite that names no mistake and matches no trap still slips
   through.

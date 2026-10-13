@@ -9,7 +9,7 @@ from conftest import FakeLLM, make_settings, new_student, progress_of, said_with
 from app import curriculum, db, replies
 from app.config import SESSION_GAP_MIN
 from app.models import ConceptState, Pending
-from app.tutor import DIDNT_CATCH, Tutor
+from app.tutor import DIDNT_CATCH, DIDNT_FOLLOW, MISHEARD, Tutor
 
 WITH_LLM = make_settings(openrouter_api_key="test-key", llm_mode="auto")   # a (fake) key: replies go to the LLM
 RIGHT_B = "minus 7 because I moved every term"     # the answer to sf2 ("what is b?"), with working
@@ -111,7 +111,7 @@ def test_review_pass_goes_back_to_the_open_question(tutor, db_engine, cur):
 def test_say_again_at_a_topic_start_and_after_continue(tutor, db_engine, cur):
     """Start, then "say again": the intro and the offer are said again (on a step: the step and its cue), without
     board commands, and no step is played yet. After Continue on a step, a reply the tutor can't read, like "hi",
-    replays just the step and its cue: not the greeting."""
+    gets "Sorry, I didn't follow that." and just the step's cue: not the greeting."""
     student_id = new_student(db_engine, cur)
     steps = cur.concepts["factorisation"].steps
     first = tutor.start(student_id)                              # greeting, intro
@@ -126,19 +126,19 @@ def test_say_again_at_a_topic_start_and_after_continue(tutor, db_engine, cur):
     tutor.start(student_id)                                      # Continue: "Welcome back! …", then step 2
     unclear = tutor.turn(student_id, "hi")
     assert unclear.decision.rule == "R8"
-    assert [segment.say for segment in unclear.segments] == [*[segment.say for segment in steps[1].segments],
-                                                             replies.cue_line("step", steps[1].id)]
+    assert [segment.say for segment in unclear.segments] == [DIDNT_FOLLOW, replies.cue_line("step", steps[1].id)]
 
 
 def test_a_reply_nobody_can_read_at_a_topic_start_never_begins_step_1(tutor, db_engine, cur):
-    """A spoken reply nobody can place hears the intro and the offer again, and a failed recording gets "Sorry, I
-    didn't catch that". Either way the topic stays at its start; only a reply that can be read begins step 1."""
+    """A spoken reply nobody can place hears "Sorry, I may have misheard you" and the offer again, and a failed
+    recording gets "Sorry, I didn't catch that". Either way the topic stays at its start; only a reply that can be
+    read begins step 1."""
     student_id = new_student(db_engine, cur)
     concept = cur.concepts["factorisation"]
     first = tutor.start(student_id)                              # greeting, intro, the offer
     heard = tutor.turn(student_id, "hi", input_mode="voice")     # a spoken reply the tutor can't place
     assert (heard.decision.rule, heard.decision.action) == ("R8", "repeat")
-    assert [segment.say for segment in heard.segments] == [segment.say for segment in first.segments[1:]]  # no greeting
+    assert [segment.say for segment in heard.segments] == [MISHEARD, first.segments[-1].say]   # not the intro again
     assert progress_of(db_engine, cur, student_id)["factorisation"].step_id is None
     sorry = tutor.turn(student_id, "", input_mode="voice", stt_failed=True)
     assert (sorry.decision.rule, sorry.decision.action, sorry.input_hint) == ("R8", "repeat", "type")

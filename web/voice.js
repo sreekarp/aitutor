@@ -139,6 +139,7 @@ let recorder = null;    // the MediaRecorder while recording
 let startedAt = 0;      // performance.now() when that recording really started; 0 until it has
 let micStream = null;   // the open mic, kept for the next answer
 let idleTimer = 0;      // switches the kept mic off MIC_IDLE_MS after the student's turn starts
+let ticker = null;      // Web Audio for the "speak now" tick, made in a Speak click (sound needs a click first)
 
 async function onMic() {
   if (!recorder) cutShort();   // (app.js) Speak cuts the tutor short: its voice must not be recorded
@@ -148,6 +149,7 @@ async function onMic() {
     return stopRecording();
   }
   const clickedAt = performance.now();   // the first-ever click's mic_open_ms includes the browser's permission prompt
+  readyTicker();   // while the click is still being handled
   setBusy(true);   // no typing, and no second recording, while recording
   clearTimeout(idleTimer);   // a new recording: the mic stays on
   try {
@@ -165,7 +167,7 @@ async function onMic() {
 async function openMic() {   // asks the browser for the mic (the first time, the student must allow it)
   releaseMic();   // let go of a kept mic whose track has ended
   micButton.textContent = "⏳ Opening mic…";   // still disabled: opening the mic can take a second
-  setStatus("Opening the microphone… start talking when it says Listening.");
+  setStatus("Opening the microphone… speak after the tick.");
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   stream.getTracks().forEach((track) => {   // mic unplugged or permission taken back: the next Speak opens it again
     track.onended = () => { if (micStream === stream) releaseMic(); };
@@ -221,6 +223,7 @@ function startRecording(stream, clickedAt) {
     showMic(true);
     setStatus("Listening… speak now, then click Stop.");
     setTimeout(() => { if (recorder === rec) stopRecording(); }, MAX_RECORDING_MS);
+    playTick();   // only now is the mic really listening: a word said before this would be cut off
   };
   rec.onstop = () => {
     const byItself = recorder === rec;   // no Stop click: its track ended (mic unplugged or permission taken back)
@@ -234,6 +237,29 @@ function startRecording(stream, clickedAt) {
   };
   rec.start();
   recorder = rec;
+}
+
+function readyTicker() {
+  try {
+    ticker = ticker || new (window.AudioContext || window.webkitAudioContext)();
+    ticker.resume().catch(() => {});
+  } catch {
+    ticker = null;   // no Web Audio: the words on screen still say when to talk
+  }
+}
+
+function playTick() {   // a soft 80 ms tick that says "speak now"; the status line says it too, so a failure is fine
+  if (!ticker) return;
+  try {
+    if (ticker.state !== "running") ticker.resume().catch(() => {});   // iPhones may pause it as the mic opens
+    const tone = ticker.createOscillator(), volume = ticker.createGain(), now = ticker.currentTime;
+    tone.frequency.value = 880;
+    volume.gain.setValueAtTime(0.2, now);
+    volume.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+    tone.connect(volume).connect(ticker.destination);
+    tone.start(now);
+    tone.stop(now + 0.08);
+  } catch {}   // no tick this time
 }
 
 function stopRecording() {   // the stop click, 30 s, or the page hidden; onstop then sends it, if it had really started

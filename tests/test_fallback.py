@@ -295,3 +295,14 @@ def test_how_did_you_get_it_is_a_question_but_i_get_it_still_claims_understandin
     for text in ("I get it", "got it", "I get it now, thanks", "ok I get it"):
         assert understand(cur, text, phase="teaching").type == "claims_understanding", text
     assert understand(cur, "I get it, it's 2 and 3").type == "answer"       # answers are read first
+
+
+def test_letters_from_an_alphabet_the_lessons_never_use():
+    """Speech-to-text writing a short reply in another alphabet ("Ичми" for "teach me") misheard it. English, Hindi
+    (also as Urdu script, which speech-to-text may use for it), accented Latin letters like "é" and the Greek
+    letters of maths are fine; so are digits and maths signs."""
+    for text in ("Ичми.", "Miči", "明。", "Uč me.", "Džmi"):
+        assert fallback.foreign_letters(text), text
+    for text in ("Teach me.", "मुझे नहीं पता", "مجھے نہیں پتا", "α and β", "x² = 4, so x = ±2", "2 and 3", "",
+                 "theek hai", "café"):
+        assert not fallback.foreign_letters(text), text

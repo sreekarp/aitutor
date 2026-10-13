@@ -6,7 +6,7 @@ from app import curriculum, db, replies
 from app.config import POINTS_TO_MASTER, Settings
 from app.llm import ProviderError
 from app.replies import REVIEW_LATER, SAFETY_REPLY
-from app.tutor import MISHEARD, Tutor
+from app.tutor import DIDNT_FOLLOW, MISHEARD, Tutor
 
 SETTINGS = Settings(openrouter_api_key="test-key", access_code="test", session_secret="test",
                     database_url="sqlite://", llm_mode="auto", max_turns_per_day=1000, tts_voice="sarah",
@@ -229,7 +229,7 @@ def test_llm_needs_review_on_the_last_topic_says_we_come_back_once(cur, db_engin
 
 def test_after_a_topic_start_understand_still_reads_the_real_last_line(cur, db_engine):
     """Right after Start, UNDERSTAND gets the tutor's real last line (the offer: step 1 waits), and a reply it finds
-    unclear says the intro and the offer again: no step is played yet."""
+    unclear gets "Sorry, I didn't follow that." and the offer again (not the whole intro): no step is played yet."""
     fake = FakeLLM(understand=[understood("unclear")])
     tutor = Tutor(cur, db_engine, SETTINGS, llm=fake)
     with db_engine.begin() as conn:
@@ -241,7 +241,7 @@ def test_after_a_topic_start_understand_still_reads_the_real_last_line(cur, db_e
     assert first.segments[-1].say == offer
     assert f"TUTOR'S LAST LINE: {offer}" in fake.asked[0][1][1]["content"]
     assert (result.decision.rule, result.decision.action) == ("R8", "repeat")
-    assert [segment.say for segment in result.segments] == [cur.concepts["standard_form"].intro, offer]
+    assert [segment.say for segment in result.segments] == [DIDNT_FOLLOW, offer]
 
 
 def test_got_it_test_me_not_sure_and_move_on_need_no_understand_call(cur, db_engine):
@@ -283,18 +283,32 @@ def test_spoken_reply_nobody_can_place_while_checking_may_be_misheard(cur, db_en
     assert factorisation_state(db_engine, cur, student_id) == before
 
 
-def test_spoken_off_topic_reply_while_teaching_still_replays_the_step(cur, db_engine):
-    """While teaching, a spoken reply nobody can place replays the step as before, and "say again" still works."""
+@pytest.mark.parametrize("mode, sorry", [("voice", MISHEARD), ("text", DIDNT_FOLLOW)])
+def test_a_reply_nobody_can_place_while_teaching_gets_sorry_and_the_check_in(cur, db_engine, mode, sorry):
+    """While teaching, a reply nobody can place gets a short "sorry" and just the check-in again (not the whole
+    step), with the step's buttons; "say again" then says the whole step."""
     tutor = Tutor(cur, db_engine, SETTINGS, llm=FakeLLM(understand=[understood("off_topic")]))
     student_id = new_student(db_engine, cur)
     tutor.start(student_id)                               # greeting, intro
-    tutor.turn(student_id, "ok")                          # step 1 ("ok" is a fast path: no LLM call)
+    on_step = tutor.turn(student_id, "ok")                # step 1 ("ok" is a fast path: no LLM call)
     step = cur.concepts["factorisation"].steps[0]
-    step_1 = [segment.say for segment in step.segments] + [replies.cue_line("step", step.id)]
-    heard = tutor.turn(student_id, "Experience is the best teacher.", input_mode="voice")
+    cue = replies.cue_line("step", step.id)
+    heard = tutor.turn(student_id, "Experience is the best teacher.", input_mode=mode)
     again = tutor.turn(student_id, "say again")
-    assert heard.decision.rule == "R8"
-    assert [segment.say for segment in heard.segments] == step_1 == [segment.say for segment in again.segments]
+    assert heard.decision.rule == "R8" and heard.choices == on_step.choices
+    assert [segment.say for segment in heard.segments] == [sorry, cue]
+    assert [segment.say for segment in again.segments] == [segment.say for segment in step.segments] + [cue]
+
+
+def test_a_transcript_in_another_alphabet_is_misheard_without_asking_the_ai(cur, db_engine):
+    """ "Ичми" (a clipped "teach me") at a topic start: sorry, then the offer again, and no UNDERSTAND call."""
+    fake = FakeLLM()
+    tutor = Tutor(cur, db_engine, SETTINGS, llm=fake)
+    student_id = new_student(db_engine, cur)
+    started = tutor.start(student_id)
+    heard = tutor.turn(student_id, "Ичми.", input_mode="voice")
+    assert [segment.say for segment in heard.segments] == [MISHEARD, started.segments[-1].say]
+    assert heard.choices == started.choices and heard.input_hint == "type" and fake.asked == []
 
 
 def test_misheard_is_only_for_spoken_replies_nobody_can_place(cur, db_engine):
@@ -310,3 +324,11 @@ def test_misheard_is_only_for_spoken_replies_nobody_can_place(cur, db_engine):
     assert [segment.say for segment in again.segments] == [segment.say for segment in hindi.segments]
     safe = tutor.turn(student_id, "I want to die", input_mode="voice")
     assert (safe.decision.rule, safe.segments[0].say, safe.input_hint) == ("R10", SAFETY_REPLY, None)
+
+
+def test_a_transcript_in_another_alphabet_while_asked_hears_the_question_again(cur, db_engine):
+    fake = FakeLLM()
+    tutor, student_id = at_first_question(cur, db_engine, fake)
+    heard = tutor.turn(student_id, "Ичми.", input_mode="voice")
+    fa1 = cur.concepts["factorisation"].checks[0]
+    assert [segment.say for segment in heard.segments] == [MISHEARD, fa1.say] and fake.asked == []

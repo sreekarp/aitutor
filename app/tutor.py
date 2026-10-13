@@ -9,15 +9,13 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import Engine
 
-from app import board, compose, curriculum, db, engine, fallback, grading, llm_steps, replies, safety, sessions, stops
+from app import board, compose, curriculum, db, engine, fallback, llm_steps, replies, safety, sessions, stops
 from app.config import MAX_INPUT_CHARS, MODELS, PROMPT_VERSIONS, SESSION_GAP_MIN, TURN_DEADLINE_S, Settings
 from app.models import Curriculum, Decision, Grade, Progress, Segment, TurnContext, TurnResult, Understood
+from app.replies import APOLOGIES, DIDNT_CATCH, DIDNT_FOLLOW, MISHEARD, SAFETY_REPLY, SORRY
 
 log = logging.getLogger(__name__)
 
-DIDNT_CATCH = "Sorry, I didn't catch that. Say it again, or type it."
-MISHEARD = "Sorry, I may have misheard you. Say it again, or type it."   # a spoken reply nobody could place
-SORRY = "Sorry, let's try that again."
 LOG_FIELDS = ("session_id", "student_id", "versions", "phase", "understood", "grade", "latency_ms", "calls", "issues")
 
 
@@ -121,17 +119,20 @@ class Tutor:
         elif picked:                                    # S2, just as if the student clicked that topic
             decision, after = sessions.jump(ctx.before, self.cur, picked)
         else:
-            understood = _timed(ctx, "understand", self._read, ctx, stt_failed)
+            unreadable = stt_failed or (input_mode == "voice" and fallback.foreign_letters(ctx.text))   # misheard
+            understood = _timed(ctx, "understand", self._read, ctx, unreadable)
             if ctx.check and understood.answer and not understood.safety:    # grade answers while checking
-                understood, grade = _timed(ctx, "grade", _grade, ctx, understood)
+                understood, grade = _timed(ctx, "grade", llm_steps.grade, ctx, understood)
             decision, after = _timed(ctx, "decide", engine.decide, ctx.before, self.cur, understood, grade)
-        misheard = _misheard(ctx, input_mode, understood, decision)
-        if (stt_failed or misheard) and decision.action == "repeat":
-            words = [Segment(say=DIDNT_CATCH if stt_failed else MISHEARD)]   # while checking, compose asks again
+        if apology := _apology(ctx, input_mode, understood, decision, stt_failed):
+            # Then, while teaching, just the check-in (a lone "didn't catch that" asks for the reply itself), so
+            # compose adds no second one (_replays_a_cue); while checking, compose asks the question again.
+            again = ctx.last_speech[-1:] if ctx.phase == "teaching" and apology != DIDNT_CATCH else []
+            words = [Segment(say=apology), *again]
         else:
             words, decision, after = _timed(ctx, "respond", llm_steps.respond, self.llm, self.cur, ctx, decision,
                                             after, understood or Understood(type="unclear"), grade)
-        hint = _input_hint(decision, understood, stt_failed or misheard)
+        hint = _input_hint(decision, understood, apology in (DIDNT_CATCH, MISHEARD))
         return self._finish(ctx, input_mode, understood, grade, decision, after, words, hint)
 
     def _context(self, student_id: str, session: dict, text: str, started: float, calls: list,
@@ -149,19 +150,20 @@ class Tutor:
         said = [Segment(say=seg["say"]) for seg in last["tutor_output"]["segments"] if seg["say"]] if last else []
         if last and last["rule"] in ("S0", "S1") and last["action"] == "repeat":
             said = said[1:]                             # a stopped reply picked up: not its "Welcome back"
-        apology_only = [segment.say for segment in said] == [DIDNT_CATCH]
+        apologised = bool(said) and said[0].say in APOLOGIES
         check = curriculum.get_check(concept, pending.check_id) if pending else None
-        if concept and not pending and last and (last["action"] in compose.RESUMING or apology_only):
+        if concept and not pending and last and (last["action"] in compose.RESUMING or apologised):
             # After a topic start or move-on, "say again" replays just the step and its cue (at the topic start: the
-            # intro and the offer): not the greeting or praise. After a lone "didn't catch that", the same, not the
-            # apology. (MISHEARD is never alone: it is only said while a question is open, and the question always
-            # follows it.) Either way UNDERSTAND's "tutor's last line" is the cue: the line being answered.
+            # intro and the offer): not the greeting or praise. After a "sorry" (alone, or with just the check-in),
+            # the whole step, not the apology. Either way UNDERSTAND's "tutor's last line" is the cue: the line
+            # being answered.
             step = curriculum.get_step(concept, before[concept_id].step_id)
-            cue, _ = compose.cue_for(self.cur, before, last["action"])
+            # the check-in said after a "sorry" (an example's, say), else the one for where the lesson is
+            cue = said[-1] if apologised and len(said) > 1 else compose.cue_for(self.cur, before, last["action"])[0]
             lesson = step.segments if step else [Segment(say=concept.intro)]
             said = [Segment(say=segment.say) for segment in lesson] + [cue]
         elif pending and last and (last["action"] in (*compose.RESUMING, "lesson_changed")
-                                   or said and said[0].say in (DIDNT_CATCH, MISHEARD)):
+                                   or apologised):
             # With a question open, after a greeting, a topic start, a lesson change or an apology, "say again" asks
             # just the question.
             said = [Segment(say=curriculum.ask_segment(check, self.cur.formulas).say)]
@@ -173,11 +175,11 @@ class Tutor:
             latency=latency, scripted=self.scripted, stopped=stops.find(last))
         return ctx, replaced
 
-    def _read(self, ctx: TurnContext, stt_failed: bool) -> Understood:
+    def _read(self, ctx: TurnContext, unreadable: bool) -> Understood:
         """The fast paths first (no LLM), then understanding."""
         if safety.is_safety(ctx.text):
             return Understood(type="unclear", safety=True)
-        if stt_failed or not ctx.text or ctx.concept is None:       # nothing to read, or nothing left to teach
+        if unreadable or not ctx.text or ctx.concept is None:       # nothing to read, or nothing left to teach
             return Understood(type="unclear")
         fast = fallback.keyword(ctx.text, ctx.phase)
         return Understood(type=fast) if fast else llm_steps.understand(self.llm, ctx)
@@ -237,23 +239,6 @@ def _timed(ctx: TurnContext, stage: str, function, *args):
     return result
 
 
-def _grade(ctx: TurnContext, understood: Understood) -> tuple[Understood, Grade]:
-    """SymPy grades UNDERSTAND's answer. UNDERSTAND can write down the right answer when the student said a wrong
-    one, so a right answer is checked against the student's own words, read by the scripted rules: when UNDERSTAND
-    named a mistake, or those words are a trap answer, and they aren't right, the student's words are graded."""
-    grade = grading.grade(ctx.check, understood.answer)
-    if grade.verdict != "correct" or ctx.scripted:
-        return understood, grade
-    pending = ctx.before[ctx.concept.id].pending
-    own = fallback.understand(ctx.text, phase=ctx.phase, check=ctx.check,
-                              awaiting_working=pending.awaiting_working).answer
-    own_grade = grading.grade(ctx.check, own) if own else grade
-    if own_grade.verdict != "correct" and (understood.mistake or own_grade.trap):
-        ctx.issues.append("answer_rewritten")
-        return understood.model_copy(update={"answer": own}), own_grade
-    return understood, grade
-
-
 def _recent(turn: dict | None) -> bool:
     """True when this turn happened less than SESSION_GAP_MIN minutes ago."""
     return turn is not None and datetime.now(timezone.utc) - turn["created_at"] < timedelta(minutes=SESSION_GAP_MIN)
@@ -268,12 +253,19 @@ def _topic_asked_for(ctx: TurnContext, cur: Curriculum) -> str | None:
     return picked if picked != (ctx.concept.id if ctx.concept else None) else None
 
 
-def _misheard(ctx: TurnContext, input_mode: str, understood: Understood | None, decision: Decision) -> bool:
-    """R8 while checking after a spoken reply UNDERSTAND couldn't place ("unclear" or "off_topic"): the mic may
-    have misheard it, so the tutor says so before asking again. (While teaching, R8 says the last step or reply
-    again instead, as before.)"""
-    return (input_mode == "voice" and ctx.phase == "checking" and decision.action == "repeat"
-            and understood is not None and understood.type in ("unclear", "off_topic"))
+def _apology(ctx: TurnContext, input_mode: str, understood: Understood | None, decision: Decision,
+             stt_failed: bool) -> str | None:
+    """The "sorry" before R8 asks again, or None: DIDNT_CATCH when no transcript came, MISHEARD for a spoken reply
+    UNDERSTAND couldn't place ("unclear" or "off_topic": the mic may have turned it into other words), and while
+    teaching DIDNT_FOLLOW for such a typed one. (While checking, a typed one hears "Let me ask that again.") None
+    after the safety reply while teaching: that is said again as it was, never as if the reply were misheard."""
+    if decision.action != "repeat" or not (stt_failed or understood and understood.type in ("unclear", "off_topic")):
+        return None
+    if not stt_failed and ctx.phase == "teaching" and ctx.last_speech and ctx.last_speech[-1].say == SAFETY_REPLY:
+        return None
+    if stt_failed or input_mode == "voice":
+        return DIDNT_CATCH if stt_failed else MISHEARD
+    return DIDNT_FOLLOW if ctx.phase == "teaching" else None
 
 
 def _input_hint(decision: Decision, understood: Understood | None, not_heard: bool) -> str | None:

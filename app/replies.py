@@ -11,6 +11,12 @@ from app.models import (WORD_KINDS, BoardCommand, Check, Concept, Curriculum, De
                         Segment, Step)
 
 # ---------- scripted texts ----------
+# The "sorry" before the tutor asks again: no transcript came, a spoken reply nobody could place, or a typed one.
+DIDNT_CATCH = "Sorry, I didn't catch that. Say it again, or type it."
+MISHEARD = "Sorry, I may have misheard you. Say it again, or type it."
+DIDNT_FOLLOW = "Sorry, I didn't follow that."
+APOLOGIES = (DIDNT_CATCH, MISHEARD, DIDNT_FOLLOW)
+SORRY = "Sorry, let's try that again."                 # after an error on our side: nothing changed
 SAFETY_REPLY = ("Thank you for telling me. If something is worrying you, please talk to a parent, a teacher or "
                 "another adult you trust. And please don't share personal details like your phone number or "
                 "address here.")
