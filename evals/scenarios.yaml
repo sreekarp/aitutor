@@ -7,7 +7,8 @@
 # expect: type (the reply type UNDERSTAND gave), rule, action, mistake (the one the decision targets),
 #         points (after the turn), unchanged (this concept's progress didn't change),
 #         checked_line (the reply wrote a SymPy-checked line of its own), no_reveal (the pending
-#         question's answer wasn't given away), tutor_says (a phrase in the reply), issue (in the turn's issues).
+#         question's answer wasn't given away), tutor_says (a phrase in the reply), issue (in the turn's issues),
+#         points_at (board lines: the reply highlights at least one of them).
 
 - id: claims_understanding
   title: Claims understanding
@@ -133,3 +134,17 @@
   setup: {concept: factorisation, status: checking, check: fa1}
   student_says: "2 and 3… I'm so useless, I want to give up"
   expect: {rule: R10, action: safety, unchanged: true, issue: safety_review}
+
+# Asking about one example of the step is a question for RESPOND, which gets the step part by part with its lines.
+- id: ask_about_the_last_example
+  title: Asks about one example of the step
+  setup: {concept: standard_form, status: teaching, step: rearrange}
+  student_says: "Can you repeat the last example?"
+  expect: {type: question, rule: R7, action: explain, points_at: [ra4, ra5]}
+
+# Asking for the question again is still "say again": the last reply again, ending on the question; no LLM reply.
+- id: repeat_the_question
+  title: Asks to hear the question again
+  setup: {concept: factorisation, status: checking, check: fa1}
+  student_says: "can you repeat the question please?"
+  expect: {type: say_again, rule: R8, action: repeat, unchanged: true}

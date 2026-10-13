@@ -2,7 +2,8 @@
 a hint, explanation, follow-up, probe, show-me or re-ask of the same question keeps the board and its working."""
 from conftest import FakeLLM, make_settings, new_student
 
-from app import curriculum, db
+from app import board, curriculum, db
+from app.models import BoardCommand, BoardLine, Segment
 from app.tutor import Tutor
 
 LLM = make_settings(openrouter_api_key="test-key", llm_mode="auto")     # a FakeLLM plays the model: no network
@@ -150,3 +151,32 @@ def test_needs_review_answer_does_not_follow_into_the_next_concept(cur, db_engin
         db.save_progress(conn, student_id, progress, cur.version)
     result = tutor.turn(student_id, "minus 2 and minus 3")
     assert result.decision.rule == "R9" and ids(result) == []          # the quadratic formula opens at its start
+
+
+def test_say_again_points_at_each_parts_lines_instead_of_writing_them(cur, db_engine):
+    """A replay doesn't write the step's lines again (they are on the board): each part highlights the lines it
+    wrote, so the board shows which line is being talked about. The board itself doesn't change."""
+    tutor = Tutor(cur, db_engine, make_settings())
+    student_id = new_student(db_engine, cur)
+    tutor.start(student_id)
+    step = tutor.turn(student_id, "teach me")
+    again = tutor.turn(student_id, "say again")
+    for said, first in zip(again.segments, step.segments):
+        pointed = [(cmd.op, cmd.target, cmd.part) for cmd in said.board]
+        expected = [("highlight", cmd.id, None) if cmd.op == "write" else (cmd.op, cmd.target, cmd.part)
+                    for cmd in first.board if cmd.op != "clear"]
+        assert pointed == expected, said.say
+    assert any(segment.board for segment in again.segments) and again.board == step.board
+
+
+def test_a_replay_points_at_lines_on_the_board_and_draws_again_the_ones_gone():
+    """A line still on the board is highlighted; a line that is gone (cleared, or pushed off) is written again as it
+    is said; a highlight of a gone line is dropped; a clear never happens in a replay."""
+    write = lambda line_id: BoardCommand(op="write", id=line_id, latex="x = 1", check="Eq(x, 1)")   # noqa: E731
+    said = [Segment(say="One.", board=[BoardCommand(op="clear"), write("a"), write("b")]),
+            Segment(say="Two.", board=[BoardCommand(op="highlight", target="b", part="x"),
+                                       BoardCommand(op="highlight", target="gone")])]
+    again = board.replayed(said, [BoardLine(id="a", latex="x = 1")])
+    assert [[(cmd.op, cmd.id or cmd.target) for cmd in segment.board] for segment in again] == [
+        [("highlight", "a"), ("write", "b")], [("highlight", "b")]]
+    assert [segment.say for segment in again] == ["One.", "Two."]

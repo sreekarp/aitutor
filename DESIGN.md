@@ -46,6 +46,8 @@ question open). Right after a safety reply the student had no buttons, so these 
 a reload draws the same. On the page, a click on a topic only chooses it, and a Start button opens it (the big button
 before a lesson, one under the topic list during it). While the tutor speaks every control works: **Stop** (or Esc)
 silences it, and sending an answer (a reply button, or typing and Send), Speak or a topic's Start cuts it short.
+While each part is said, the board lines it writes or points at are lit; a replay ("say again") points at the
+lines still on the board instead of writing them again, and draws again any that are gone.
 The part not yet said is never shown: the page tells the server how many segments were said and shown (kept in
 `stops`; closing or reloading the page mid-reply counts too), and the saved board goes back to what was on screen.
 Stop (or Speak) adds **↻ Repeat** and **▶ Continue** before the reply's own buttons. If the open question was in the
@@ -202,7 +204,7 @@ Rollout:
 1. A new prompt is a new file (`respond.v2.md`); a version in use is never edited, because prompt
    files are read on every call.
 2. `uv run python -m evals --prompt-understand understand.v2 --prompt-respond respond.v2` (or
-   `--model-respond <id>`) runs the 20 tutor scenarios against the new version, 3 runs each. A
+   `--model-respond <id>`) runs the 22 tutor scenarios against the new version, 3 runs each. A
    scenario passes with a majority of passing runs; a red scenario blocks the change unless the
    version in use fails it too.
    `uv run python -m sims` shows false advances over longer conversations.
@@ -228,8 +230,20 @@ scenarios is noise, so a closer call needs `--runs 5` or more.
 The check-ins and buttons ("How a lesson goes", at the top) needed new versions: `understand.v3.md` adds
 three reply types (`test_me`, `not_sure`, `move_on`) and reads "got it" while teaching as "go on", and
 `respond.v4.md` adds the `example` action, a solved example while teaching. Three scenarios were added for
-them, and `claims_understanding` now expects the next step instead of the questions. Config uses
-understand.v3 + respond.v4; they haven't had a run with the key yet.
+them, and `claims_understanding` now expects the next step instead of the questions.
+
+Questions about one part of a step ("can you repeat the last example?") needed two more:
+`understand.v4.md` reads them as a question, not "say again" (which still means all of it, and "repeat
+the question"), and `respond.v5.md` highlights any board line it talks about and answers about one part
+or example on its own. RESPOND's facts list the step and its own last reply part by part: the example
+each part belongs to (a line with relation "new" starts the next) and its lines still on the board.
+Two scenarios were added: `ask_about_the_last_example` (it must highlight that example's lines) and
+`repeat_the_question`. Config uses understand.v4 + respond.v5. Their first full run with the key (13 Oct) passed
+19 of 22. The three failures are RESPOND formatting slips (a ± line it couldn't read, digits in a words line); the
+same scenarios failed with v3 + v4 too. Two fixes came from those runs: the facts now say outright which example is
+the last (left to work it out, the model explained the first one), and a highlight part KaTeX can't mark on its
+own lights the whole line instead of rejecting the reply ("-3x" for "- 3x"). Then
+`ask_about_the_last_example` passed 5 of 5.
 
 *(Designed)* Gradual rollout: send a share of students to the new version (by a hash of the
 student id: 10%, then 50%, then 100%) and compare the two side by side. Every turn already records
@@ -290,7 +304,7 @@ Alerts *(designed, not built; thresholds are targets to tune)*:
 
 **Finding out the tutor got worse before a student says so:**
 
-- **Evals before every change:** the 20 tutor scenarios run against a new prompt or model, and a red
+- **Evals before every change:** the 22 tutor scenarios run against a new prompt or model, and a red
   scenario blocks it. A run fails if the first output of either prompt was rejected, so the safety
   net (one retry, then scripted words) can't hide a bad prompt. *(Designed)* The same suite nightly
   against the live config, plus a simulation batch reporting the false advance rate (points given
@@ -531,7 +545,7 @@ Known gaps, after the build:
 - **The mic stays on between answers.** The browser shows its mic indicator while the tutor replies
   and for up to a minute of the student's turn after that, though nothing is recorded until Speak is
   pressed. Phones and tablets don't keep it on, so every answer there still waits for the mic to open.
-- **Small, synthetic test sets:** 20 eval scenarios and 4 simulated students, and the simulated
+- **Small, synthetic test sets:** 22 eval scenarios and 4 simulated students, and the simulated
   students are LLMs with their own biases. Real student sessions are the missing check.
 - **Hinglish speech is untested.** Two eval scenarios type Hinglish, but no Hinglish recording has
   been through speech-to-text, and the voice ("sarah", chosen by listening) isn't Indian English.

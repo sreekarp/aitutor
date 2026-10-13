@@ -11,7 +11,7 @@ from typing import get_args
 from pydantic import ValidationError
 
 from app import grading
-from app.board import ReplyContext, validate_reply
+from app.board import ReplyContext, line_ids, validate_reply
 from app.config import MAX_HINTS, PROMPT_VERSIONS, PROMPTS_DIR
 from app.models import (AnswerKey, BoardLine, Check, Concept, Decision, Grade, Mistake, Reply, ReplyType, Segment,
                         Step, Understood)
@@ -128,12 +128,16 @@ def respond_messages(*, decision: Decision, concept: Concept, step: Step | None,
                      key: AnswerKey | None, next_check: Check | None, next_key: AnswerKey | None,
                      understood: Understood, grade: Grade | None, mistake: Mistake | None,
                      hint_text: str | None, board: list[BoardLine], check_equations: list[str],
-                     formulas: dict[str, str], previous_reason: str, student_text: str = "") -> list[dict]:
-    """The system prompt plus this turn's facts for RESPOND. The student's words come last."""
+                     formulas: dict[str, str], previous_reason: str, student_text: str = "",
+                     last_reply: list[Segment] | None = None) -> list[dict]:
+    """The system prompt plus this turn's facts for RESPOND. The student's words come last. The step and the tutor's
+    last reply are given part by part (_parts), so "the last example" or "that line" can be found."""
     lines = [f"ACTION: {decision.action}", f"ENGINE'S REASON: {decision.reason}",
              f"LAST DECISION'S REASON: {previous_reason or 'none'}", f"CONCEPT: {concept.title}"]
     if step is not None:
-        lines.append("CURRENT STEP: " + " ".join(segment.say for segment in step.segments))
+        lines += ["CURRENT STEP, part by part:", *_parts(step.segments, board, examples=True)]
+    if last_reply:
+        lines += ["YOUR LAST REPLY, part by part:", *_parts(last_reply, board, examples=False)]
     if check is not None:            # facts only: what to do with the answer key is the prompt file's rule
         lines += [f"PENDING QUESTION: {check.say}", f"QUESTION EQUATION: {_equation(check)}",
                   f"ANSWER KEY: {_answer_text(key)}"]
@@ -159,6 +163,30 @@ def respond_messages(*, decision: Decision, concept: Concept, step: Step | None,
     lines.append("NEVER USE AS EXAMPLES: " + "; ".join(check_equations))
     lines.append(f"STUDENT SAID: {student_text}")
     return _messages("respond", lines)
+
+
+def _parts(segments: list[Segment], board: list[BoardLine], examples: bool) -> list[str]:
+    """One line per part: its number, the example it belongs to (with examples: the first maths line starts example
+    1, and each line with relation "new" the next), the lines it wrote or pointed at that are still on the board
+    (only those can be highlighted), and what it says."""
+    on_board, example, found, parts_of = {line.id for line in board}, 0, [], {}
+    for number, segment in enumerate(segments, 1):
+        for cmd in segment.board:
+            if cmd.op == "write" and cmd.latex and (example == 0 or cmd.relation == "new"):
+                example += 1
+        parts_of.setdefault(example, []).append(number)
+        ids = [line_id for line_id in line_ids(segment.board) if line_id in on_board]
+        about = ([f"example {example}"] if examples and example else []) + ([f"lines {', '.join(ids)}"] if ids else [])
+        found.append(f"- part {number}" + (f" ({'; '.join(about)})" if about else "") + f": {segment.say}")
+    if examples and example >= 2:                  # said outright: a model left to work out "the last" often doesn't
+        found.append(f"The step has {example} examples. The first example is example 1 ({_span(parts_of[1])}). "
+                     f"The last example is example {example} ({_span(parts_of[example])}).")
+    return found
+
+
+def _span(parts: list[int]) -> str:
+    """ "part 3", or "parts 1-2" for several."""
+    return f"parts {parts[0]}-{parts[-1]}" if len(parts) > 1 else f"part {parts[0]}"
 
 
 # ---------- checking what comes back (the tutor's `validate` for chat_json) ----------

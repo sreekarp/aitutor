@@ -62,10 +62,34 @@ def _write(lines: list[BoardLine], cmd: BoardCommand, formulas: dict[str, str]) 
     return lines
 
 
+def line_ids(commands: list[BoardCommand]) -> list[str]:
+    """The ids of the lines these commands write or highlight, in order, each once."""
+    ids = [cmd.id if cmd.op == "write" else cmd.target for cmd in commands if cmd.op in ("write", "highlight")]
+    return list(dict.fromkeys(ids))
+
+
+def replayed(segments: list[Segment], on_board: list[BoardLine]) -> list[Segment]:
+    """The segments said again: a line still on the board is pointed at (highlighted) while its part is said, a line
+    that is gone (cleared, or pushed off) is written again, a highlight of a gone line is dropped, and nothing is
+    cleared."""
+    present, again = {line.id for line in on_board}, []
+    for segment in segments:
+        commands = []
+        for cmd in segment.board:
+            if cmd.op == "write":
+                commands.append(BoardCommand(op="highlight", target=cmd.id) if cmd.id in present else cmd)
+                present.add(cmd.id)
+            elif cmd.op == "highlight" and cmd.target in present:
+                commands.append(cmd)
+        again.append(Segment(say=segment.say, board=commands))
+    return again
+
+
 # ---------- checking an LLM reply ----------
 def validate_reply(segments: list[Segment], ctx: ReplyContext) -> list[str]:
     """The 8 rules an LLM reply must pass: 1 its shape, 2 speech without LaTeX and at most 60 words, 3 every
-    maths line passes mathcheck, 4 word lines without digits or "=", 5 highlights KaTeX can draw, 6 no answer
+    maths line passes mathcheck, 4 word lines without digits or "=", 5 highlights of lines on the board (a part
+    KaTeX can't mark on its own becomes the whole line), 6 no answer
     given away, 7 no lesson question as the example in a reteach or a solved example (in an explanation, none
     but the open one), 8 no reused line id. Each problem is one readable line; [] means the reply can be shown."""
     problems = []
@@ -104,8 +128,9 @@ def _command_problems(cmd: BoardCommand, ctx: ReplyContext, latex_of: dict[str, 
     if cmd.op == "highlight":
         if cmd.target not in latex_of:
             return [f"highlight target {cmd.target} isn't on the board"]
-        problem = highlight_problem(latex_of[cmd.target], cmd.part)
-        return [f"highlight on {cmd.target}: {problem}"] if problem else []
+        if highlight_problem(latex_of[cmd.target], cmd.part):
+            cmd.part = None          # a part KaTeX can't mark on its own: the whole line lights up instead
+        return []
     line = f"line {cmd.id}"
     if not cmd.id:
         return ["a write needs an id"]

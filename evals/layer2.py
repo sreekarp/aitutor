@@ -29,7 +29,7 @@ RERUNS = 2                                   # extra tries for a run hit by prov
 PENDING_FIELDS = ("hint_level", "awaiting_working", "followup_used", "last_answer")
 SETUP_KEYS = {"concept", "status", "step", "check", "points", "reteach_count", *PENDING_FIELDS}
 EXPECT_KEYS = {"type", "rule", "action", "mistake", "points", "unchanged", "checked_line", "no_reveal",
-               "tutor_says", "issue"}
+               "tutor_says", "issue", "points_at"}
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -163,6 +163,9 @@ def check_result(expect: dict, result: TurnResult, before: ConceptState, after: 
     said = " ".join(segment.say for segment in result.segments).lower()
     if "tutor_says" in expect and expect["tutor_says"].lower() not in said:
         problems.append(f"the reply doesn't say {expect['tutor_says']!r}")
+    pointed = {cmd.target for cmd in commands if cmd.op == "highlight"}
+    if "points_at" in expect and not pointed & set(expect["points_at"]):
+        problems.append(f"the reply highlights none of {expect['points_at']} (it highlights {sorted(pointed)})")
     if "issue" in expect and expect["issue"] not in result.issues:
         problems.append(f"the turn's issues don't include {expect['issue']!r}")
     return problems

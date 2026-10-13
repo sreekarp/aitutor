@@ -147,7 +147,9 @@ class Tutor:
         concept_id = engine.current_concept(before, self.cur)
         concept = self.cur.concepts[concept_id] if concept_id else None
         pending = before[concept_id].pending if concept_id else None
-        said = [Segment(say=seg["say"]) for seg in last["tutor_output"]["segments"] if seg["say"]] if last else []
+        # What R8 says again: the last reply, pointing at its lines on the board instead of writing them again
+        said = [Segment.model_validate(seg) for seg in last["tutor_output"]["segments"] if seg["say"]] if last else []
+        said = board.replayed(said, board_now)
         if last and last["rule"] in ("S0", "S1") and last["action"] == "repeat":
             said = said[1:]                             # a stopped reply picked up: not its "Welcome back"
         apologised = bool(said) and said[0].say in APOLOGIES
@@ -161,7 +163,7 @@ class Tutor:
             # the check-in said after a "sorry" (an example's, say), else the one for where the lesson is
             cue = said[-1] if apologised and len(said) > 1 else compose.cue_for(self.cur, before, last["action"])[0]
             lesson = step.segments if step else [Segment(say=concept.intro)]
-            said = [Segment(say=segment.say) for segment in lesson] + [cue]
+            said = board.replayed(lesson, board_now) + [cue]
         elif pending and last and (last["action"] in (*compose.RESUMING, "lesson_changed")
                                    or apologised):
             # With a question open, after a greeting, a topic start, a lesson change or an apology, "say again" asks

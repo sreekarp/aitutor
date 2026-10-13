@@ -66,7 +66,7 @@ def test_not_sure_on_a_step_gets_a_solved_example_from_the_ai(cur, db_engine):
     facts = fake.asked[1][1][1]["content"]                              # RESPOND's facts for this turn
     step = curriculum.get_step(cur.concepts["factorisation"], "split_middle")
     assert "ACTION: example" in facts and "PENDING QUESTION" not in facts
-    assert "CURRENT STEP: " + " ".join(segment.say for segment in step.segments) in facts
+    assert all(segment.say in facts for segment in step.segments)        # the step, part by part
     assert all(check.equation in facts for check in cur.concepts["factorisation"].checks)  # NEVER USE AS EXAMPLES
 
 

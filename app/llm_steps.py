@@ -98,7 +98,7 @@ def _llm_respond(llm, cur: Curriculum, ctx: TurnContext, decision: Decision, und
         mistake=next((m for m in concept.mistakes if m.id == decision.mistake), None),
         hint_text=check.hints[decision.hint_level - 1] if decision.action == "hint" else None,
         board=ctx.board, check_equations=equations, formulas=cur.formulas,
-        previous_reason=ctx.previous_reason, student_text=ctx.text)
+        previous_reason=ctx.previous_reason, student_text=ctx.text, last_reply=ctx.last_speech)
 
     def validate(data: dict) -> list[Segment]:
         segments, problems = prompts.read_reply(data, reply_ctx)

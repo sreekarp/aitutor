@@ -234,7 +234,7 @@ class TurnContext:
     before: Progress                   # progress before decide()
     check: Check | None                # the pending question before decide() (None while teaching)
     text: str                          # the student's words, cut to MAX_INPUT_CHARS
-    last_speech: list[Segment]         # what R8 replays: last turn's speech, without its board commands
+    last_speech: list[Segment]         # what R8 replays: last turn's speech, its writes turned into highlights
                                        # (right after a topic start or move-on, or a lone "didn't catch that":
                                        # just the current step's speech and its cue; at the topic start, the
                                        # concept's intro and the offer)

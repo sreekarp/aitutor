@@ -128,7 +128,7 @@ def test_the_broken_prompt_demo_edits_a_line_of_the_configured_respond_prompt():
     assert f"cp app/prompts/{respond}.md app/prompts/respond.broken.md" in readme and DEMO_LINE in readme
 
 
-@pytest.mark.parametrize("name", ["respond.v2", "respond.v3", "respond.v4"])
+@pytest.mark.parametrize("name", ["respond.v2", "respond.v3", "respond.v4", "respond.v5"])
 def test_later_respond_prompts_keep_the_no_reveal_rule(name):
     """Every respond version keeps v1's no-reveal rule word for word."""
     v1, later = prompts.load_prompt("respond.v1").splitlines(), prompts.load_prompt(name).splitlines()
@@ -143,7 +143,7 @@ def _a_times_c(equation: str):
     return poly.coeff_monomial(mathcheck.x**2) * poly.coeff_monomial(1) if poly.degree() == 2 else None
 
 
-@pytest.mark.parametrize("name", ["respond.v2", "respond.v3", "respond.v4"])
+@pytest.mark.parametrize("name", ["respond.v2", "respond.v3", "respond.v4", "respond.v5"])
 def test_labelled_step_example_passes_the_reply_rules(cur, name):
     """The two-line example (a words line, then its maths line) is a reply board.py accepts. Its product
     is no lesson question's a × c, so a model copying it into a hint can't mix it up with the question's numbers."""
@@ -170,11 +170,11 @@ def test_understand_v2_reads_step_requests_as_help():
         assert phrase in dont_know, phrase
 
 
-def test_understand_v3_knows_every_reply_type_and_that_got_it_goes_on():
-    """understand.v3 (in use) lists every reply type once. While teaching, "got it" means go on and only an explicit
+@pytest.mark.parametrize("name", ["understand.v3", "understand.v4"])
+def test_understand_knows_every_reply_type_and_that_got_it_goes_on(name):
+    """understand.v3 and v4 list every reply type once. While teaching, "got it" means go on and only an explicit
     "test me" skips the steps; a bare "no" or "nahi" is not sure only while teaching."""
-    assert PROMPT_VERSIONS["understand"] == "understand.v3"
-    lines = prompts.load_prompt("understand.v3").splitlines()
+    lines = prompts.load_prompt(name).splitlines()
     assert sorted(line[2:line.index(":")] for line in lines if line.startswith("- ")) == sorted(get_args(ReplyType))
     text = " ".join(" ".join(lines).split())                               # line breaks don't matter
     assert ('While PHASE is teaching, "got it", "understood" and "yes" mean go on: next or claims_understanding. '
@@ -249,3 +249,60 @@ def test_read_reply_lists_problems(cur):
     segments, problems = prompts.read_reply({"segments": [{"say": "The roots are 2 and 3. Try x^2."}]}, ctx)
     assert len(segments) == 1 and len(problems) == 2           # LaTeX in speech, and the answer given away
     assert prompts.read_reply({"segments": []}, ctx)[1][0].startswith("segments: ")
+
+
+def test_understand_v4_reads_a_request_about_one_part_as_a_question():
+    """understand.v4 (in use) is v3 except for two reply types: say_again repeats everything just said, and asking
+    about one part, line or example of it ("repeat the last example") is a question, which RESPOND answers."""
+    assert PROMPT_VERSIONS["understand"] == "understand.v4"
+    v3, v4 = (" ".join(prompts.load_prompt(name).split()) for name in ("understand.v3", "understand.v4"))
+    blocks = [text[text.index("- question:"):text.index("- next:")] for text in (v3, v4)]
+    assert v3.replace(blocks[0], "") == v4.replace(blocks[1], "")            # nothing else changed
+    question, say_again = blocks[1].split("- say_again:")
+    assert '"repeat the last example"' in question and "everything" in say_again
+    assert "Asking to hear the question again is say_again" in say_again
+
+
+def test_respond_v5_points_at_the_lines_it_talks_about():
+    """respond.v5 (in use) is v4 plus: a segment that talks about a line already on the BOARD highlights it, and
+    explain answers a question about one part or example of the CURRENT STEP or YOUR LAST REPLY on its own."""
+    assert PROMPT_VERSIONS["respond"] == "respond.v5"
+    v4, v5 = prompts.load_prompt("respond.v4"), prompts.load_prompt("respond.v5")
+    text = " ".join(v5.split())
+    for phrase in ("highlight that line", "YOUR LAST REPLY", "one part, line or example", "the highest example",
+                   "in one or two segments"):
+        assert phrase in text, phrase
+    assert v5.startswith(v4[:v4.index("## Rules for the board")])          # the opening and format are v4's
+
+
+def _facts_for_a_question(cur, step, on_board, last_reply=None) -> str:
+    """RESPOND's facts for "Can you repeat the last example?" on this step, with these lines on the board."""
+    concept = cur.concepts["standard_form"]
+    decision = Decision(rule="R7", action="explain", concept_id="standard_form", reason="You asked a question.")
+    return prompts.respond_messages(
+        decision=decision, concept=concept, step=step, check=None, key=None, next_check=None, next_key=None,
+        understood=Understood(type="question"), grade=None, mistake=None, hint_text=None, board=on_board,
+        check_equations=[], formulas=cur.formulas, previous_reason="", student_text="Can you repeat the last example?",
+        last_reply=last_reply)[-1]["content"]
+
+
+def test_respond_facts_give_the_step_part_by_part_with_its_examples_and_lines_and_the_last_reply(cur):
+    """So that "the last example" can be found: each part of the step with the example it belongs to (a line with
+    relation "new" starts the next one) and the board lines it wrote or pointed at; and what the tutor said last,
+    part by part the same way."""
+    step = curriculum.get_step(cur.concepts["standard_form"], "rearrange")
+    on_board = board.apply([], step.segments, cur.formulas)
+    facts = _facts_for_a_question(cur, step, on_board, last_reply=step.segments)
+    assert f"- part 1 (example 1; lines ra1, ra2): {step.segments[0].say}" in facts
+    assert f"- part 2 (example 1; lines ra3): {step.segments[1].say}" in facts
+    assert f"- part 3 (example 2; lines ra4, ra5): {step.segments[2].say}" in facts
+    assert "The step has 2 examples. The first example is example 1 (parts 1-2). The last example is example 2 "            "(part 3)." in facts                                         # said outright: models misread "last"
+    assert "YOUR LAST REPLY, part by part:" in facts and f"(lines ra4, ra5): {step.segments[2].say}" in facts
+
+
+def test_respond_facts_name_only_lines_still_on_the_board(cur):
+    """A line pushed off the board can't be highlighted (the reply would be rejected), so it isn't offered."""
+    step = curriculum.get_step(cur.concepts["standard_form"], "rearrange")
+    on_board = [line for line in board.apply([], step.segments, cur.formulas) if line.id != "ra1"]
+    facts = _facts_for_a_question(cur, step, on_board)
+    assert f"- part 1 (example 1; lines ra2): {step.segments[0].say}" in facts

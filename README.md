@@ -47,7 +47,7 @@ the mic, speak after the soft tick, and click again to stop (it stops by itself 
 first answer the mic stays on, so the next click records at once; it switches off if you don't click it
 within a minute of your turn starting, when you leave the tab or sign out, and after every recording on a
 phone or tablet. Nothing is recorded until you click. The whiteboard shows the working, with the line
-being spoken (or what the mic heard) along its bottom edge. While the tutor speaks, **⏹ Stop** (top right
+being spoken (or what the mic heard) along its bottom edge, and the lines being talked about lit. While the tutor speaks, **⏹ Stop** (top right
 of the board, or Esc) silences it, and sending an answer (a reply button, or typing and Send), Speak or a
 topic's Start cuts it short. What it hadn't said yet isn't shown: after Stop, **↻ Repeat** says the whole reply
 again and **▶ Continue** says the rest (as do "repeat" and "continue", typed or spoken), and Continue after a
@@ -97,7 +97,7 @@ uv run python -m sims --persona sign_flipper    # one simulated student
 ```
 
 **Evals** have two layers. Layer 1 is the test suite: engine rules, maths checks, grading, lesson
-validation, scripted mode and the provider failure paths. Layer 2 needs the key: 20 tutor scenarios
+validation, scripted mode and the provider failure paths. Layer 2 needs the key: 22 tutor scenarios
 (`evals/scenarios.yaml`), each run 3 times and passed by majority, which check the reply type, rule,
 action and points, and that the answer wasn't given away. A run also fails if either prompt's first
 output was rejected. Options: `--runs N`, `--only ID`, `--model-understand ID`, `--model-respond ID`,
@@ -113,7 +113,7 @@ given while the simulated student still held its mistake).
 
 ## Demo: the evals catch a broken prompt
 
-1. Copy the respond prompt: `cp app/prompts/respond.v4.md app/prompts/respond.broken.md`
+1. Copy the respond prompt: `cp app/prompts/respond.v5.md app/prompts/respond.broken.md`
 2. In `respond.broken.md`, replace the hint instruction, the line
    `hint: Give the hint for HINT LEVEL, built on the LESSON'S HINT but aimed at what the student said.`,
    with this one:

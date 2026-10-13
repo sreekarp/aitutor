@@ -118,17 +118,19 @@ def test_hint_cannot_use_new():
 
 
 def test_highlight_part_rules():
+    """A highlight must point at a line on the board. A part KaTeX can't mark on its own lights the whole line
+    instead of rejecting the reply: it is only a visual detail (models write "-3x" for "- 3x")."""
     lines = [BoardLine("r1", latex="(x-2)(x-3)=0"), BoardLine("r2", latex=r"x = 2 \text{ or } x = 3"),
              BoardLine("r3", latex=r"\left(x - 2\right)^{2} = 0")]
     on_board = dict(board=QUESTION + lines)
-    bad = [highlight("r1", "(x+5)"),                                        # absent
-           highlight("r1", "x-"),                                           # twice
-           highlight("q-eq", "x^"),                                         # splits a power
-           highlight("r3", r"\left(x - 2"),                                 # a \left without its \right
-           highlight("r2", r"text{ or }"),                                  # inside \text
-           highlight("r9")]                                                 # no such line
-    for cmd in bad:
-        assert len(problems(cmd, **on_board)) == 1, (cmd.target, cmd.part)
+    fuzzy = [highlight("r1", "(x+5)"),                                      # absent
+             highlight("r1", "x-"),                                         # twice
+             highlight("q-eq", "x^"),                                       # splits a power
+             highlight("r3", r"\left(x - 2"),                               # a \left without its \right
+             highlight("r2", r"text{ or }")]                                # inside \text
+    for cmd in fuzzy:
+        assert problems(cmd, **on_board) == [] and cmd.part is None, cmd.target
+    assert len(problems(highlight("r9"), **on_board)) == 1                 # no such line
     good = [highlight("r1", "(x-2)"), highlight("q-eq"), highlight("r2", "x = 3"),
             write("h1", "(x-2)(x-3) = 0", "Eq((x-2)*(x-3), 0)"), highlight("h1", "(x-3)")]
     assert problems(*good, **on_board) == []                              # incl. a line written in the reply

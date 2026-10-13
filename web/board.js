@@ -46,12 +46,13 @@ function renderLine(el, latex, part) {
   }
 }
 
-function drawBoard(marks = new Map()) {   // marks: line id -> the snippet to highlight ("" = the whole line)
+// marks: line id -> the snippet to highlight in it; now: the ids of the lines being talked about, which are lit
+function drawBoard(marks = new Map(), now = new Set()) {
   boardEl.replaceChildren(...board.map((line) => {
     const div = make("div", "", line.formula ? "line formula" : line.latex ? "line" : "line words");
     if (line.latex) renderLine(div, line.latex, marks.get(line.id));
     else div.textContent = line.text || "";
-    if (marks.has(line.id) && !(line.latex && marks.get(line.id))) div.classList.add("line-hl");   // whole line
+    div.classList.toggle("line-now", now.has(line.id));
     return div;
   }));
 }
@@ -64,14 +65,16 @@ function writeLine(c) {   // the same id rewrites a line in place; past 8 lines 
   while (board.length > BOARD_MAX_LINES) board.splice(board.findIndex((l) => !PINNED_IDS.includes(l.id)), 1);
 }
 
-function runBoard(commands) {   // one segment's commands; its highlights replace the last segment's
-  const marks = new Map();
+// One segment's commands. The lines it writes or points at (a highlight) are lit while it is said, and the next
+// segment's replace them, so the student can see which line the tutor is talking about.
+function runBoard(commands) {
+  const marks = new Map(), now = new Set();
   for (const c of commands) {
     if (c.op === "clear") board = [];
-    if (c.op === "write") writeLine(c);
-    if (c.op === "highlight") marks.set(c.target, c.part || "");
+    if (c.op === "write") { writeLine(c); now.add(c.id); }
+    if (c.op === "highlight") { now.add(c.target); if (c.part) marks.set(c.target, c.part); }
   }
-  drawBoard(marks);
+  drawBoard(marks, now);
 }
 
 // ---------- topics (progress) and "Why?" panels ----------

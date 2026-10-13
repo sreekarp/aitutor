@@ -129,7 +129,8 @@ button[aria-pressed="true"] { background: var(--hl); border-color: var(--hl); co
 .line .katex-display { margin: 0.3em 0; }
 .line.words { padding: 8px; font-size: 1.2rem; font-weight: 600; }
 .line.formula { border: 1px dashed currentColor; }
-.line-hl { background: var(--hl-bg); }
+.line-hl { background: var(--hl-bg); }   /* a snippet that couldn't be marked on its own: the whole line */
+.line-now { background: var(--hl-bg); box-shadow: inset 4px 0 0 var(--hl); }   /* being talked about */
 .hl { color: var(--hl); }
 .caption {
   margin: 0;
