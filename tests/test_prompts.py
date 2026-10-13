@@ -5,7 +5,7 @@ from typing import get_args
 import pytest
 from sympy import Poly, expand
 
-from app import board, curriculum, grading, mathcheck, prompts
+from app import board, curriculum, examples, grading, mathcheck, prompts
 from app.config import PROMPT_VERSIONS, ROOT
 from app.models import BoardCommand, BoardLine, Decision, Kind, Reply, ReplyType, Segment, Understood
 
@@ -128,7 +128,7 @@ def test_the_broken_prompt_demo_edits_a_line_of_the_configured_respond_prompt():
     assert f"cp app/prompts/{respond}.md app/prompts/respond.broken.md" in readme and DEMO_LINE in readme
 
 
-@pytest.mark.parametrize("name", ["respond.v2", "respond.v3", "respond.v4", "respond.v5"])
+@pytest.mark.parametrize("name", ["respond.v2", "respond.v3", "respond.v4", "respond.v5", "respond.v6"])
 def test_later_respond_prompts_keep_the_no_reveal_rule(name):
     """Every respond version keeps v1's no-reveal rule word for word."""
     v1, later = prompts.load_prompt("respond.v1").splitlines(), prompts.load_prompt(name).splitlines()
@@ -143,7 +143,7 @@ def _a_times_c(equation: str):
     return poly.coeff_monomial(mathcheck.x**2) * poly.coeff_monomial(1) if poly.degree() == 2 else None
 
 
-@pytest.mark.parametrize("name", ["respond.v2", "respond.v3", "respond.v4", "respond.v5"])
+@pytest.mark.parametrize("name", ["respond.v2", "respond.v3", "respond.v4", "respond.v5", "respond.v6"])
 def test_labelled_step_example_passes_the_reply_rules(cur, name):
     """The two-line example (a words line, then its maths line) is a reply board.py accepts. Its product
     is no lesson question's a × c, so a model copying it into a hint can't mix it up with the question's numbers."""
@@ -264,9 +264,8 @@ def test_understand_v4_reads_a_request_about_one_part_as_a_question():
 
 
 def test_respond_v5_points_at_the_lines_it_talks_about():
-    """respond.v5 (in use) is v4 plus: a segment that talks about a line already on the BOARD highlights it, and
-    explain answers a question about one part or example of the CURRENT STEP or YOUR LAST REPLY on its own."""
-    assert PROMPT_VERSIONS["respond"] == "respond.v5"
+    """respond.v5 is v4 plus: a segment that talks about a line already on the BOARD highlights it, and explain
+    answers a question about one part or example of the CURRENT STEP or YOUR LAST REPLY on its own."""
     v4, v5 = prompts.load_prompt("respond.v4"), prompts.load_prompt("respond.v5")
     text = " ".join(v5.split())
     for phrase in ("highlight that line", "YOUR LAST REPLY", "one part, line or example", "the highest example",
@@ -306,3 +305,29 @@ def test_respond_facts_name_only_lines_still_on_the_board(cur):
     on_board = [line for line in board.apply([], step.segments, cur.formulas) if line.id != "ra1"]
     facts = _facts_for_a_question(cur, step, on_board)
     assert f"- part 1 (example 1; lines ra2): {step.segments[0].say}" in facts
+
+
+def test_respond_v6_takes_new_examples_from_the_example_equations(cur):
+    """respond.v6 (in use) is v5, except a new example's equation comes from EXAMPLE EQUATIONS (checked, none a
+    lesson question), which the facts list with their roots, leaving out any sharing a root with the answer."""
+    assert PROMPT_VERSIONS["respond"] == "respond.v6"
+    v5, v6 = prompts.load_prompt("respond.v5"), prompts.load_prompt("respond.v6")
+    assert v6.startswith(v5[:v5.index("## Rules for the board")])          # the opening and format are v5's
+    assert " ".join(v6.split()).count("EXAMPLE EQUATIONS") >= 4           # the board rule, explain, example, reteach
+    concept = cur.concepts["factorisation"]
+    fa3 = curriculum.get_check(concept, "fa3")                             # (x-2)(x+3) = 0: roots 2, -3
+    decision = Decision(rule="R3", action="reteach", concept_id="factorisation", reason="Not quite.")
+    facts = prompts.respond_messages(
+        decision=decision, concept=concept, step=None, check=fa3, key=grading.answer_key(fa3), next_check=None,
+        next_key=None, understood=Understood(type="answer", answer="-2, 3"), grade=None, mistake=None, hint_text=None,
+        board=[], check_equations=[], formulas=cur.formulas, previous_reason="", student_text="minus 2 and 3",
+        examples=examples.for_turn(cur, [grading.answer_key(fa3)]))[-1]["content"]
+    assert "EXAMPLE EQUATIONS" in facts and "- x^2 - 9x + 20 = 0: roots 4, 5" in facts
+    assert "- x^2 - 2x - 8 = 0: roots -2, 4" in facts                    # shares no root with 2 and -3
+    di1 = curriculum.get_check(cur.concepts["discriminant"], "di1")      # its D is 25
+    d = grading.answer_key(di1).values[0]
+    listed = examples.for_turn(cur, [grading.answer_key(di1)])
+    kept = [e for e in cur.examples if any(line.startswith(f"- {e.latex}:") for line in listed)]
+    assert kept and all(examples.discriminant(e) != d for e in kept)     # 3x^2 - 7x + 2 (D = 25) is left out
+    assert len(kept) < len(cur.examples)
+    assert "2x^2 - 7x + 6" not in facts and "x^2 + 9x + 18" not in facts    # they share 2, and -3

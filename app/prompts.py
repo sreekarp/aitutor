@@ -129,15 +129,15 @@ def respond_messages(*, decision: Decision, concept: Concept, step: Step | None,
                      understood: Understood, grade: Grade | None, mistake: Mistake | None,
                      hint_text: str | None, board: list[BoardLine], check_equations: list[str],
                      formulas: dict[str, str], previous_reason: str, student_text: str = "",
-                     last_reply: list[Segment] | None = None) -> list[dict]:
+                     last_reply: list[Segment] | None = None, examples: list[str] | None = None) -> list[dict]:
     """The system prompt plus this turn's facts for RESPOND. The student's words come last. The step and the tutor's
     last reply are given part by part (_parts), so "the last example" or "that line" can be found."""
     lines = [f"ACTION: {decision.action}", f"ENGINE'S REASON: {decision.reason}",
              f"LAST DECISION'S REASON: {previous_reason or 'none'}", f"CONCEPT: {concept.title}"]
     if step is not None:
-        lines += ["CURRENT STEP, part by part:", *_parts(step.segments, board, examples=True)]
+        lines += ["CURRENT STEP, part by part:", *_parts(step.segments, board, numbered=True)]
     if last_reply:
-        lines += ["YOUR LAST REPLY, part by part:", *_parts(last_reply, board, examples=False)]
+        lines += ["YOUR LAST REPLY, part by part:", *_parts(last_reply, board, numbered=False)]
     if check is not None:            # facts only: what to do with the answer key is the prompt file's rule
         lines += [f"PENDING QUESTION: {check.say}", f"QUESTION EQUATION: {_equation(check)}",
                   f"ANSWER KEY: {_answer_text(key)}"]
@@ -161,12 +161,14 @@ def respond_messages(*, decision: Decision, concept: Concept, step: Step | None,
     lines += [f"- {line.id}: {_shown(line)}" for line in board] or ["- (empty)"]
     lines.append("FORMULAS (place them by name): " + ", ".join(formulas))
     lines.append("NEVER USE AS EXAMPLES: " + "; ".join(check_equations))
+    if examples:
+        lines += ["EXAMPLE EQUATIONS (a new example's equation comes from here):", *examples]
     lines.append(f"STUDENT SAID: {student_text}")
     return _messages("respond", lines)
 
 
-def _parts(segments: list[Segment], board: list[BoardLine], examples: bool) -> list[str]:
-    """One line per part: its number, the example it belongs to (with examples: the first maths line starts example
+def _parts(segments: list[Segment], board: list[BoardLine], numbered: bool) -> list[str]:
+    """One line per part: its number, the example it belongs to (when numbered: the first maths line starts example
     1, and each line with relation "new" the next), the lines it wrote or pointed at that are still on the board
     (only those can be highlighted), and what it says."""
     on_board, example, found, parts_of = {line.id for line in board}, 0, [], {}
@@ -176,9 +178,9 @@ def _parts(segments: list[Segment], board: list[BoardLine], examples: bool) -> l
                 example += 1
         parts_of.setdefault(example, []).append(number)
         ids = [line_id for line_id in line_ids(segment.board) if line_id in on_board]
-        about = ([f"example {example}"] if examples and example else []) + ([f"lines {', '.join(ids)}"] if ids else [])
+        about = ([f"example {example}"] if numbered and example else []) + ([f"lines {', '.join(ids)}"] if ids else [])
         found.append(f"- part {number}" + (f" ({'; '.join(about)})" if about else "") + f": {segment.say}")
-    if examples and example >= 2:                  # said outright: a model left to work out "the last" often doesn't
+    if numbered and example >= 2:                  # said outright: a model left to work out "the last" often doesn't
         found.append(f"The step has {example} examples. The first example is example 1 ({_span(parts_of[1])}). "
                      f"The last example is example {example} ({_span(parts_of[example])}).")
     return found

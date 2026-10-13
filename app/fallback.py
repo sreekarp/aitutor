@@ -112,6 +112,24 @@ TOPIC_TAIL = r"(?: (?:topic|chapter|lesson|section|part|please|now|instead|again
 TOPIC_REQUEST_WORDS = 12
 
 
+UNITS = ("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "
+         "seventeen eighteen nineteen").split()
+TENS = "twenty thirty forty fifty sixty seventy eighty ninety".split()
+TENS_WORD = re.compile(rf"\b({'|'.join(TENS)})(?:[\s-]+({'|'.join(UNITS[1:10])}))?\b")
+
+
+def in_words(text: str) -> str | None:
+    """Whole numbers from 0 to 99 written as words ("minus 6" -> "minus six"), for a words line on the board; None
+    when a number is still left (a decimal, a fraction, a power, 100 or more, or one next to x: that is maths)."""
+    if re.search(r"\d", text) and re.search(r"\bx\b|[()+*/^<>=±√−-]", text):
+        return None                                  # numbers in maths: that belongs on a checked line
+    def word(found: re.Match) -> str:
+        n = int(found.group())
+        return UNITS[n] if n < 20 else TENS[n // 10 - 2] + (f"-{UNITS[n % 10]}" if n % 10 else "")
+    words = re.sub(r"(?<![.,/^])\b\d{1,2}\b(?![.,/^]\d)", word, text)
+    return None if re.search(r"\d", words) else words
+
+
 # ---------- fast paths ----------
 def plain(text: str) -> str:
     """Lower case without apostrophes, every other mark a single space: "Sorry, what's that?" -> "sorry whats that"."""
@@ -163,6 +181,8 @@ def spoken_maths(text: str) -> str:
     text = text.lower().replace("'", "").replace("’", "")
     for symbol, plain in grading.SYMBOLS.items():             # unicode minus, ×, the spellings of ±
         text = text.replace(symbol, plain)
+    text = TENS_WORD.sub(lambda m: str(10 * (TENS.index(m.group(1)) + 2) + (UNITS.index(m.group(2)) if m.group(2)
+                                                                           else 0)), text)   # "twenty-five" -> 25
     text = NUMBER_WORD.sub(lambda m: NUMBER_WORDS[m.group(0)], text)
     text = re.sub(r"\bplus\s+(?:or\s+)?minus\b", "±", text)
     text = re.sub(r"\b(?:minus|negative)\b\s*", "-", text)

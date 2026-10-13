@@ -113,7 +113,7 @@ given while the simulated student still held its mistake).
 
 ## Demo: the evals catch a broken prompt
 
-1. Copy the respond prompt: `cp app/prompts/respond.v5.md app/prompts/respond.broken.md`
+1. Copy the respond prompt: `cp app/prompts/respond.v6.md app/prompts/respond.broken.md`
 2. In `respond.broken.md`, replace the hint instruction, the line
    `hint: Give the hint for HINT LEVEL, built on the LESSON'S HINT but aimed at what the student said.`,
    with this one:
@@ -192,6 +192,7 @@ keep the default SQLite file.
 | `app/tutor.py` | One turn, end to end: understand → grade → decide → respond → save |
 | `app/compose.py` | What a turn says after its words: the step or question, the topic picked up next, then the check-in and its buttons |
 | `app/stops.py` | A reply the student stopped part-way: where it stopped, and Repeat, Continue and picking it up later |
+| `app/examples.py` | The example equations RESPOND may use: their startup check, and the ones safe for this turn |
 | `app/safety.py` | The keyword safety check, run before anything else reads a student's reply |
 | `app/llm_steps.py` | The turn's two LLM steps (UNDERSTAND, RESPOND), each with its scripted fallback |
 | `app/voice.py`, `app/page.py` | Speech-to-text turns and the cached text-to-speech; the JSON the page gets |
@@ -201,7 +202,7 @@ keep the default SQLite file.
 | `app/fallback.py`, `app/replies.py` | Scripted mode: reading a reply without the AI; every scripted line the tutor says |
 | `app/llm.py`, `app/prompts.py`, `app/prompts/` | OpenRouter (backups, retries, time limits) and the two versioned prompts |
 | `app/db.py`, `app/main.py`, `app/cli.py` | The six tables; the web routes and sign-in; the terminal tutor |
-| `curriculum/ch4/` | The six lesson files, and `index.yaml` (order, version, the four formulas) |
+| `curriculum/ch4/` | The six lesson files, and `index.yaml` (order, version, the four formulas, example equations) |
 | `web/` | The page: `index.html`, `style.css`, and its scripts in load order: `board.js` (whiteboard and panels), `net.js` (talking to the server), `voice.js` (sound and the mic), `topics.js` (choosing a topic), `app.js` (sign-in and turns) |
 | `evals/`, `sims/`, `tests/` | Evals, simulated students, tests |
 

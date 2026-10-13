@@ -1,5 +1,5 @@
 """Tests for app/board.py: board state and the checks on every LLM reply."""
-from app import board, curriculum, grading
+from app import board, curriculum, examples, grading
 from app.models import BoardCommand, BoardLine, Check, Segment
 
 FA1 = "Eq(x**2 - 5*x + 6, 0)"                      # roots 2 and 3
@@ -68,14 +68,19 @@ def test_say_rules():
         assert not any("minus sign" in p for p in problems(say=say)), say
     assert problems(say="word " * 60) == []
     assert any("over 60 words" in p for p in problems(say="word " * 61))
-    assert board.validate_reply([], context()) != []                       # 1 to 3 segments
-    four = [Segment(say="Hi.")] * 4
-    assert any("1 to 3 segments" in p for p in board.validate_reply(four, context()))
+    assert board.validate_reply([], context()) != []                       # 1 to 4 segments (3 asked for)
+    assert board.validate_reply([Segment(say="Hi.")] * 4, context()) == []
+    assert any("1 to 4 segments" in p for p in board.validate_reply([Segment(say="Hi.")] * 5, context()))
 
 
 def test_llm_text_lines_no_digits():
+    """A words line has no maths: no "=", no x next to a number, no decimal or fraction. Small whole numbers are
+    written as words for it ("minus 6" -> "minus six"), as the prompt asks, instead of rejecting the reply."""
     assert problems(write("t1", text="Two roots, both positive")) == []
-    for text in ("Roots: 2 and 3", "x = two"):
+    cmd = write("t1", text="Step 1: find two numbers that multiply to minus 6 and add to minus 15")
+    assert problems(cmd) == [] and cmd.text == ("Step one: find two numbers that multiply to minus six and add to "
+                                                 "minus fifteen")
+    for text in ("x = two", "a = 1", "Half is 0.5", "Use 1/2", "Try 3x", "It is 100"):
         assert any("text line" in p for p in problems(write("t1", text=text))), text
     assert any("exactly one of" in p for p in problems(write("t1", "x = 2", "Eq(x, 2)", text="Also")))
     assert any("needs a check" in p for p in problems(write("t1", "x^{2} = 4")))
@@ -83,11 +88,11 @@ def test_llm_text_lines_no_digits():
 
 
 def test_a_label_beside_maths_reports_both_word_rules():
-    """A "Step 1" label on a maths line breaks rule 1 (one kind per line) and rule 4 (no digits in words). Both come
+    """A "Step 1 =" label on a maths line breaks rule 1 (one kind per line) and rule 4 (no "=" in words). Both come
     back at once, each saying how to fix it, because the single retry sends exactly these lines to the model."""
-    found = problems(write("e1", "2(-3) = -6", "Eq(2*(-3), -6)", text="Step 1: a times c"), action="explain")
+    found = problems(write("e1", "2(-3) = -6", "Eq(2*(-3), -6)", text="Step 1 = a times c"), action="explain")
     assert found == ["line e1: write exactly one of latex, formula or text; words and maths go on separate lines",
-                     "line e1: the text line 'Step 1: a times c' has digits or '='; write numbers in a words line "
+                     "line e1: the text line 'Step 1 = a times c' has digits or '='; write numbers in a words line "
                      "as words, "
                      "e.g. 'Step one', and put maths on a checked line"]
 
@@ -235,12 +240,12 @@ def test_the_lesson_question_rule_is_cheap_with_every_topics_questions(cur, monk
     """Rule 7 compares each line with every topic's questions (34): the slow symbolic check runs only for a
     question the line could be, so a reply is checked in well under a second even on a slow server."""
     calls = []
-    real = board.mathcheck.same_maths
-    monkeypatch.setattr(board.mathcheck, "same_maths", lambda a, b: calls.append(1) or real(a, b))
+    real = examples.mathcheck.same_maths
+    monkeypatch.setattr(examples.mathcheck, "same_maths", lambda a, b: calls.append(1) or real(a, b))
     every = [c.equation for concept in cur.concepts.values() for c in concept.checks]
-    assert board._uses_check_equation("Eq(2*x**2 - 5*x + 3, 0)", every) is False
+    assert examples.is_a_question("Eq(2*x**2 - 5*x + 3, 0)", every) is False
     assert calls == []                                                 # none of the 34 could be it
-    assert board._uses_check_equation("Eq(x**2 + 10, 7*x)", every) is True    # qf4, rearranged
+    assert examples.is_a_question("Eq(x**2 + 10, 7*x)", every) is True        # qf4, rearranged
 
 
 def test_could_be_same_rules_out_different_equations_cheaply():
@@ -249,8 +254,51 @@ def test_could_be_same_rules_out_different_equations_cheaply():
     p = board.mathcheck.parse_check
     question = p("Eq(x**2 - 7*x + 10, 0)")
     for same in ("Eq(x**2 - 7*x + 10, 0)", "Eq(x**2 + 10, 7*x)", "Eq(-x**2 + 7*x - 10, 0)", "Eq((x-2)*(x-5), 0)"):
-        assert board._could_be_same(p(same), question) and board.mathcheck.same_maths(p(same), question), same
+        assert examples._could_be_same(p(same), question) and board.mathcheck.same_maths(p(same), question), same
     for other in ("Eq(x**2 - 9*x + 20, 0)", "Eq(2*x**2 - 5*x + 3, 0)", "Eq(x - 2, 0)"):
-        assert not board._could_be_same(p(other), question), other
-    assert board._could_be_same(p("Or(Eq(x, 2), Eq(x, 5))"), question)      # its roots: could be its solution
-    assert not board._could_be_same(p("Or(Eq(x, 3/2), Eq(x, 1))"), question)  # a root that doesn't solve it
+        assert not examples._could_be_same(p(other), question), other
+    assert examples._could_be_same(p("Or(Eq(x, 2), Eq(x, 5))"), question)      # its roots: could be its solution
+    assert not examples._could_be_same(p("Or(Eq(x, 3/2), Eq(x, 1))"), question)  # a root that doesn't solve it
+
+
+def test_a_words_line_on_the_board_cannot_give_the_answer_away():
+    """The board's words are read like speech for rule 6: "Roots are two and three" gives fa1's answer away."""
+    key = grading.answer_key(roots_check("Eq(x**2 - 5*x + 6, 0)"))
+    said = [Segment(say="Here is how to start.", board=[write("t1", text="Roots are 2 and 3")])]
+    assert board.reveals_answer(said, key, "") is not None
+
+
+def test_a_plus_or_minus_line_is_checked_through_its_two_branches():
+    """Models teach the formula with one substituted line, x = (-5 ± ...)/2, and leave out its check. Its two
+    branches are its check, so it is still proved: they must be exactly the roots of the equation above it."""
+    example = write("e1", "x^{2} + 5x + 4 = 0", "Eq(x**2 + 5*x + 4, 0)", relation="new")
+    right = write("e2", r"x = \frac{-5 \pm \sqrt{5^{2} - 4 \cdot 1 \cdot 4}}{2 \cdot 1}")
+    assert problems(example, right, action="reteach") == [] and right.check.startswith("Or(Eq(x, ")
+    wrong = write("e2", r"x = \frac{5 \pm \sqrt{5^{2} - 4 \cdot 1 \cdot 4}}{2 \cdot 1}")    # +b: the minus b slip
+    assert any("not equivalent" in p for p in problems(example, wrong, action="reteach"))
+    assert any("needs a check" in p for p in problems(example, write("e2", r"x = \frac{1}{2}"), action="reteach"))
+
+
+def test_a_plus_or_minus_line_needs_something_above_it_to_prove_it():
+    """Its branches are only proved against the line above (or the open question): with nothing above, or as a new
+    example, a ± line with no check is still rejected. And only one ± per line."""
+    sign_slip = write("e2", r"x = \frac{-9 \pm \sqrt{81-80}}{2}")
+    assert any("needs a check" in p for p in problems(sign_slip, action="explain", anchor=None, key=None))
+    new = write("e2", r"x = \frac{9 \pm \sqrt{81-80}}{2}", relation="new")
+    assert any("needs a check" in p for p in problems(new, action="explain"))
+    two = write("e2", r"x = 1 \pm 2 \pm 3")
+    assert any("needs a check" in p for p in problems(write("e1", "x^{2} - 9x + 20 = 0", "Eq(x**2 - 9*x + 20, 0)",
+                                                            relation="new"), two, action="explain"))
+
+
+def test_the_board_words_give_no_number_answer_away_and_step_labels_are_fine():
+    """A number up to 99 in words is read back like speech ("twenty-five" is 25), and "Step two" or "Step three"
+    labels are not the answer's values."""
+    d_key = grading.answer_key(Check(id="d", say="Find D.", label="D:", equation="Eq(x**2 - 7*x + 6, 0)",
+                                     kind="discriminant", hints=["a", "b", "c"]))
+    words = [Segment(say="Here is a hint.", board=[write("t1", text="So D is twenty-five")])]
+    assert board.reveals_answer(words, d_key, "") is not None
+    key = grading.answer_key(roots_check())                                  # x^2 - 5x + 6: roots 2 and 3
+    steps = [Segment(say="Let's go.", board=[write("t1", text="Step two: find the factors"),
+                                              write("t2", text="Step three: set each bracket to zero")])]
+    assert board.reveals_answer(steps, key, "") is None

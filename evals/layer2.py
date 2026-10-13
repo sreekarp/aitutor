@@ -96,9 +96,28 @@ def run_scenario(scenario: dict, runs: int, cur: Curriculum, settings: Settings,
             "verdict": verdict([result["outcome"] for result in results]), "runs": results}
 
 
+class Recording:
+    """The model client, keeping every output our checks rejected, so a failed run shows what the AI wrote."""
+
+    def __init__(self, client):
+        self.client, self.rejected = client, []
+
+    def __getattr__(self, name):                     # everything else is the client's own
+        return getattr(self.client, name)
+
+    def chat_json(self, role, messages, schema_name, schema, validate, **options):
+        def keep(data):
+            try:
+                return validate(data)
+            except ValueError:
+                self.rejected.append({"role": role, "output": data})
+                raise
+        return self.client.chat_json(role, messages, schema_name, schema, keep, **options)
+
+
 def run_once(scenario: dict, cur: Curriculum, settings: Settings, client) -> dict:
     """One run in a fresh in-memory database: the setup, Start, then the student's reply. Outcome and why."""
-    setup = scenario["setup"]
+    setup, client = scenario["setup"], Recording(client)
     engine = db.connect("sqlite://")
     try:
         tutor = Tutor(cur, engine, settings, llm=client)
@@ -120,7 +139,7 @@ def run_once(scenario: dict, cur: Curriculum, settings: Settings, client) -> dic
         outcome = "fail" if problems else "pass"
     return {"outcome": outcome, "problems": rejected + problems, "rule": result.decision.rule,
             "action": result.decision.action, "said": [segment.say for segment in result.segments],
-            "issues": result.issues, "calls": result.calls}
+            "issues": result.issues, "calls": result.calls, "rejected_outputs": client.rejected}
 
 
 def setup_student(tutor: Tutor, setup: dict) -> str:

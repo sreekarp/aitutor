@@ -5,10 +5,13 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from app import board, curriculum, engine, fallback, grading, prompts, replies
+from app import board, curriculum, engine, examples, fallback, grading, prompts, replies
 from app.llm import BadOutputError, ProviderError
 from app.models import (LLM_ACTIONS, Curriculum, Decision, Grade, Pending, Progress, Segment, TurnContext,
                         Understood)
+
+# the actions whose reply may start a different example: RESPOND gets the example equations for them
+NEW_EXAMPLES = ("explain", "example", "reteach")
 
 
 def understand(llm, ctx: TurnContext) -> Understood:
@@ -99,7 +102,8 @@ def _llm_respond(llm, cur: Curriculum, ctx: TurnContext, decision: Decision, und
         mistake=next((m for m in concept.mistakes if m.id == decision.mistake), None),
         hint_text=check.hints[decision.hint_level - 1] if decision.action == "hint" else None,
         board=ctx.board, check_equations=equations, formulas=cur.formulas,
-        previous_reason=ctx.previous_reason, student_text=ctx.text, last_reply=ctx.last_speech)
+        previous_reason=ctx.previous_reason, student_text=ctx.text, last_reply=ctx.last_speech,
+        examples=examples.for_turn(cur, [key, next_key]) if decision.action in NEW_EXAMPLES else None)
 
     def validate(data: dict) -> list[Segment]:
         segments, problems = prompts.read_reply(data, reply_ctx)

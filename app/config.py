@@ -17,7 +17,7 @@ MAX_HINTS = 3
 MAX_RETEACHES = 3
 BOARD_MAX_LINES = 8
 SAY_MAX_WORDS = 60
-MAX_SEGMENTS = 3
+MAX_SEGMENTS = 4             # RESPOND is asked for at most 3; a 4th is accepted rather than rejecting the reply
 MAX_INPUT_CHARS = 500
 SESSION_GAP_MIN = 30
 TURN_DEADLINE_S = 15.0
@@ -51,7 +51,7 @@ MODELS: dict[str, list[dict]] = {
     "tts": [{"id": "elevenlabs/eleven-flash-v2.5", "params": {}}],   # mp3 out; Gemini TTS is PCM-only on OpenRouter
 }
 TTS_INSTRUCTIONS = "Warm, patient teacher; clear, moderate pace."
-PROMPT_VERSIONS = {"understand": "understand.v4", "respond": "respond.v5"}
+PROMPT_VERSIONS = {"understand": "understand.v4", "respond": "respond.v6"}
 
 
 @dataclass(frozen=True)

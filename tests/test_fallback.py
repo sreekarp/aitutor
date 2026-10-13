@@ -306,3 +306,19 @@ def test_letters_from_an_alphabet_the_lessons_never_use():
     for text in ("Teach me.", "मुझे नहीं पता", "مجھے نہیں پتا", "α and β", "x² = 4, so x = ±2", "2 and 3", "",
                  "theek hai", "café"):
         assert not fallback.foreign_letters(text), text
+
+
+def test_small_whole_numbers_as_words():
+    """For a words line on the board: 0 to 99 become words; anything else that is maths stays, so the line is
+    rejected (None)."""
+    assert fallback.in_words("Step 1: minus 6 and 21, then 40") == "Step one: minus six and twenty-one, then forty"
+    for text in ("x2 is it", "0.5", "1/2", "3x", "100", "2^3", "(x - 2)(x + 3) are the factors", "multiply to -6",
+                 "x squared plus 5"):
+        assert fallback.in_words(text) is None, text                       # maths in words stays rejected
+    assert fallback.in_words("no numbers here") == "no numbers here"
+
+
+def test_spoken_tens_are_numbers():
+    """ "twenty-five" and "twenty five" are 25 (a student's answer, or the tutor's words checked for giveaways)."""
+    assert fallback.spoken_maths("twenty-five and thirty") == "25 and 30"
+    assert fallback.spoken_maths("minus forty two") == "-42"

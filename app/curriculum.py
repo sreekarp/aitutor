@@ -11,7 +11,7 @@ import yaml
 from pydantic import ValidationError
 from sympy import Poly, expand
 
-from app import grading, mathcheck
+from app import examples, grading, mathcheck
 from app.config import CURRICULUM_DIR, MAX_HINTS, SAY_MAX_WORDS
 from app.models import PINNED_IDS, WORD_KINDS, BoardCommand, Check, Concept, Curriculum, Segment, Step
 
@@ -90,7 +90,7 @@ def validate(cur: Curriculum) -> list[str]:
         problems += [f"{concept_id}: {p}" for p in _concept_problems(concept, cur.formulas)]
     aliases = [alias for concept in cur.concepts.values() for alias in concept.aliases]
     problems += [f"alias {alias!r} is used twice" for alias in sorted(set(aliases)) if aliases.count(alias) > 1]
-    return problems
+    return problems + examples.problems(cur)
 
 
 def _concept_problems(concept: Concept, formulas: dict[str, str]) -> list[str]:

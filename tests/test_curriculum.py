@@ -6,8 +6,8 @@ import yaml
 from conftest import fresh_progress
 from sympy import Eq, Poly, Rational, expand, sqrt
 
-from app import curriculum, grading, mathcheck
-from app.models import BoardCommand, Check, Concept, Curriculum, Mistake, Segment, Step
+from app import curriculum, examples, grading, mathcheck
+from app.models import BoardCommand, Check, Concept, Curriculum, Example, Mistake, Segment, Step
 
 STANDARD_FORM_LATEX = r"ax^{2} + bx + c = 0, \quad a \neq 0"
 
@@ -477,3 +477,22 @@ def test_first_two_checks_differ_in_skill(cur):
     for concept in cur.concepts.values():
         first, second = concept.checks[:2]
         assert skill(first) != skill(second), concept.id
+
+
+def test_example_equations_are_safe_and_checked(cur):
+    """The equations RESPOND may use for a new example: each a quadratic with exactly the roots listed (none: no
+    real roots), and none whose roots are all roots of a lesson question, so no example gives an answer away."""
+    assert len(cur.examples) >= 12 and curriculum.validate(cur) == []
+    kinds = {len(example.roots) for example in cur.examples}
+    assert kinds == {0, 1, 2}                                     # no real roots, equal roots, two roots
+    for bad, why in ((dict(latex="x^2 - 7x + 10 = 0", check="Eq(x**2 - 7*x + 10, 0)", roots=["2", "5"]), "qf4"),
+                     (dict(latex="x^2 - 9x + 20 = 0", check="Eq(x**2 - 9*x + 20, 0)", roots=["4", "6"]), "roots"),
+                     (dict(latex="x^2 - 9x + 20 = 0", check="Eq(x**2 - 9*x + 20, 0)", roots=["4", "4"]), "roots"),
+                     (dict(latex="x^2 - 2 = 0", check="Eq(x**2 - 2, 0)", roots=["1.41421356237", "-1.41421356237"]),
+                      "roots"),
+                     (dict(latex="x^2 + 4x + 5 = 0", check="Eq(x**2 + 4*x + 5, 0)", roots=[]), "lesson question"),
+                     (dict(latex="1/x = 2", check="Eq(1/x, 2)", roots=["1/2"]), "quadratic"),
+                     (dict(latex="x^2 - 9x + 21 = 0", check="Eq(x**2 - 9*x + 20, 0)", roots=["4", "5"]), "LaTeX")):
+        broken = cur.model_copy(deep=True)
+        broken.examples = [Example(**bad)]
+        assert any(why in problem for problem in examples.problems(broken)), bad   # curriculum.validate calls it

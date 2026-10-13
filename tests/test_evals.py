@@ -168,3 +168,17 @@ def test_model_flag_keeps_listed_params():
     assert layer2._model("understand", "google/gemini-3.8-flash") == MODELS["respond"][1]         # another role's
     unlisted = layer2._model("understand", "test/model")
     assert unlisted == {"id": "test/model", "params": {"max_tokens": MODELS["understand"][0]["params"]["max_tokens"]}}
+
+
+def test_a_run_keeps_the_ai_outputs_our_checks_rejected():
+    """So a failed run shows what the AI wrote, not only why it was rejected."""
+    bad, good = {"segments": []}, {"segments": [{"say": "Hi.", "board": []}]}
+    client = layer2.Recording(FakeLLM(respond=[bad, good]))
+
+    def validate(data):
+        if not data["segments"]:
+            raise ValueError("no segments")
+        return data
+
+    assert client.chat_json("respond", [], "reply", {}, validate, deadline=0, calls=[]) == good
+    assert client.rejected == [{"role": "respond", "output": bad}]

@@ -245,12 +245,29 @@ the last (left to work it out, the model explained the first one), and a highlig
 own lights the whole line instead of rejecting the reply ("-3x" for "- 3x"). Then
 `ask_about_the_last_example` passed 5 of 5.
 
+Asking RESPOND to avoid every topic's questions (34) as examples, so none gives a later answer away,
+made it pick one anyway: the simple textbook equations it reaches for are the questions. `respond.v6.md`
+(in use) takes a new example's equation from `examples` in `index.yaml` (17 equations, checked at startup
+by `app/examples.py`: the LaTeX, the roots, and no lesson question with those roots); each turn the facts
+list those sharing no root with the answer being protected, with their roots. Three board rules also
+stopped rejecting what is still correct: small whole numbers in a words line become words ("minus six"),
+a 4th segment is accepted (3 are asked for), and a ± line with no check is checked through its two
+branches (they must be exactly the roots above it). The board's words are read like speech for "gives
+the answer away". The runs keep each rejected output (`rejected_outputs`). The full run then passed
+21 of 22 (first outputs rejected in 5 of 66 turns, from 10), and `formula_sign`, failing all day, 4 of 5. A
+review then tightened the fixes: a ± line is only accepted with a line above it (or the open question) to prove
+it against; no example is offered whose discriminant is the answer; numbers in a words line that looks like maths
+stay digits (rejected); "twenty-five" is read as 25. The next full run passed 20 of 22, both failures a chained
+line ("x = (-5 + 3)/2 = -1", "a · c = 3 · (-2) = -6"), so v6 asks for one "=" per line; with that,
+`formula_sign` passed 3 of 5 and `question_while_checking` 5 of 5.
+
 *(Designed)* Gradual rollout: send a share of students to the new version (by a hash of the
 student id: 10%, then 50%, then 100%) and compare the two side by side. Every turn already records
 its versions, so the comparison is a query.
 
 **Where the curriculum comes from.** Six hand-written YAML lesson files in the repo
-(`curriculum/ch4/`), plus `index.yaml` with the order, the version and the four general formulas.
+(`curriculum/ch4/`), plus `index.yaml` with the order, the version, the four general formulas and the
+example equations RESPOND may use.
 A lesson file holds the concept's title, its `intro` (a sentence or two on what it's for, said before
 step 1), its teaching steps, its questions with hints and trap answers, its known mistakes, and how to
 reteach it.
@@ -420,7 +437,7 @@ What the student perceives, and what we do about it:
   (RESPOND's solved example), and a wrong answer or a question two. Audio
   is cached on disk by model, voice and text, so lesson steps and scripted lines play at once after
   the first time.
-- **Short replies:** at most three segments of at most 60 words each.
+- **Short replies:** at most three segments of at most 60 words each (a 4th is accepted rather than rejected).
 - *(Designed)* Stream the LLM's output and check segments as they arrive; let the student interrupt.
 
 ---
@@ -578,10 +595,10 @@ Known gaps, after the build:
   UNDERSTAND named a mistake, or those words are a trap answer, they are what gets graded, and the
   turn records `answer_rewritten`. A rewrite that names no mistake and matches no trap still slips
   through.
-- **RESPOND's board lines are often rejected.** 30–40% of first outputs broke a board rule (most
-  often digits in a words line, like "multiply the 3 by the constant term"), and 10–17% failed the
-  retry too and fell back to scripted words. The student never sees a bad line, but each rejection
-  costs about 2 s. Reteaches fail most: they write the most maths.
+- **RESPOND's board lines are sometimes rejected.** On 12 Oct 30–40% of first outputs broke a board rule
+  (most often digits in a words line); after the fixes of 13 Oct (example equations, words for small
+  numbers, a 4th segment, ± lines) 5 of 66 eval turns were, and 4 fell back to scripted words. The student
+  never sees a bad line, but each rejection costs about 2 s. Reteaches fail most: they write the most maths.
 - **The simulated students drift.** The "overconfident" student answered both questions right with
   working, so that run tested nothing about over-confidence; false advances count only what the
   student model admits to.

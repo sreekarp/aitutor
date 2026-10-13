@@ -4,12 +4,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from sympy import Eq, Or, Rational
+from sympy import Eq, Or, sstr
 
-from app import grading, mathcheck
+from app import examples, grading, mathcheck
 from app.config import BOARD_MAX_LINES, MAX_SEGMENTS, SAY_MAX_WORDS
 from app.curriculum import LATEX_CHARS, SPOKEN_SYMBOLS, highlight_problem
-from app.fallback import spoken_maths
+from app.fallback import in_words, spoken_maths
 from app.models import PINNED_IDS, AnswerKey, BoardCommand, BoardLine, Segment
 
 # Numbers in speech, after spoken_maths(): "2", "-1/2", "2 + sqrt(3)", "1 ± sqrt(2)".
@@ -18,6 +18,7 @@ NUMBERS = re.compile(r"(?:sqrt\(\d+\)|[-+*/.±0-9 ])+")
 # "the roots are", "the answer is", followed by the numbers that come straight after.
 ANSWER_PHRASE = re.compile(r"(?:\b[xd]\s*(?:=|\bis\b|\bequals\b)|\broots?\s+(?:is|are)\b|\banswer\s+is\b)"
                            r"((?:sqrt\(\d+\)|[-+*/.±0-9 ])*)")
+STEP_LABEL = re.compile(r"\bstep\s+\w+")       # "Step two": a label, not one of the answer's values
 # Rule 7: the replies whose own example may never be one of this concept's questions, as their problems name them.
 NO_LESSON_QUESTIONS = {"reteach": "a reteach", "example": "a solved example"}
 
@@ -93,14 +94,17 @@ def validate_reply(segments: list[Segment], ctx: ReplyContext) -> list[str]:
     given away, 7 no lesson question as the example in a reteach or a solved example (in an explanation, none
     but the open one), 8 no reused line id. Each problem is one readable line; [] means the reply can be shown."""
     problems = []
-    if not 1 <= len(segments) <= MAX_SEGMENTS:
+    if not 1 <= len(segments) <= MAX_SEGMENTS:            # 3 asked for, a 4th accepted
         problems.append(f"a reply needs 1 to {MAX_SEGMENTS} segments, not {len(segments)}")
     latex_of = {line.id: line.latex or "" for line in ctx.board}      # what a highlight can point into
     maths = []
     for number, segment in enumerate(segments, start=1):
         problems += [f"segment {number}: {p}" for p in _speech_problems(segment.say)]
         for cmd in segment.board:
-            problems += _command_problems(cmd, ctx, latex_of)
+            if cmd.op == "write" and cmd.latex and not cmd.check and cmd.relation != "new" and (
+                    ctx.anchor or any("x" in line["check"] for line in maths)):
+                cmd.check = _branches(cmd.latex)     # a ± line is proved through its two branches, against the
+            problems += _command_problems(cmd, ctx, latex_of)    # line above or the open question
             if cmd.op == "write" and cmd.id:
                 latex_of[cmd.id] = ctx.formulas.get(cmd.formula, "") if cmd.formula else (cmd.latex or "")
                 if cmd.latex and cmd.check:
@@ -139,6 +143,8 @@ def _command_problems(cmd: BoardCommand, ctx: ReplyContext, latex_of: dict[str, 
     shape = []                                     # rules 1 and 4 together, so the one retry can fix both
     if [cmd.latex, cmd.formula, cmd.text].count(None) != 2:
         shape.append(f"{line}: write exactly one of latex, formula or text; words and maths go on separate lines")
+    if cmd.text and "=" not in cmd.text:            # small whole numbers become words, as the prompt asks
+        cmd.text = in_words(cmd.text) or cmd.text
     if cmd.text and re.search(r"[\d=]", cmd.text):
         shape.append(f"{line}: the text line {cmd.text!r} has digits or '='; write numbers in a words line as words, "
                      "e.g. 'Step one', and put maths on a checked line")
@@ -150,62 +156,24 @@ def _command_problems(cmd: BoardCommand, ctx: ReplyContext, latex_of: dict[str, 
         return [f"{line}: unknown formula {cmd.formula}"]
     if cmd.relation == "new" and ctx.action in ("hint", "follow_up"):
         return [f"{line}: hints and follow-ups can't use relation new; stay with the question"]
-    if ctx.action in NO_LESSON_QUESTIONS and cmd.check and _uses_check_equation(cmd.check, ctx.check_equations):
+    if ctx.action in NO_LESSON_QUESTIONS and cmd.check and examples.is_a_question(cmd.check, ctx.check_equations):
         return [f"{line}: {NO_LESSON_QUESTIONS[ctx.action]} can't use a lesson question as its example"]
     if ctx.action == "explain" and cmd.check:      # the open question's own equation is allowed
         others = [equation for equation in ctx.check_equations if equation != ctx.anchor]
-        if _uses_check_equation(cmd.check, others):
+        if examples.is_a_question(cmd.check, others):
             return [f"{line}: an explanation can't use another lesson question as its example"]
     return []
 
 
-def _uses_check_equation(check: str, equations: list[str]) -> bool:
-    """Rule 7: is this line one of the questions, rearranged, factorised or solved? Every topic's questions are
-    compared, so the quick look (_could_be_same) goes first: same_maths is slow (a second or more per reply)."""
-    try:
-        line = mathcheck.parse_check(check)
-        return any(_could_be_same(line, question) and mathcheck.same_maths(line, question)
-                   for question in map(mathcheck.parse_check, equations))
-    except mathcheck.CheckError:
-        return False                               # an unreadable check is already reported by rule 3
-
-
-SAMPLE_X = (Rational(13, 7), Rational(-29, 11))     # x values to compare two equations at (roots of no lesson's)
-
-
-def _could_be_same(a, b) -> bool:
-    """A quick look before mathcheck.same_maths, which is slow: False only when a and b certainly differ. Two
-    equations in x differ when, at a sample x, their sides (left minus right) differ either way round; a root claim
-    ("x = 2 or x = 5") and an equation differ when a claimed root doesn't solve the equation. Anything else: True,
-    and same_maths decides. A real match is never ruled out."""
-    if isinstance(a, Or) != isinstance(b, Or):                  # a root claim and an equation
-        claim, other = (a, b) if isinstance(a, Or) else (b, a)
-        if not (isinstance(other, Eq) and other.free_symbols):
-            return True
-        try:
-            roots = mathcheck.solutions(claim)                            # a claim's own values: nothing is solved
-        except mathcheck.CheckError:
-            return True
-        values = [_at(other.lhs - other.rhs, root) for root in roots]
-        return all(value is None or abs(value) < 1e-9 for value in values)
-    if not (isinstance(a, Eq) and isinstance(b, Eq) and a.free_symbols and b.free_symbols):
-        return True
-    for sample in SAMPLE_X:
-        u, v = _at(a.lhs - a.rhs, sample), _at(b.lhs - b.rhs, sample)
-        if u is None or v is None:
-            return True                                         # not a number there: can't tell
-        tolerance = 1e-9 * max(1.0, abs(u), abs(v))
-        if abs(u - v) > tolerance and abs(u + v) > tolerance:
-            return False
-    return True
-
-
-def _at(expr, value) -> complex | None:
-    """expr at x = value, as a number; None when it isn't one there."""
-    try:
-        return complex(expr.subs(mathcheck.x, value))
-    except (TypeError, ValueError, ZeroDivisionError):
+def _branches(latex: str) -> str | None:
+    """A ± line's check, its two branches: "Or(Eq(x, ...), Eq(x, ...))"; None when it isn't x = ... ± ... with
+    one ±. (The prompt still says never to write ±: this is a safety net that still proves the line.)"""
+    if latex.count("\\pm") != 1:
         return None
+    shown = mathcheck.parse_display(latex)
+    if not (isinstance(shown, Or) and all(isinstance(p, Eq) and p.lhs == mathcheck.x for p in shown.args)):
+        return None
+    return "Or(" + ", ".join(f"Eq(x, {sstr(part.rhs)})" for part in shown.args) + ")"
 
 
 def _answer_problems(segments: list[Segment], maths: list[dict], ctx: ReplyContext) -> list[str]:
@@ -233,7 +201,9 @@ def reveals_answer(segments: list[Segment], key: AnswerKey | None, student_answe
     secret = [value for value in key.values if not _has(said, value)]     # what the student hasn't said
     if not secret:
         return None
-    speech = spoken_maths(" ".join(segment.say for segment in segments))   # "minus half" -> "-1/2"
+    words = [cmd.text for segment in segments for cmd in segment.board if cmd.op == "write" and cmd.text]
+    text = STEP_LABEL.sub(" ", " ".join([segment.say for segment in segments] + words).lower())   # board words too
+    speech = spoken_maths(text)
     for found in ANSWER_PHRASE.finditer(speech):
         if any(_has(secret, value) for value in _values(found.group(1))):
             return f"gives away the answer: {found.group(0).strip(' .')!r}"

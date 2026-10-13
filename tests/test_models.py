@@ -58,11 +58,12 @@ def test_env_file_values_do_not_override_environment(no_settings):
     assert s.max_turns_per_day == 50                   # spaces around "=" are fine
 
 
-def test_reply_rejects_four_segments():
+def test_reply_takes_up_to_four_segments():
+    """RESPOND is asked for at most 3; a 4th is accepted rather than rejecting the whole reply."""
     one = {"say": "Let's look at this line.", "board": []}
-    assert len(Reply(segments=[one] * 3).segments) == 3
+    assert len(Reply(segments=[one] * 4).segments) == 4
     with pytest.raises(ValidationError):
-        Reply(segments=[one] * 4)
+        Reply(segments=[one] * 5)
     with pytest.raises(ValidationError):
         Reply(segments=[])
 

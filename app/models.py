@@ -34,7 +34,7 @@ class Segment(BaseModel):
 class Reply(BaseModel):
     """What RESPOND must return."""
     model_config = ConfigDict(extra="forbid")
-    segments: list[Segment] = Field(min_length=1, max_length=3)
+    segments: list[Segment] = Field(min_length=1, max_length=4)   # 3 asked for; a 4th is accepted
 
 
 class Step(BaseModel):
@@ -79,11 +79,20 @@ class Concept(BaseModel):
     reteach_step: str
 
 
+class Example(BaseModel):
+    """An equation RESPOND may use for a new example (index.yaml): checked at startup, never a lesson question."""
+    model_config = ConfigDict(extra="forbid")
+    latex: str
+    check: str                       # SymPy syntax
+    roots: list[str] = Field(default_factory=list)   # real roots, SymPy syntax ([]: none; one: equal roots)
+
+
 class Curriculum(BaseModel):
     version: str
     order: list[str]                 # concept ids in teaching order
     formulas: dict[str, str]         # formula name -> LaTeX
     concepts: dict[str, Concept]     # concept id -> concept
+    examples: list[Example] = Field(default_factory=list)
 
 
 # ---------- one reply, as understood ----------
