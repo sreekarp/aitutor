@@ -42,7 +42,12 @@ day's limit and the end of the lessons get no check-in and no buttons, and "say 
 says it again as it was, also with none. A lone "Sorry, I didn't catch that" asks for the reply itself, so it ends
 on no check-in, but it shows the buttons of where the lesson stands (the step's, the offer's, or **Not sure** with a
 question open). Right after a safety reply the student had no buttons, so these are the first ones they get back, and
-a reload draws the same. *(Designed)* Fairer passing: two clean answers in a row
+a reload draws the same. On the page, a click on a topic only chooses it, and a Start button opens it (the big button
+before a lesson, one under the topic list during it). While the tutor speaks every control works: **Stop** (or Esc)
+silences it, and a reply button, typing, Speak or opening a topic cuts it short, with the rest of its reply shown at
+once, unspoken. Only while the page waits for the server are the controls off, so a turn is never sent twice; the
+server has saved the turn by then, so stopping changes nothing but the sound. *(Designed)* Fairer passing: two clean
+answers in a row
 to master a topic, a **Move on** button that passes it with a review question next session, and a
 "test me" slip sending the student to step 1.
 

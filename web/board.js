@@ -75,8 +75,8 @@ function runBoard(commands) {   // one segment's commands; its highlights replac
 }
 
 // ---------- topics (progress) and "Why?" panels ----------
-// Each topic is a button: picking one pauses the current topic (app.js sends it). ✓ mastered, ⚠ needs review,
-// ⏸ paused, ▶ current, · not started; the dots are the points towards mastery (● one, ◐ half, ○ none).
+// Each topic is a button: a click chooses it, and a Start button then opens it (app.js). ✓ mastered, ⚠ needs
+// review, ⏸ paused, ▶ current, · not started; the dots are the points towards mastery (● one, ◐ half, ○ none).
 function topicRow(row) {
   const icon = { mastered: "✓", needs_review: "⚠", paused: "⏸" }[row.status] || (row.current ? "▶" : "·");
   const button = make("button", "", "topic");
@@ -100,6 +100,19 @@ function topicDetail(row) {   // the small line under a topic: where it stands
   const step = Number.isInteger(row.step_index) ? `step ${row.step_index + 1} of ${row.step_count}` : "";
   if (row.status === "paused") return `saved at ${step || (row.at_start ? "the start" : "a question")}`;
   return row.current ? step || (row.at_start ? "starting" : "") : "";
+}
+
+// Marks the topic chosen to open next (app.js keeps the choice) and returns its title; null when none is chosen,
+// or it is the current topic, which can't be chosen.
+function markChosen(id) {
+  let title = null;
+  for (const button of document.querySelectorAll("#progress button.topic")) {
+    const on = button.dataset.concept === id && !button.hasAttribute("aria-current");
+    button.setAttribute("aria-pressed", String(on));
+    button.parentElement.classList.toggle("chosen", on);
+    if (on) title = button.querySelector(".name").textContent;
+  }
+  return title;
 }
 
 function drawPanels(data) {

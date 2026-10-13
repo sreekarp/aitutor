@@ -51,6 +51,8 @@
       </section>
       <section class="talk" aria-label="Conversation">
         <form id="say-form" class="say" hidden>
+          <!-- while the tutor speaks: silence it (Esc does the same); any other control also cuts it short -->
+          <button id="hush" type="button" class="hush" aria-label="Stop the tutor talking" hidden>⏹ Stop</button>
           <button id="mic" type="button" aria-pressed="false">🎤 Speak</button>
           <input id="text-box" aria-label="Your answer or question" maxlength="500" autocomplete="off"
                  placeholder="Type your answer or question">
@@ -64,8 +66,9 @@
       <aside class="side">
         <section class="panel" aria-label="Topics">
           <h2>Topics</h2>
-          <p class="hint">Pick any topic. The one you leave is saved for later.</p>
+          <p class="hint">Click a topic, then Start. The one you leave is saved for later.</p>
           <ol id="progress" class="progress"></ol>
+          <button id="topic-start" type="button" class="primary topic-start" hidden>Start</button>
         </section>
         <details class="panel">
           <summary>Why did the tutor do that?</summary>

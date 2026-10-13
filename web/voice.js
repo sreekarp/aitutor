@@ -1,7 +1,7 @@
 // Sound and the mic: the browser voice, each segment's server audio, the stop-click-to-first-audio timing,
 // and recording. The mic stays on between answers, so after the first one Speak starts at once; while the mic
 // opens, the Speak button reads "Opening mic…". Each recording is sent with two mic timings (mic_open_ms,
-// recording_ms). Loaded after board.js; it calls runTurn, request, setStatus, showNote, setBusy,
+// recording_ms). Loaded after board.js; it calls runTurn, cutShort, request, setStatus, showNote, setBusy,
 // addTranscript and setCaption from app.js. Plain JS, no build step.
 "use strict";
 
@@ -24,8 +24,14 @@ function chooseVoice() {   // voices load late, so this runs again on "voicescha
   browserVoice = english.find((v) => /^en[-_]IN$/i.test(v.lang)) || english[0] || null;
 }
 
-function stopSpeaking() {
+let hushed = 0;      // goes up at every stop: speech that began before a stop says nothing more
+let endNow = null;   // ends the sentence or segment being spoken right now, if any
+
+function stopSpeaking() {   // silence the tutor at once: the browser voice and the server audio
+  hushed += 1;
   if (canSpeak) speechSynthesis.cancel();
+  if (player.src !== SILENCE) player.pause();   // (not unlockSound's silence: a click may be unlocking sound)
+  if (endNow) endNow();
 }
 
 function speakSentence(sentence) {   // resolves true if the voice started speaking
@@ -35,19 +41,27 @@ function speakSentence(sentence) {   // resolves true if the voice started speak
     utterance.lang = browserVoice ? browserVoice.lang : "en-IN";
     if (browserVoice) utterance.voice = browserVoice;
     let started = false;
-    const finish = () => { clearTimeout(noStart); clearTimeout(stuck); resolve(started); };
+    const finish = () => {
+      clearTimeout(noStart);
+      clearTimeout(stuck);
+      if (endNow === finish) endNow = null;
+      resolve(started);
+    };
     const noStart = setTimeout(() => { if (!started) { speechSynthesis.cancel(); finish(); } }, 2000);
     const stuck = setTimeout(finish, 3000 + sentence.length * 120);   // "end" never came
     utterance.onstart = () => { started = true; noteFirstAudio(); };
     utterance.onend = utterance.onerror = finish;
+    endNow = finish;   // a stop ends it at once, even in a browser that sends no event on cancel
     speechSynthesis.speak(utterance);
   });
 }
 
 async function speakWithBrowser(text) {   // one sentence per utterance: Chrome cuts off long speech
   if (!canSpeak) return false;
+  const round = hushed;
   const sentences = text.replace(/([.!?])\s+/g, "$1\n").split("\n").filter((s) => s.trim());
   for (const sentence of sentences) {
+    if (hushed !== round) return true;   // stopped: say nothing more
     if (!(await speakSentence(sentence))) return false;   // no working voice: the text is on screen
   }
   return true;
@@ -72,19 +86,22 @@ function fetchAudio(turnId, i) {   // resolves to a blob: URL of segment i's aud
 // Plays one segment's audio on the one <audio> element. Resolves true once it has played, or false when it
 // failed or hadn't started ~3 s after it was due (then the browser voice reads the segment instead).
 function playAudio(audio, onStart) {
+  const round = hushed;
   return new Promise((resolve) => {
     let started = false, finished = false;
     const finish = () => {
       if (finished) return;
       finished = true;
       clearTimeout(timer);
+      if (endNow === finish) endNow = null;
       player.onplaying = player.onpause = player.onended = player.onerror = null;
       if (!started) player.pause();   // too late: it must not talk over the browser voice
       resolve(started);
     };
     const timer = setTimeout(finish, AUDIO_WAIT_MS);
+    endNow = finish;   // a stop ends it at once, even while its audio is still on the way
     audio.then((url) => {
-      if (!url || finished) return finish();
+      if (!url || finished || hushed !== round) return finish();
       player.onplaying = () => {
         if (started) return;
         started = true;
@@ -124,7 +141,8 @@ let micStream = null;   // the open mic, kept for the next answer
 let idleTimer = 0;      // switches the kept mic off MIC_IDLE_MS after the student's turn starts
 
 async function onMic() {
-  unlockSound();   // first, while the click is still being handled
+  if (!recorder) cutShort();   // (app.js) Speak cuts the tutor short: its voice must not be recorded
+  unlockSound();   // while the click is still being handled
   if (recorder) {   // the Stop click
     if (performance.now() - startedAt < DOUBLE_CLICK_MS) return;   // the second click of a double-click: keep recording
     return stopRecording();

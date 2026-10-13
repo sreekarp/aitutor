@@ -232,8 +232,8 @@ def test_a_replay_keeps_the_buttons_of_the_cue_it_replays(cur, tutor):
 
 
 def test_buttons_drawn_while_a_turn_runs_start_off():
-    """Tapping a button while the tutor still speaks does nothing. The buttons sit in the say form, so setBusy turns
-    them off and on with the text box; each one is drawn off while a turn runs; a click while busy is ignored.
+    """Tapping a button while the page waits for the server does nothing. The buttons sit in the say form, so setBusy
+    turns them off and on with the text box; each one is drawn off while busy; a click while busy is ignored.
     (A source check: the muted browser run clicks them for real.)"""
     html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
     form = html[html.index('<form id="say-form"'):html.index("</form>", html.index('<form id="say-form"'))]
