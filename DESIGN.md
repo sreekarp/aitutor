@@ -44,8 +44,9 @@ on no check-in, but it shows the buttons of where the lesson stands (the step's,
 question open). Right after a safety reply the student had no buttons, so these are the first ones they get back, and
 a reload draws the same. On the page, a click on a topic only chooses it, and a Start button opens it (the big button
 before a lesson, one under the topic list during it). While the tutor speaks every control works: **Stop** (or Esc)
-silences it, and a reply button, typing, Speak or opening a topic cuts it short, with the rest of its reply shown at
-once, unspoken. Only while the page waits for the server are the controls off, so a turn is never sent twice; the
+silences it, and sending an answer (a reply button, or typing and Send), Speak or a topic's Start cuts it short,
+with the rest of its reply shown at once, unspoken. Only while the page waits for the server (or records) are the
+controls off, so a turn is never sent twice; the
 server has saved the turn by then, so stopping changes nothing but the sound. *(Designed)* Fairer passing: two clean
 answers in a row
 to master a topic, a **Move on** button that passes it with a review question next session, and a
@@ -345,7 +346,8 @@ compare models with `--model-understand`), fewer RESPOND rejections, and streami
 What the student perceives, and what we do about it:
 
 - **Show progress immediately:** the status line goes Opening the microphone… → Listening… →
-  Thinking… → Speaking…, and the mic and text box are disabled while a turn runs. While the mic
+  Thinking… → Speaking…, and the mic and text box are disabled while the page waits for the server
+  (while the tutor speaks they work, and cut it short). While the mic
   opens, the Speak button reads "⏳ Opening mic…", and it turns into Stop only once the recording has
   really started, so the student doesn't start talking before the mic can hear them. A Stop click
   in the recording's first 400 ms is ignored, so a double-click on Speak doesn't end it at once.

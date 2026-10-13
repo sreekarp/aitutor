@@ -46,13 +46,14 @@
           <div id="board" class="board"></div>
           <!-- the line being spoken, so eyes can stay on the board; the transcript below reads it out -->
           <p id="caption" class="caption" aria-hidden="true"></p>
+          <!-- while the tutor speaks: silence it (Esc does the same). Pinned to the board's corner, so the answer
+               controls never move; sending an answer, Speak or a topic's Start also cut the tutor short -->
+          <button id="hush" type="button" class="hush" aria-label="Stop the tutor talking" hidden>⏹ Stop</button>
         </div>
         <button id="start" type="button" class="primary start">Start</button>
       </section>
       <section class="talk" aria-label="Conversation">
         <form id="say-form" class="say" hidden>
-          <!-- while the tutor speaks: silence it (Esc does the same); any other control also cuts it short -->
-          <button id="hush" type="button" class="hush" aria-label="Stop the tutor talking" hidden>⏹ Stop</button>
           <button id="mic" type="button" aria-pressed="false">🎤 Speak</button>
           <input id="text-box" aria-label="Your answer or question" maxlength="500" autocomplete="off"
                  placeholder="Type your answer or question">

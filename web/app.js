@@ -47,9 +47,7 @@ function addTranscript(who, text) {   // who: "you", "tutor" or "note"
   box.scrollTop = box.scrollHeight;
 }
 
-function setStatus(text) {
-  $("status").textContent = text;
-}
+function setStatus(text) { $("status").textContent = text; }
 
 function showNote(message) {   // a problem, in the status line and the transcript
   setStatus(message);
@@ -93,6 +91,7 @@ function hush() {   // Stop, Esc or a new turn: the tutor goes quiet, and the re
   if (!reply) return;
   while (reply.shown < reply.segments.length) showSegment(reply.segments[reply.shown++]);
   speakingReply = null;
+  if (document.activeElement === $("hush")) micButton.focus();   // a keyboard user keeps their place
   $("hush").hidden = true;
 }
 
@@ -127,6 +126,7 @@ function showProblem(e) {
   if (e.status === 409) {   // no session yet: back to the Start button
     sayForm.hidden = true;
     startButton.hidden = false;
+    showChosen();
   }
   const message = e instanceof ApiError ? e.message : "Something went wrong. Please try again.";
   showNote(message);
@@ -147,11 +147,12 @@ async function runTurn(send) {   // send() makes the request and resolves to the
     if (reply.decision.action === "mastered") celebrate();
     setBusy(false);   // while the tutor speaks, every control works, and cuts it short
     await playReply(reply);
-    if (mine !== turnNo) return;   // cut short by a newer turn or a recording, which has the page now
+    // cut short by a newer turn or a recording, which has the page now (this turn's stop click is spent)
+    if (mine !== turnNo) { stopClickedAt = 0; return; }
     typeIt = reply.input_hint === "type";
     setStatus(typeIt ? "Your turn. Typing may be easier." : "Your turn.");
   } catch (e) {
-    if (mine !== turnNo) return;
+    if (mine !== turnNo) { stopClickedAt = 0; return; }
     showProblem(e);
   }
   stopClickedAt = 0;   // (voice.js) only this turn's reply counts as the "first audio"
@@ -162,7 +163,7 @@ async function runTurn(send) {   // send() makes the request and resolves to the
 
 // ---------- sign-in, Start / Continue and the text box ----------
 function showSignIn(message = "") {
-  stopSpeaking();
+  hush();
   $("app").hidden = true;
   $("signin").hidden = false;
   $("signin-error").textContent = message;
@@ -203,7 +204,7 @@ async function onSignIn(event) {
 }
 
 async function onSignOut() {
-  stopSpeaking();
+  hush();
   await postJSON("/api/logout", {}).catch(() => {});
   location.reload();
 }
@@ -222,7 +223,7 @@ let startLabel = "Start";   // the big button's words with no topic chosen: Star
 
 function onPickTopic(event) {   // click a topic to choose it; click it again, or the current one, to unchoose
   const id = event.target.closest("button.topic")?.dataset.concept;
-  if (!id) return;
+  if (!id || event.detail > 1) return;   // the second click of a double-click must not unchoose it
   chosen = id === chosen ? null : id;   // (the current topic is dropped by showChosen)
   showChosen();
 }

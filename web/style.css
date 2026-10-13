@@ -155,7 +155,9 @@ button[aria-pressed="true"] { background: var(--hl); border-color: var(--hl); co
   animation: pulse 1.2s infinite;
 }
 @media (max-width: 480px) { #mic { min-width: 6.5em; } }   /* phones: just Speak and Stop, to leave room to type */
-.hush { border-color: var(--hl); color: var(--hl); }   /* Stop the tutor talking */
+/* Stop the tutor talking: pinned to the board's top-right corner, so the answer controls never move */
+.board-frame { position: relative; }
+.hush { position: absolute; top: 10px; right: 10px; z-index: 1; border: 2px solid var(--hl); }
 /* the reply's buttons: a row of pills under the text box */
 .choices { display: flex; flex-wrap: wrap; gap: 8px; flex-basis: 100%; }
 .choices:empty { display: none; }

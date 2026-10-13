@@ -27,6 +27,14 @@ def test_health_check_needs_no_sign_in(cur):
     assert (r.status_code, r.json()) == (200, {"ok": True})
 
 
+def test_the_browser_checks_for_a_newer_page_every_time(cur):
+    """After a deploy, a browser must not mix old and new page files: each one is checked every time (a quick 304 when
+    nothing changed)."""
+    client = make_client(cur)
+    for path in ("/", "/app.js", "/voice.js", "/style.css"):
+        assert client.get(path).headers.get("cache-control") == "no-cache", path
+
+
 def test_login_wrong_code_403(cur):
     client = make_client(cur)
     r = client.post("/api/login", json={"username": "asha", "first_name": "Asha", "access_code": "wrong"})

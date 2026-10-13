@@ -126,6 +126,14 @@ def create_app(settings: Settings | None = None, *, llm=None, cur: Curriculum | 
             raise HTTPException(status_code=503, detail="No server voice right now; the browser voice reads it.")
         return Response(content=audio, media_type="audio/mpeg")
 
+    @app.middleware("http")
+    async def check_for_a_new_page(request: Request, call_next):
+        """The browser asks again every time (a quick 304 when nothing changed), so after a deploy a page never
+        mixes old and new files."""
+        response = await call_next(request)
+        response.headers.setdefault("Cache-Control", "no-cache")
+        return response
+
     @app.get("/healthz")
     def healthz() -> dict:
         """For the host's health check and an uptime pinger: no sign-in and no database, so it stays cheap."""

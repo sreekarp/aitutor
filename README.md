@@ -47,8 +47,9 @@ the mic to speak and click again to stop (it stops by itself after 30 s), or typ
 first answer the mic stays on, so the next click records at once; it switches off if you don't click it
 within a minute of your turn starting, when you leave the tab or sign out, and after every recording on a
 phone or tablet. Nothing is recorded until you click. The whiteboard shows the working, with the line
-being spoken (or what the mic heard) along its bottom edge. While the tutor speaks, **⏹ Stop** (or Esc)
-silences it, and any button, typing or Speak cuts it short; the rest of its reply appears at once. **Topics**
+being spoken (or what the mic heard) along its bottom edge. While the tutor speaks, **⏹ Stop** (top right
+of the board, or Esc) silences it, and sending an answer (a reply button, or typing and Send), Speak or a
+topic's Start cuts it short; the rest of its reply appears at once. **Topics**
 lists each concept: click one to choose it, then press Start (the big button, or the one under the list
 during a lesson), or say where to go ("skip to factorisation"). The topic you leave
 is saved just as it stands (⏸) and carries on from there when you go back to it. **Why?** shows the
