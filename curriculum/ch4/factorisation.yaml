@@ -36,7 +36,7 @@ steps:
 
   - id: a_not_one
     segments:
-      - say: "When the x squared term has a number in front, multiply that number by the number on its own first. For 2x squared minus 5x plus 3, that's 2 times 3, which is 6."
+      - say: "When the x squared term has a number in front, multiply a by c first: the number in front of x squared, times the number with no x. For 2x squared minus 5x plus 3, that's 2 times 3, which is 6."
         board:
           - {op: write, id: an1, latex: '2x^2 - 5x + 3 = 0', check: "Eq(2*x**2 - 5*x + 3, 0)"}
       - say: "Two numbers that multiply to 6 and add to minus 5 are minus 2 and minus 3. Split the middle term, then take out the common factors."
@@ -79,7 +79,7 @@ checks:
     equation: "Eq(3*x**2 - 5*x - 2, 0)"
     kind: roots
     hints:
-      - "The x squared term has a 3 in front, so start by multiplying 3 by the number on its own."
+      - "Here a is 3 and c is minus 2, the number with no x. Start by multiplying a times c."
       - "You need two numbers that multiply to minus 6 and add to minus 5. Use them to split the middle term."
       - "Minus 6 and plus 1 work: 3x squared minus 6x plus x minus 2 equals zero. Now take out a common factor from each pair."
     traps: {sign_flip: "1/3, -2"}
@@ -148,7 +148,7 @@ mistakes:
     fix: "Factorising only helps when one side is zero. Move every term to one side first, then factorise."
   - id: wrong_split
     looks_like: "splits the middle term with two numbers that multiply to c instead of a times c, when a is not 1"
-    fix: "When the x squared term has a number in front, multiply it by the number on its own first. The two numbers must multiply to that and add to the middle number."
+    fix: "When a isn't 1, multiply a by c first. The two numbers must multiply to a times c and add to the middle number."
   - id: divided_by_x
     looks_like: "divides both sides by x and loses the root x = 0"
     fix: "Never divide by x, because x might be zero. Bring every term to one side and take x out as a common factor instead."
