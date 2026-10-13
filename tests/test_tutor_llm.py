@@ -298,8 +298,8 @@ def test_spoken_off_topic_reply_while_teaching_still_replays_the_step(cur, db_en
 
 
 def test_misheard_is_only_for_spoken_replies_nobody_can_place(cur, db_engine):
-    """A typed reply, a spoken one UNDERSTAND can read (here Hindi), a spoken "say again" and a spoken safety
-    reply are answered as before."""
+    """A typed reply, a spoken one UNDERSTAND can read (here Hindi), a spoken "say again" (the hint again) and a
+    spoken safety reply are answered as before."""
     fake = FakeLLM(understand=[understood("off_topic"), understood("dont_know")], respond=[HINT])
     tutor, student_id = at_first_question(cur, db_engine, fake)
     typed = tutor.turn(student_id, "can we play cricket later?")
@@ -307,6 +307,6 @@ def test_misheard_is_only_for_spoken_replies_nobody_can_place(cur, db_engine):
     hindi = tutor.turn(student_id, "मुझे नहीं पता", input_mode="voice")           # "I don't know"
     assert (hindi.decision.rule, hindi.decision.action) == ("R4", "hint")
     again = tutor.turn(student_id, "say again", input_mode="voice")
-    assert again.segments[0].say == "Let me ask that again."
+    assert [segment.say for segment in again.segments] == [segment.say for segment in hindi.segments]
     safe = tutor.turn(student_id, "I want to die", input_mode="voice")
     assert (safe.decision.rule, safe.segments[0].say, safe.input_hint) == ("R10", SAFETY_REPLY, None)

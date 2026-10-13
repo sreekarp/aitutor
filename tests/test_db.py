@@ -55,7 +55,8 @@ def test_connect_creates_folder(tmp_path):
     engine = db.connect(f"sqlite:///{path.as_posix()}")
     try:
         assert path.parent.is_dir()
-        assert set(inspect(engine).get_table_names()) == {"students", "sessions", "progress", "turns", "decisions"}
+        assert set(inspect(engine).get_table_names()) == {"students", "sessions", "progress", "turns", "decisions",
+                                                              "stops"}
     finally:
         engine.dispose()
 

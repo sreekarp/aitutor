@@ -85,9 +85,10 @@ def cue_for(cur: Curriculum, progress: Progress, last_action: str | None) -> tup
 def shown_action(ctx: TurnContext, decision: Decision, apology: bool = False) -> str:
     """The action whose cue the student last heard: a replay (R8) of a solved example keeps the example's cue and
     buttons, so they still match what is said. A replay of the safety reply (R10) has neither, just as R10 itself;
-    but a lone "didn't catch that" (apology) replays nothing, so it keeps the step's buttons."""
+    but a lone "didn't catch that" (apology) replays nothing, so it keeps the step's buttons. (While a question is
+    open, R8 asks it again unless it replays: llm_steps.respond drops the question then.)"""
     said = ctx.last_speech
-    replay = decision.action == "repeat" and ctx.phase == "teaching" and bool(said)
+    replay = decision.action == "repeat" and bool(said) and not decision.ask_check_id
     if replay and not apology and said[-1].say == replies.SAFETY_REPLY:
         return SAFETY_REPLAY
     return "example" if replay and said[-1].say in replies.CUES["example"] else decision.action

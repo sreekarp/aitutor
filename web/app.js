@@ -1,5 +1,6 @@
 // The tutor's page: sign-in, Start / Continue and the conversation, one turn at a time, typed or spoken.
-// board.js (the whiteboard and panels) and voice.js (sound and the mic) load first. Plain JS, no build step.
+// board.js (the whiteboard and panels), voice.js (sound and the mic) and topics.js (choosing a topic) load first.
+// Plain JS, no build step.
 "use strict";
 
 // ---------- settings ----------
@@ -7,7 +8,7 @@ const REPLY_TIMEOUT_MS = 17000;   // stop waiting for the server after ~17 s
 const TOO_LONG = "That took too long — try again or type it";
 const TOAST_MS = 3000;            // how long "Topic mastered!" stays up
 
-const startButton = $("start"), sayForm = $("say-form"), textBox = $("text-box"), topicStart = $("topic-start");
+const startButton = $("start"), sayForm = $("say-form"), textBox = $("text-box");
 
 // ---------- talking to the server ----------
 class ApiError extends Error {
@@ -34,8 +35,9 @@ async function request(path, options = {}) {   // resolves to the JSON reply, or
   }
 }
 
-function postJSON(path, body) {
-  return request(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+function postJSON(path, body, keepalive = false) {   // keepalive: it is still sent if the page is closing
+  return request(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    keepalive });
 }
 
 // ---------- conversation and status ----------
@@ -77,7 +79,9 @@ function celebrate() {
 
 // ---------- one turn ----------
 let turnNo = 0;             // the newest turn: an older one, cut short by it, leaves the page alone
-let speakingReply = null;   // the reply being spoken, {segments, shown}: what a stop still has to show
+let speakingReply = null;   // the reply being spoken: {turnId, segments, heard and shown (counts), stopped}
+let stopSaved = Promise.resolve();   // telling the server where a stop left off: the next turn waits for it
+const AFTER_STOP = [{ label: "↻ Repeat", say: "repeat" }, { label: "▶ Continue", say: "continue" }];
 
 function showSegment(segment) {
   runBoard(segment.board);
@@ -85,36 +89,49 @@ function showSegment(segment) {
   addTranscript("tutor", segment.say);
 }
 
-function hush() {   // Stop, Esc or a new turn: the tutor goes quiet, and the rest of its reply is shown at once
+// Stop, Esc, a reply, a recording or leaving the page: the tutor goes quiet, and the rest of its reply stays unsaid
+// and unshown. The server is told how much was said and shown, so "repeat", "continue" or coming back later picks it
+// up. True when some was left.
+function hush() {
   stopSpeaking();   // (voice.js)
   const reply = speakingReply;
-  if (!reply) return;
-  while (reply.shown < reply.segments.length) showSegment(reply.segments[reply.shown++]);
+  if (!reply) return false;
   speakingReply = null;
+  reply.stopped = true;
   if (document.activeElement === $("hush")) micButton.focus();   // a keyboard user keeps their place
   $("hush").hidden = true;
+  if (reply.heard >= reply.segments.length || !reply.turnId) return false;   // all of it was said
+  const where = { heard: reply.heard, shown: reply.shown };
+  stopSaved = postJSON(`/api/turn/${reply.turnId}/stopped`, where, true).catch(() => {});
+  return true;
+}
+
+function onStop() {   // Stop, Esc or Speak: the reply's own buttons stay, and Repeat and Continue come first
+  if (hush()) $("choices").prepend(...AFTER_STOP.map(choiceButton));
 }
 
 function cutShort() {   // a recording starts: the tutor goes quiet, and its turn won't hand the controls back
   turnNo += 1;
-  hush();
+  onStop();   // Repeat and Continue are there if the mic fails
 }
 
 // Every segment's audio is requested at once; the segments then play in order, and each one's board
 // commands run as its audio starts. A segment without audio in time is read by the browser voice.
 async function playReply(reply) {
   setStatus("Speaking…");
-  const now = { segments: reply.segments, shown: 0 };
+  const now = { turnId: reply.turn_id, segments: reply.segments, heard: 0, shown: 0, stopped: false };
   speakingReply = now;
   $("hush").hidden = false;
   const audios = reply.segments.map((_, i) => fetchAudio(reply.turn_id, i));
   for (const [i, segment] of reply.segments.entries()) {
-    if (now.shown > i) continue;   // a stop has shown it already
     const show = () => { now.shown = i + 1; showSegment(segment); };
-    if (await playAudio(audios[i], () => { show(); noteFirstAudio(); })) continue;
-    if (now.shown > i) continue;   // stopped while its audio was on the way
-    show();
-    await speakWithBrowser(segment.say);
+    const played = await playAudio(audios[i], () => { show(); noteFirstAudio(); });
+    if (!played && !now.stopped) {   // no audio in time (and no stop while it was on the way)
+      show();
+      await speakWithBrowser(segment.say);
+    }
+    if (now.stopped) break;   // the segment being said at the stop doesn't count as said
+    now.heard = i + 1;
   }
   if (speakingReply === now) hush();   // spoken to the end: Stop goes away
   audios.forEach((audio) => audio.then((url) => url && URL.revokeObjectURL(url)));
@@ -140,6 +157,7 @@ async function runTurn(send) {   // send() makes the request and resolves to the
   setStatus("Thinking…");
   let typeIt = false;
   try {
+    await stopSaved;   // "continue" needs the server to know where the stop left off
     const reply = await send();
     drawPanels(reply);
     showChosen();
@@ -205,6 +223,7 @@ async function onSignIn(event) {
 
 async function onSignOut() {
   hush();
+  await stopSaved;   // where the tutor was stopped is kept for next time
   await postJSON("/api/logout", {}).catch(() => {});
   location.reload();
 }
@@ -217,38 +236,7 @@ function onStart() {   // the big button: Start / Continue, or the topic chosen 
   runTurn(() => postJSON("/api/session", {}));
 }
 
-// ---------- topics: a click chooses one, and a Start button opens it ----------
-let chosen = null;          // the topic clicked in the panel; null: carry on where the lesson is
-let startLabel = "Start";   // the big button's words with no topic chosen: Start, or Continue
-
-function onPickTopic(event) {   // click a topic to choose it; click it again, or the current one, to unchoose
-  const id = event.target.closest("button.topic")?.dataset.concept;
-  if (!id || event.detail > 1) return;   // the second click of a double-click must not unchoose it
-  chosen = id === chosen ? null : id;   // (the current topic is dropped by showChosen)
-  showChosen();
-}
-
-function showChosen() {   // marks the chosen topic, and names it on the button that opens it
-  const title = markChosen(chosen);   // (board.js) null: nothing chosen, or it is (or became) the current topic
-  if (!title) chosen = null;
-  const label = title ? `Start “${title}”` : startLabel;
-  if (sayForm.hidden) {   // before a lesson: the big button
-    startButton.textContent = label;
-    setStatus(`Press ${label} when you're ready.`);
-  }
-  topicStart.textContent = label;
-  topicStart.hidden = sayForm.hidden || !chosen;   // during a lesson: the panel's Start button
-}
-
-function startChosen() {   // the tutor pauses this topic and opens the chosen one
-  const concept_id = chosen;
-  chosen = null;
-  showChosen();
-  runTurn(() => postJSON("/api/jump", { concept_id }));
-}
-
-function sendText(text) {   // a typed reply, or a choice button's words: the same turn either way
-  hush();   // the rest of the tutor's reply goes in the transcript before the student's words
+function sendText(text) {   // a typed reply, or a choice button's words: the same turn either way (runTurn hushes)
   addTranscript("you", text);
   setCaption(`You: ${text}`, "you");
   runTurn(() => postJSON("/api/turn", { text, prev_first_audio_ms: takeFirstAudioMs() }));
@@ -263,14 +251,16 @@ function onSend(event) {
 }
 
 // ---------- choice buttons ----------
-function drawChoices(data) {   // the buttons for the next reply; they sit in the say form, so setBusy turns them off
-  $("choices").replaceChildren(...(data.choices || []).map((choice) => {
-    const button = make("button", choice.label, "choice");
-    button.type = "button";   // not a submit button: a click sends the choice, not the text box
-    button.dataset.say = choice.say;
-    button.disabled = busy;   // drawn mid-turn: on when the turn ends
-    return button;
-  }));
+function drawChoices(data) {   // the buttons for the next reply
+  $("choices").replaceChildren(...(data.choices || []).map(choiceButton));
+}
+
+function choiceButton(choice) {   // it sits in the say form, so setBusy turns it off and on with the text box
+  const button = make("button", choice.label, "choice");
+  button.type = "button";   // not a submit button: a click sends the choice, not the text box
+  button.dataset.say = choice.say;
+  button.disabled = busy;   // drawn mid-turn: on when the turn ends
+  return button;
 }
 
 function onChoice(event) {
@@ -282,10 +272,9 @@ function onChoice(event) {
 $("signin-form").addEventListener("submit", onSignIn);
 $("signout").addEventListener("click", onSignOut);
 startButton.addEventListener("click", onStart);
-$("progress").addEventListener("click", onPickTopic);
-topicStart.addEventListener("click", () => { if (!busy && chosen) { unlockSound(); startChosen(); } });
-$("hush").addEventListener("click", hush);
-document.addEventListener("keydown", (event) => { if (event.key === "Escape" && speakingReply) hush(); });
+$("hush").addEventListener("click", onStop);
+addEventListener("pagehide", onStop);   // a reload or a closed tab mid-reply is a stop too (back: Repeat, Continue)
+document.addEventListener("keydown", (event) => { if (event.key === "Escape" && speakingReply) onStop(); });
 sayForm.addEventListener("submit", onSend);
 $("choices").addEventListener("click", onChoice);
 micButton.addEventListener("click", onMic);

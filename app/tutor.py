@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import Engine
 
-from app import board, compose, curriculum, db, engine, fallback, grading, llm_steps, replies, safety, sessions
+from app import board, compose, curriculum, db, engine, fallback, grading, llm_steps, replies, safety, sessions, stops
 from app.config import MAX_INPUT_CHARS, MODELS, PROMPT_VERSIONS, SESSION_GAP_MIN, TURN_DEADLINE_S, Settings
 from app.models import Curriculum, Decision, Grade, Progress, Segment, TurnContext, TurnResult, Understood
 
@@ -36,13 +36,18 @@ class Tutor:
         self.scripted = settings.scripted or llm is None
 
     def start(self, student_id: str) -> TurnResult:
-        """Start / Continue: S1 within SESSION_GAP_MIN minutes of the session's last turn, else a new session + S0."""
+        """Start / Continue: S1 within SESSION_GAP_MIN minutes of the session's last turn, else a new session + S0.
+        A reply the student stopped is picked up where stops.can_pick_up allows."""
         started = time.monotonic()
-        session, new_session = self._session(student_id)
+        session, new_session, last = self._session(student_id)
         try:
             ctx, replaced = self._context(student_id, session, "", started, [], {})
             decision, after = sessions.start(ctx.before, self.cur, new_session=new_session, replaced=replaced)
-            return self._finish(ctx, "start", None, None, decision, after, self._words(ctx, decision, after))
+            words = self._words(ctx, decision, after)
+            ctx.stopped = stops.find(last)              # in a new session, the stop is in the one before
+            if ctx.stopped and stops.can_pick_up(last, replaced, ctx.before, after):
+                decision, words = stops.pick_up(decision, words, ctx.stopped, new_session)
+            return self._finish(ctx, "start", None, None, decision, after, words)
         except Exception:
             log.exception("session start failed for student %s", student_id)
             return self._sorry(session, "")
@@ -50,7 +55,7 @@ class Tutor:
     def jump(self, student_id: str, concept_id: str) -> TurnResult:
         """S2: the student picked a topic, before or after Start (a session is opened if there isn't one)."""
         started = time.monotonic()
-        session, _ = self._session(student_id)
+        session, _, _ = self._session(student_id)
         try:
             ctx, _ = self._context(student_id, session, "", started, [], {})
             decision, after = sessions.jump(ctx.before, self.cur, concept_id)
@@ -59,16 +64,18 @@ class Tutor:
             log.exception("topic jump failed for student %s", student_id)
             return self._sorry(session, "")
 
-    def _session(self, student_id: str) -> tuple[dict, bool]:
-        """The student's session, or a new one (True) when there is none or its last turn is too old."""
+    def _session(self, student_id: str) -> tuple[dict, bool, dict | None]:
+        """The student's session, or a new one (True) when there is none or its last turn is too old; and the last
+        turn they had (None before their first)."""
         with self.db_engine.begin() as conn:
             session = db.latest_session(conn, student_id)
-            new_session = session is None or not _recent(db.last_turn(conn, session["id"]))
+            last = db.last_turn(conn, session["id"]) if session else None
+            new_session = not _recent(last)
             if new_session:
                 models = {"mode": "scripted"} if self.scripted else MODELS
                 session = db.create_session(conn, student_id, curriculum_version=self.cur.version,
                                             prompt_versions=PROMPT_VERSIONS, models=models)
-        return session, new_session
+        return session, new_session, last
 
     def _words(self, ctx: TurnContext, decision: Decision, after: Progress) -> list[Segment]:
         return replies.words(decision, cur=self.cur, progress=after, check=None, grade=None,
@@ -100,13 +107,18 @@ class Tutor:
 
     def _run(self, ctx: TurnContext, replaced: bool, over_limit: bool, input_mode: str,
              stt_failed: bool) -> TurnResult:
-        """The order of checks: LIMIT, safety, curriculum change, a topic asked for, fast paths, understanding."""
+        """The order of checks: LIMIT, safety, curriculum change, a replay after a stop ("repeat", "continue", or any
+        reply when the question wasn't shown yet), a topic asked for, fast paths, understanding."""
         understood = grade = None
+        picked = _topic_asked_for(ctx, self.cur)        # another topic asked for by name, if any
         if over_limit:
             decision, after = sessions.limit_decision(), ctx.before
         elif replaced and not safety.is_safety(ctx.text):
             decision, after = sessions.lesson_changed(ctx.before, self.cur), ctx.before
-        elif picked := _topic_asked_for(ctx, self.cur):     # S2, just as if the student clicked that topic
+        elif which := stops.which_replay(ctx, self.cur.formulas, topic_asked=picked is not None):
+            decision, words = stops.replay(ctx, which)
+            return self._finish(ctx, input_mode, None, None, decision, ctx.before, words)
+        elif picked:                                    # S2, just as if the student clicked that topic
             decision, after = sessions.jump(ctx.before, self.cur, picked)
         else:
             understood = _timed(ctx, "understand", self._read, ctx, stt_failed)
@@ -135,7 +147,10 @@ class Tutor:
         concept = self.cur.concepts[concept_id] if concept_id else None
         pending = before[concept_id].pending if concept_id else None
         said = [Segment(say=seg["say"]) for seg in last["tutor_output"]["segments"] if seg["say"]] if last else []
+        if last and last["rule"] in ("S0", "S1") and last["action"] == "repeat":
+            said = said[1:]                             # a stopped reply picked up: not its "Welcome back"
         apology_only = [segment.say for segment in said] == [DIDNT_CATCH]
+        check = curriculum.get_check(concept, pending.check_id) if pending else None
         if concept and not pending and last and (last["action"] in compose.RESUMING or apology_only):
             # After a topic start or move-on, "say again" replays just the step and its cue (at the topic start: the
             # intro and the offer): not the greeting or praise. After a lone "didn't catch that", the same, not the
@@ -145,12 +160,17 @@ class Tutor:
             cue, _ = compose.cue_for(self.cur, before, last["action"])
             lesson = step.segments if step else [Segment(say=concept.intro)]
             said = [Segment(say=segment.say) for segment in lesson] + [cue]
+        elif pending and last and (last["action"] in (*compose.RESUMING, "lesson_changed")
+                                   or said and said[0].say in (DIDNT_CATCH, MISHEARD)):
+            # With a question open, after a greeting, a topic start, a lesson change or an apology, "say again" asks
+            # just the question.
+            said = [Segment(say=curriculum.ask_segment(check, self.cur.formulas).say)]
         ctx = TurnContext(
             student=student, session=session, concept=concept, phase="checking" if pending else "teaching",
-            before=before, check=curriculum.get_check(concept, pending.check_id) if pending else None,
+            before=before, check=check,
             text=text, last_speech=said, previous_reason=last["reason"] if last else "",
             board=board_now, deadline=started + TURN_DEADLINE_S, calls=calls, issues=list(issues),
-            latency=latency, scripted=self.scripted)
+            latency=latency, scripted=self.scripted, stopped=stops.find(last))
         return ctx, replaced
 
     def _read(self, ctx: TurnContext, stt_failed: bool) -> Understood:
@@ -167,10 +187,13 @@ class Tutor:
                 decision: Decision, after: Progress, words: list[Segment],
                 input_hint: str | None = None) -> TurnResult:
         """Compose, update the board, then save progress, turn, decision and board in one transaction."""
-        lone_apology = [segment.say for segment in words] == [DIDNT_CATCH]    # asks for the reply: no cue after it
-        segments = words + compose.compose(self.cur, ctx, decision, after, with_cue=not lone_apology)
-        shown = compose.shown_action(ctx, decision, lone_apology)     # a replay keeps its cue's buttons
-        choices = [] if decision.rule in compose.NO_CUE else compose.cue_for(self.cur, after, shown)[1]
+        if stops.is_replay(decision):                 # a stopped reply again: it has its own cue and buttons
+            segments, choices = words, ctx.stopped.choices
+        else:
+            lone_apology = [segment.say for segment in words] == [DIDNT_CATCH]  # asks for the reply: no cue after it
+            segments = words + compose.compose(self.cur, ctx, decision, after, with_cue=not lone_apology)
+            shown = compose.shown_action(ctx, decision, lone_apology)     # a replay keeps its cue's buttons
+            choices = [] if decision.rule in compose.NO_CUE else compose.cue_for(self.cur, after, shown)[1]
         new_board = board.apply(ctx.board, segments, self.cur.formulas)
         if decision.rule == "R10":
             ctx.issues.append("safety_review")
@@ -180,7 +203,9 @@ class Tutor:
                "concept_id": ctx.concept.id if ctx.concept else None, "phase": ctx.phase, "input": input_mode,
                "student_text": ctx.text, "understood": understood.model_dump() if understood else None,
                "grade": asdict(grade) if grade else None,
-               "tutor_output": {"segments": [segment.model_dump() for segment in segments]},
+               "tutor_output": {"segments": [segment.model_dump() for segment in segments],     # for a stop later:
+                                "board_before": [asdict(line) for line in ctx.board],         # the board it began
+                                "choices": [asdict(choice) for choice in choices]},           # on, and its buttons
                "versions": {"curriculum": self.cur.version, **PROMPT_VERSIONS},
                "latency_ms": ctx.latency, "calls": ctx.calls, "issues": ctx.issues}
         with self.db_engine.begin() as conn:

@@ -1,4 +1,4 @@
-"""The 5 tables and small read/write helpers. SQLAlchemy Core: plain tables, no ORM classes.
+"""The 6 tables and small read/write helpers. SQLAlchemy Core: plain tables, no ORM classes.
 
 Every helper takes an open connection, so the caller decides what goes into one transaction."""
 from __future__ import annotations
@@ -65,7 +65,7 @@ turns_table = Table(
     Column("student_text", Text),
     Column("understood", JSON),
     Column("grade", JSON),
-    Column("tutor_output", JSON),                # {"segments": [...]}
+    Column("tutor_output", JSON),                # {"segments": [...], "board_before": [...], "choices": [...]}
     Column("versions", JSON),
     Column("latency_ms", JSON),
     Column("calls", JSON),
@@ -86,6 +86,15 @@ decisions_table = Table(
     Column("hint_level", Integer),
     Column("reteach_count", Integer),
     Column("strategy", Text),
+    Column("created_at", DateTime(timezone=True)),
+)
+
+stops_table = Table(                             # a reply the student stopped part-way (Stop, Esc, or answering)
+    "stops", metadata,
+    Column("turn_id", Text, ForeignKey("turns.id"), primary_key=True),
+    Column("student_id", Text),
+    Column("heard", Integer),                    # how many of its segments had been said in full
+    Column("shown", Integer),                    # how many were on screen (the one being said too)
     Column("created_at", DateTime(timezone=True)),
 )
 
@@ -236,12 +245,23 @@ def get_turn(conn, turn_id: str) -> dict | None:
 
 
 def last_turn(conn, session_id: str) -> dict | None:
-    """The session's newest turn, plus its decision's rule, action and reason; None before the first turn."""
-    query = (select(turns_table, decisions_table.c.rule, decisions_table.c.action, decisions_table.c.reason)
+    """The session's newest turn, plus its decision's rule, action and reason, and "heard" and "shown" when the
+    student stopped it part-way (else None); None before the first turn."""
+    query = (select(turns_table, decisions_table.c.rule, decisions_table.c.action, decisions_table.c.reason,
+                    stops_table.c.heard, stops_table.c.shown)
              .join(decisions_table, decisions_table.c.turn_id == turns_table.c.id)
+             .outerjoin(stops_table, stops_table.c.turn_id == turns_table.c.id)
              .where(turns_table.c.session_id == session_id)
              .order_by(turns_table.c.turn_no.desc()).limit(1))
     return _as_dict(conn.execute(query).first())
+
+
+def save_stop(conn, turn_id: str, student_id: str, heard: int, shown: int) -> None:
+    """Keep how many of a turn's segments were said, and shown, before the student stopped it (a later stop replaces
+    it)."""
+    conn.execute(stops_table.delete().where(stops_table.c.turn_id == turn_id))
+    conn.execute(stops_table.insert().values(turn_id=turn_id, student_id=student_id, heard=heard, shown=shown,
+                                             created_at=_now()))
 
 
 def turn_owner(conn, turn_id: str) -> str | None:

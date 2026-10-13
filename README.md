@@ -49,7 +49,9 @@ within a minute of your turn starting, when you leave the tab or sign out, and a
 phone or tablet. Nothing is recorded until you click. The whiteboard shows the working, with the line
 being spoken (or what the mic heard) along its bottom edge. While the tutor speaks, **⏹ Stop** (top right
 of the board, or Esc) silences it, and sending an answer (a reply button, or typing and Send), Speak or a
-topic's Start cuts it short; the rest of its reply appears at once. **Topics**
+topic's Start cuts it short. What it hadn't said yet isn't shown: after Stop, **↻ Repeat** says the whole reply
+again and **▶ Continue** says the rest (as do "repeat" and "continue", typed or spoken), and Continue after a
+reload or a break picks it up from where it stopped. **Topics**
 lists each concept: click one to choose it, then press Start (the big button, or the one under the list
 during a lesson), or say where to go ("skip to factorisation"). The topic you leave
 is saved just as it stands (⏸) and carries on from there when you go back to it. **Why?** shows the
@@ -189,6 +191,7 @@ keep the default SQLite file.
 | --- | --- |
 | `app/tutor.py` | One turn, end to end: understand → grade → decide → respond → save |
 | `app/compose.py` | What a turn says after its words: the step or question, the topic picked up next, then the check-in and its buttons |
+| `app/stops.py` | A reply the student stopped part-way: where it stopped, and Repeat, Continue and picking it up later |
 | `app/safety.py` | The keyword safety check, run before anything else reads a student's reply |
 | `app/llm_steps.py` | The turn's two LLM steps (UNDERSTAND, RESPOND), each with its scripted fallback |
 | `app/voice.py`, `app/page.py` | Speech-to-text turns and the cached text-to-speech; the JSON the page gets |
@@ -197,9 +200,9 @@ keep the default SQLite file.
 | `app/board.py` | Reply checks and the board |
 | `app/fallback.py`, `app/replies.py` | Scripted mode: reading a reply without the AI; every scripted line the tutor says |
 | `app/llm.py`, `app/prompts.py`, `app/prompts/` | OpenRouter (backups, retries, time limits) and the two versioned prompts |
-| `app/db.py`, `app/main.py`, `app/cli.py` | The five tables; the web routes and sign-in; the terminal tutor |
+| `app/db.py`, `app/main.py`, `app/cli.py` | The six tables; the web routes and sign-in; the terminal tutor |
 | `curriculum/ch4/` | The six lesson files, and `index.yaml` (order, version, the four formulas) |
-| `web/` | The page: `index.html`, `style.css`, and its scripts in load order: `board.js` (whiteboard and panels), `voice.js` (sound and the mic), `app.js` (sign-in and turns) |
+| `web/` | The page: `index.html`, `style.css`, and its scripts in load order: `board.js` (whiteboard and panels), `voice.js` (sound and the mic), `topics.js` (choosing a topic), `app.js` (sign-in and turns) |
 | `evals/`, `sims/`, `tests/` | Evals, simulated students, tests |
 
 `data/`, `evals/results/`, `sims/runs/` and `.env` are git-ignored.

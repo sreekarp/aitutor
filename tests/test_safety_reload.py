@@ -47,15 +47,16 @@ def test_reload_after_a_safety_reply_and_a_failed_recording_matches_the_live_but
         assert reloaded == live, text
 
 
-@pytest.mark.parametrize("replies", [[PII, "say again"], [PII, FAIL], [PII, "banana"]],
-                         ids=["say again", "fail", "unclear"])
+@pytest.mark.parametrize("replies", [[PII, FAIL], [PII, "banana"], [PII, "say again", "banana"]],
+                         ids=["fail", "unclear", "say again, then unclear"])
 def test_reload_after_a_safety_reply_with_a_question_open_keeps_not_sure(replies):
     tutor, student_id = start("teach me", "test me")                    # a question is open
     assert say(tutor, student_id, PII) == ("R10", [], [])
-    for text in replies[1:]:
-        _, live, reloaded = say(tutor, student_id, text)
-        assert [choice["label"] for choice in live] == ["Not sure"], text
-        assert reloaded == live, text
+    for text in replies[1:-1]:                                          # "say again" replays it: no buttons either
+        assert say(tutor, student_id, text) == ("R8", [], []), text
+    _, live, reloaded = say(tutor, student_id, replies[-1])             # the question again, with "Not sure"
+    assert [choice["label"] for choice in live] == ["Not sure"]
+    assert reloaded == live
 
 
 @pytest.mark.parametrize("teach_first", [True, False], ids=["on a step", "at the topic start"])

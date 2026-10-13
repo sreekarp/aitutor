@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.middleware.sessions import SessionMiddleware
 
-from app import curriculum, db, page, voice
+from app import curriculum, db, page, stops, voice
 from app.config import WEB_DIR, Settings, load_settings
 from app.llm import Client
 from app.models import Curriculum
@@ -31,6 +31,13 @@ class LoginForm(BaseModel):
 class Jump(BaseModel):
     """A topic picked in the progress panel."""
     concept_id: str
+
+
+class StopReport(BaseModel):
+    """The student stopped the tutor's reply: how many of its segments had been said in full by then, and how many
+    were on screen (the one being said too)."""
+    heard: int = Field(ge=0)
+    shown: int = Field(ge=0)
 
 
 class TextTurn(BaseModel):
@@ -98,6 +105,12 @@ def create_app(settings: Settings | None = None, *, llm=None, cur: Curriculum | 
         except NoSession:
             raise HTTPException(status_code=409, detail="Press Start first.") from None
         return page.payload(tutor, student_id, result)
+
+    @app.post("/api/turn/{turn_id}/stopped")
+    def stopped(turn_id: str, body: StopReport, student_id: str = Depends(signed_in)) -> dict:
+        if not stops.record(db_engine, cur, student_id, turn_id, body.heard, body.shown):
+            raise HTTPException(status_code=404, detail="No such turn.")
+        return {"ok": True}
 
     @app.post("/api/turn/audio")
     def audio_turn(audio: UploadFile, prev_first_audio_ms: int | None = Form(None),

@@ -212,6 +212,17 @@ class TurnResult:
     choices: list[Choice] = field(default_factory=list)   # the buttons for the student's next reply
 
 
+@dataclass
+class Stopped:
+    """The last reply, which the student stopped part-way: all of it, how many segments had been said in full and
+    how many shown, the board it began on, and its buttons (stops.py)."""
+    segments: list[Segment]
+    heard: int
+    shown: int
+    board_before: list[BoardLine]
+    choices: list[Choice]
+
+
 # ---------- one turn in progress (tutor.py builds it, llm_steps.py reads and adds to it) ----------
 @dataclass
 class TurnContext:
@@ -234,3 +245,4 @@ class TurnContext:
     issues: list[str]
     latency: dict
     scripted: bool = False             # no LLM for the rest of this turn (scripted mode, or UNDERSTAND failed)
+    stopped: Stopped | None = None     # the last reply, when the student stopped it part-way

@@ -57,7 +57,8 @@ def test_design_has_the_six_sections():
 
 def test_design_data_model_is_the_real_one():
     tables = dict(re.findall(r"CREATE TABLE (\w+) \((.*?)\n\);", read("DESIGN.md"), re.S))
-    assert list(tables) == ["students", "sessions", "progress", "turns", "decisions"]
+    assert list(tables) == list(db.metadata.tables) == ["students", "sessions", "progress", "turns", "decisions",
+                                                        "stops"]
     for name, body in tables.items():
         documented = re.findall(r"^  ([a-z_]+) ", body, re.M)     # a column line starts with its name
         assert documented == [column.name for column in db.metadata.tables[name].columns], name

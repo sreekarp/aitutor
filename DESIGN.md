@@ -27,7 +27,8 @@ reading a tap needs no model call (only a solved example calls RESPOND).
 | | "got it", "test me" | R6: "show me", because points need an answer with working |
 | | "move on" | R8: "Let's get this one first", and the question again |
 | Anywhere | "Can we skip to the factorization topic?", "move on to the discriminant" | S2: that topic, as if it was picked in Topics |
-| | "say again", "pardon?" | R8: while teaching, the last reply again, check-in included; while a question is open, "Let me ask that again." and the question |
+| | "say again", "pardon?", "can you repeat that?" | R8: the last reply again, a hint or an explanation included. While teaching it ends on its check-in; while a question is open, on the question (after a greeting or "didn't catch that", just the question) |
+| Right after the student stopped the tutor part-way | "repeat", "say again" (**↻ Repeat**); "continue", "carry on", "resume" (**▶ Continue**) | R8: the stopped reply again, from its start or from the line it stopped on, with its board and its buttons. Any other reply moves on as usual, and the part not said is dropped |
 
 "Yes", "yeah", "sure", "ok", "haan", "no", "nope" and "not really" (and "that makes sense") are read this way only
 while teaching: while a question is open they are answers, because several questions are yes or no. (The full list
@@ -44,10 +45,17 @@ on no check-in, but it shows the buttons of where the lesson stands (the step's,
 question open). Right after a safety reply the student had no buttons, so these are the first ones they get back, and
 a reload draws the same. On the page, a click on a topic only chooses it, and a Start button opens it (the big button
 before a lesson, one under the topic list during it). While the tutor speaks every control works: **Stop** (or Esc)
-silences it, and sending an answer (a reply button, or typing and Send), Speak or a topic's Start cuts it short,
-with the rest of its reply shown at once, unspoken. Only while the page waits for the server (or records) are the
-controls off, so a turn is never sent twice; the
-server has saved the turn by then, so stopping changes nothing but the sound. *(Designed)* Fairer passing: two clean
+silences it, and sending an answer (a reply button, or typing and Send), Speak or a topic's Start cuts it short.
+The part not yet said is never shown: the page tells the server how many segments were said and shown (kept in
+`stops`; closing or reloading the page mid-reply counts too), and the saved board goes back to what was on screen.
+Stop (or Speak) adds **↻ Repeat** and **▶ Continue** before the reply's own buttons. If the open question was in the
+part never shown, any other reply hears the rest first, since a question can't be answered unseen (a safety reply
+and a topic asked for still come first). Start or Continue later picks the reply up: within 30 minutes (S1) from
+the line it stopped on, in a new session (S0) from its start, on the board it began on. (Not when the stopped reply
+was a Start itself, the safety reply, the daily limit or the end, or when the new session changed progress: then the
+lesson resumes as usual.) Only while the page waits for the server (or
+records) are the controls off, so a turn is never sent twice, and the next turn waits for the stop report, so
+"continue" always finds it. *(Designed)* Fairer passing: two clean
 answers in a row
 to master a topic, a **Move on** button that passes it with a review question next session, and a
 "test me" slip sending the student to step 1.
@@ -56,7 +64,7 @@ to master a topic, a **Move on** button that passes it with a review question ne
 
 ## 1. Data model
 
-SQLite, through SQLAlchemy Core with a `DATABASE_URL` setting, so the same five tables run on
+SQLite, through SQLAlchemy Core with a `DATABASE_URL` setting, so the same six tables run on
 Postgres with no code change (add `psycopg[binary]` and use a `postgresql+psycopg://` URL). JSON
 columns are text in SQLite and `JSON` in Postgres. Ids are `uuid4` hex strings; times are UTC.
 
@@ -109,7 +117,8 @@ CREATE TABLE turns (                   -- append-only: one row per reply, and pe
   student_text  TEXT,                 -- the transcript; no audio is stored
   understood    JSON,                 -- reply type, answer, showed_working, suspected mistake, safety
   grade         JSON,                 -- SymPy's verdict (correct | wrong | partial | unsure), trap
-  tutor_output  JSON,                 -- the segments spoken and drawn (speech + board commands)
+  tutor_output  JSON,                 -- the segments spoken and drawn (speech + board commands), the
+                                      -- board they began on, and the buttons after them
   versions      JSON,                 -- what this turn used: curriculum, understand and respond prompts
   latency_ms    JSON,                 -- per stage, plus the browser's prev_first_audio_ms, and for
                                       -- voice turns its mic_open_ms and recording_ms
@@ -134,6 +143,14 @@ CREATE TABLE decisions (               -- append-only: the "why" behind every mo
   strategy       TEXT,                -- worked_example | substitute_back | compare_non_example | replay
   created_at     DATETIME
 );
+
+CREATE TABLE stops (                   -- a reply the student stopped part-way (Stop, Esc, or answering)
+  turn_id     TEXT PRIMARY KEY REFERENCES turns(id),
+  student_id  TEXT,
+  heard       INTEGER,                -- how many of its segments had been said in full
+  shown       INTEGER,                -- how many were on screen (the one being said too)
+  created_at  DATETIME
+);
 ```
 
 Why it looks like this:
@@ -147,6 +164,8 @@ Why it looks like this:
   started.
 - **Positions are ids, not numbers.** `step_id` and `pending.check_id` name the step and the
   question, so editing a lesson file can't silently move a student (section 2).
+- **A stop is a row of its own,** so `turns` stays append-only, and "how often do students stop the tutor, and
+  where?" is one query.
 - **Every new question, new topic and new session starts on a clean board,** so a question never
   shares the board with an earlier one's working; a hint, an explanation or a re-ask of the same
   question keeps the board.
@@ -387,7 +406,7 @@ session. Mastery alone can be inflated by a lenient tutor; retained mastery catc
 the student has to show the learning stuck. It needs a warm-up question at session start, which
 isn't built yet.
 
-Supporting numbers, each a query over the five tables or the eval and simulation results (no
+Supporting numbers, each a query over the six tables or the eval and simulation results (no
 dashboard is built):
 
 | Area | Metrics |
@@ -395,7 +414,7 @@ dashboard is built):
 | Learning | Mastery rate per concept; questions, hints and reteaches to mastery; needs-review rate |
 | Tutor quality | False advance rate (simulations); eval pass rate; rejected first outputs and maths errors per 100 LLM replies; scripted fallback rate |
 | Engagement | Session length; sessions per student per week; where students drop off (concept and step); next-day return |
-| Experience | Stop click → first audio (p50, p95); "say that again" rate; how often students type instead of speaking |
+| Experience | Stop click → first audio (p50, p95); "say that again" rate; how often students stop the tutor, and where; how often students type instead of speaking |
 | Cost | Cost per session and per mastered concept (from `calls`) |
 
 Pairs keep each other honest: mastery with retained mastery, engagement with learning (a tutor
@@ -420,6 +439,11 @@ Known gaps, after the build:
   right answers after hints (half a point each). A student who
   taps **Test me first** and then gets a question wrong gets hints like anyone else, not the lesson, and
   "move on" while a question is open only gets the question again.
+- **Stopping has rough edges.** Repeat after stopping a Continue says only that continuation again, not the
+  first reply; stopping the "Welcome back" of a picked-up reply and pressing Continue again resumes the lesson as
+  usual, so the rest of that reply is lost. A stop report that reaches the server after the next turn is ignored,
+  but one that lands in the very moment the next turn is being saved could put back an older board (it needs two
+  tabs or a 17-second stall).
 - **The check-ins are a few fixed lines, and some replies are read roughly.** Each check-in rotates
   through two or three phrasings, so a long lesson repeats them. After a solved example the check-in is
   an either-or question ("Shall we go on, or shall I do another example?"), so a bare "no" is read as not

@@ -29,7 +29,9 @@ def _whole_reply(*phrases: str) -> re.Pattern:
 NEXT = _whole_reply("ok", "okay", "next", "go on", "carry on", "continue", "yes", "haan", "han", "haan ji",
                     "theek hai", "thik hai", "accha", "yeah", "yep", "yup", "sure", "yes please", "go ahead", "alright",
                     "teach me", "teach me please", "yes quiz me")       # the last three: the choice buttons, or close
-SAY_AGAIN = _whole_reply("say again", "repeat", "repeat please", "phir se", "phir se bolo", "dobara", "once more",
+SAY_AGAIN = _whole_reply("say again", "say that again", "say it again", "can you say that again", "repeat",
+                         "repeat please", "please repeat", "repeat that", "repeat it", "can you repeat that",
+                         "could you repeat that", "what did you say", "phir se", "phir se bolo", "dobara", "once more",
                          "pardon", "sorry", "what", "come again")
 # Hit, beat, slap, kick, punch, smack, thrash, hurt or touch, in any form, then "me" or "us" ("beats me", "slapped
 # us"), or the student saying it the other way round (I_WAS_HIT). Someone may be hurting the student and the safety
@@ -111,10 +113,15 @@ TOPIC_REQUEST_WORDS = 12
 
 
 # ---------- fast paths ----------
+def plain(text: str) -> str:
+    """Lower case without apostrophes, every other mark a single space: "Sorry, what's that?" -> "sorry whats that"."""
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", text.lower().replace("'", "").replace("’", "")).split())
+
+
 def keyword(text: str, phase: str) -> str | None:
     """A reply type when the WHOLE reply is listed phrases ("ok next", "got it", "not sure"); anything longer goes
     to UNDERSTAND. "ok", "yes", "no" and "nahi" count only while teaching: while a question is open they're answers."""
-    clean = " ".join(re.sub(r"[^a-z0-9]+", " ", text.lower().replace("'", "").replace("’", "")).split())
+    clean = plain(text)
     if SAY_AGAIN.fullmatch(clean):
         return "say_again"
     if phase == "teaching":

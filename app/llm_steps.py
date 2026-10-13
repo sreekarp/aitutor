@@ -2,6 +2,8 @@
 A fallback is noted in ctx.issues, and after a failed UNDERSTAND the rest of the turn is scripted."""
 from __future__ import annotations
 
+from dataclasses import replace
+
 from app import board, curriculum, engine, fallback, grading, prompts, replies
 from app.llm import BadOutputError, ProviderError
 from app.models import (LLM_ACTIONS, Curriculum, Decision, Grade, Pending, Progress, Segment, TurnContext,
@@ -31,8 +33,11 @@ def respond(llm, cur: Curriculum, ctx: TurnContext, decision: Decision, after: P
             ctx.issues.append("respond_fallback")
     if decision.action == "reteach":                  # a scripted reteach replays the lesson's reteach step
         decision, after = engine.replay_instead(decision, ctx.before, after)
-    if decision.action == "repeat" and ctx.phase == "teaching" and ctx.last_speech:
-        return ctx.last_speech, decision, after       # R8 while teaching: say last_speech again (see TurnContext)
+    if decision.action == "repeat" and ctx.last_speech and (ctx.phase == "teaching" or understood.type == "say_again"):
+        # R8 while teaching, or "say again" while asked: last_speech again (see TurnContext), so a hint or explanation
+        # just given is heard again too. While asked it ends on the question (or R5's "just the answer" request, with
+        # the question on the board), so the question isn't asked a second time.
+        return ctx.last_speech, replace(decision, ask_check_id=None), after
     words = replies.words(decision, cur=cur, progress=after, check=ctx.check, grade=grade,
                           first_name=ctx.student["first_name"])
     return words, decision, after
