@@ -61,8 +61,11 @@ MY_OWN_STEPS = re.compile(r"\b(?:i (?:did|solved|worked)(?! not)|ive (?:done|sol
 GET_ITS = ("get it", "got it", "understood", "samajh gaya", "samajh gayi")
 GET_IT = phrases(*GET_ITS)
 # "i get it" and "makes sense" count only as a whole reply: inside a longer one, "nothing makes sense" or "that makes
-# sense, why is it zero?" would wrongly be read as got it.
-GET_IT_WHOLE = phrases(*GET_ITS, "i get it", "makes sense")
+# sense, why is it zero?" would wrongly be read as got it. "Makes sense" may have a yes before it, an "it" or "that"
+# and a "now" after it ("yeah that makes sense now"); a "no" or "nothing" before it makes it a different reply.
+MAKES_SENSE = re.compile(r"(?:(?:yes|yeah|yep|ok|okay|haan)\s+)?(?:(?:that|it|this|all of this)\s+)?makes sense"
+                         r"(?:\s+now)?")
+GET_IT_WHOLE = phrases(*GET_ITS, "i get it")
 # What the student wants next: skip to the questions, or stop this topic. Read as a whole reply (keyword) and in
 # longer replies (understand).
 TEST_ME = phrases("test me", "test me first", "quiz me", "skip to the questions")
@@ -115,7 +118,8 @@ def keyword(text: str, phase: str) -> str | None:
     if SAY_AGAIN.fullmatch(clean):
         return "say_again"
     if phase == "teaching":
-        lists = [(NEXT, "next"), (GET_IT_WHOLE, "claims_understanding"), (NOT_SURE, "not_sure")]
+        lists = [(NEXT, "next"), (GET_IT_WHOLE, "claims_understanding"), (MAKES_SENSE, "claims_understanding"),
+                 (NOT_SURE, "not_sure")]
     else:
         lists = [(NOT_SURE_ASKED, "not_sure")]
     for pattern, kind in lists + [(MOVE_ON, "move_on"), (TEST_ME_WHOLE, "test_me")]:
@@ -159,6 +163,7 @@ def understand(text: str, *, phase: str, check: Check | None, awaiting_working: 
     clean = spoken_maths(text[:MAX_INPUT_CHARS])
     working = _showed_working(_drop_names(clean, check))
     answer = _answer(clean, check) if phase == "checking" and check else ""
+    asks = "?" in clean or bool(QUESTION_START.match(clean))
     if HURT_ME.search(clean) or I_WAS_HIT.search(clean):
         kind = "unclear"                                     # maybe a disclosure: asked again, never a hint
     elif DONT_KNOW.search(clean):
@@ -171,11 +176,11 @@ def understand(text: str, *, phase: str, check: Check | None, awaiting_working: 
         kind = "not_sure"
     elif MOVE_ON.search(clean):
         kind = "move_on"
-    elif GET_IT.search(clean):
-        kind = "claims_understanding"
+    elif GET_IT.search(clean) and not asks:
+        kind = "claims_understanding"                        # "how did you get it?" is a question, not a claim
     elif _asks_for_steps(clean) and not awaiting_working:
         kind = "dont_know"                                   # "explain it step by step": the next hint
-    elif "?" in clean or QUESTION_START.match(clean):
+    elif asks:
         kind = "question"
     elif awaiting_working and working:
         kind = "answer"                                      # working only, e.g. "I factorised it"

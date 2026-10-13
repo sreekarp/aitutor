@@ -39,7 +39,8 @@ def payload(tutor: Tutor, student_id: str, result: TurnResult) -> dict:
 
 def _saved_choices(tutor: Tutor, progress: Progress, recent: list[dict], safety_said: bool = False) -> list[dict]:
     """The buttons after a reload: rebuilt from the saved progress and the newest decisions, as the turn chose them
-    (a "say again" shows the buttons of the cue it replays, so the newest decision that isn't one decides)."""
+    (a "say again" shows the buttons of the cue it replays, so the newest decision that isn't one decides; after R10
+    that is R10, whose own turn had no buttons, but a later turn's cue gets them as usual)."""
     if not recent or recent[0]["rule"] in compose.NO_CUE or safety_said:
         return []              # before the first Start, or after safety (or its replay), the limit or the end
     action = next((decision["action"] for decision in recent if decision["action"] != "repeat"), recent[0]["action"])

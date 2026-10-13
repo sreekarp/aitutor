@@ -52,6 +52,7 @@ def resume(cur: Curriculum, concept_id: str, after: Progress, action: str) -> li
 
 # ---------- the cue and the buttons ----------
 NO_CUE = ("R10", "LIMIT", "END")          # safety, the daily limit and the end: no cue line and no buttons
+SAFETY_REPLAY = "safety_replay"           # shown_action's name for a replayed safety reply; no Decision uses it
 NOT_SURE = Choice("Not sure", "not sure")
 CHOICES = {"offer": (Choice("Teach me", "teach me"), Choice("Test me first", "test me")),
            "step": (Choice("Yes, go on", "yes go on"), NOT_SURE),
@@ -66,7 +67,7 @@ def cue_for(cur: Curriculum, progress: Progress, last_action: str | None) -> tup
     if cid is None:
         return None, []
     concept, state = cur.concepts[cid], progress[cid]
-    if last_action == "safety":                        # a replayed safety reply (shown_action): no cue, no buttons
+    if last_action == SAFETY_REPLAY:                   # a replayed safety reply (shown_action): no cue, no buttons
         return None, []
     if state.pending:
         return None, [NOT_SURE]
@@ -88,7 +89,7 @@ def shown_action(ctx: TurnContext, decision: Decision, apology: bool = False) ->
     said = ctx.last_speech
     replay = decision.action == "repeat" and ctx.phase == "teaching" and bool(said)
     if replay and not apology and said[-1].say == replies.SAFETY_REPLY:
-        return "safety"
+        return SAFETY_REPLAY
     return "example" if replay and said[-1].say in replies.CUES["example"] else decision.action
 
 

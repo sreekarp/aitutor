@@ -1,7 +1,8 @@
 """Tests for app/fallback.py: the keyword fast paths and scripted understanding."""
-from conftest import check_of
+from conftest import check_of, make_settings, new_student
 
-from app import fallback, grading
+from app import db, fallback, grading
+from app.tutor import Tutor
 
 
 # ---------- helpers ----------
@@ -264,3 +265,33 @@ def test_understand_non_latin_and_long(cur):
     assert understand(cur, "I don't know " + filler).type == "dont_know"
     said = understand(cur, "2, " * 700)                                  # a long paste of numbers
     assert said.type == "answer" and grading.grade(check_of(cur, "fa1"), said.answer).verdict == "unsure"
+
+
+def test_that_makes_sense_goes_on_as_a_whole_reply_while_teaching(cur):
+    """"That makes sense" (with a yes, an "it" or a "now") is a student who got it, so the tutor goes on (R0) instead
+    of replaying the step. Said against someone, or with a question after it, it is not."""
+    phrases = ("that makes sense", "yes that makes sense", "yeah makes sense", "it makes sense", "ok makes sense",
+               "Haan, this makes sense now!", "okay all of this makes sense")
+    for text in phrases:
+        assert fallback.keyword(text, "teaching") == "claims_understanding", text
+        assert fallback.keyword(text, "checking") is None, text            # while a question is open: not a fast path
+    for text in ("nothing makes sense", "none of this makes sense", "that makes sense, why is it zero?",
+                 "that does not make sense"):
+        assert fallback.keyword(text, "teaching") is None, text
+    assert understand(cur, "nothing makes sense", phase="teaching").type == "unclear"
+    assert understand(cur, "none of this makes sense", phase="teaching").type == "unclear"
+    assert understand(cur, "that makes sense, why is it zero?", phase="teaching").type == "question"
+    for text in phrases[:5]:                                                 # each one on step 1, in a new tutor
+        tutor = Tutor(cur, db.connect("sqlite://"), make_settings())
+        student_id = new_student(tutor.db_engine, cur)
+        tutor.start(student_id)
+        tutor.turn(student_id, "teach me")
+        assert tutor.turn(student_id, text).decision.rule == "R0", text
+
+
+def test_how_did_you_get_it_is_a_question_but_i_get_it_still_claims_understanding(cur):
+    for text in ("how did you get it?", "how do I get it?", "How did you get it"):
+        assert understand(cur, text, phase="teaching").type == "question", text
+    for text in ("I get it", "got it", "I get it now, thanks", "ok I get it"):
+        assert understand(cur, text, phase="teaching").type == "claims_understanding", text
+    assert understand(cur, "I get it, it's 2 and 3").type == "answer"       # answers are read first
