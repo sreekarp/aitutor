@@ -7,7 +7,7 @@ import json
 import logging
 import time
 
-from app import db
+from app import db, replies
 from app.config import MIN_AUDIO_BYTES, MODELS, TTS_CACHE_DIR, TTS_TIMEOUT_S, TURN_DEADLINE_S
 from app.llm import ProviderError
 from app.models import TurnResult
@@ -22,7 +22,7 @@ class NotFound(Exception):
 
 def turn_audio(tutor: Tutor, student_id: str, audio: bytes, mime: str, *,
                prev_first_audio_ms: int | None = None, mic_open_ms: int | None = None,
-               recording_ms: int | None = None) -> TurnResult:
+               recording_ms: int | None = None, on_wait=None) -> TurnResult:
     """Speech-to-text, then the same turn as a typed reply. No transcript: "Say it again, or type it"."""
     _, over_limit = tutor.open_session(student_id)   # before Start, or past the daily limit: no paid call
     started, calls, text = time.monotonic(), [], ""
@@ -37,7 +37,8 @@ def turn_audio(tutor: Tutor, student_id: str, audio: bytes, mime: str, *,
     # The browser's mic times (Speak click -> recording started, then started -> Stop) are saved next to "stt"
     pre_latency = {"mic_open_ms": mic_open_ms, "recording_ms": recording_ms, "stt": stt_ms}
     return tutor.turn(student_id, text, input_mode="voice", prev_first_audio_ms=prev_first_audio_ms,
-                      stt_failed=not text and not over_limit, pre_calls=calls, pre_latency=pre_latency)
+                      stt_failed=not text and not over_limit, pre_calls=calls, pre_latency=pre_latency,
+                      on_wait=on_wait)
 
 
 def speech(tutor: Tutor, student_id: str, turn_id: str, index: int) -> bytes | None:
@@ -47,7 +48,19 @@ def speech(tutor: Tutor, student_id: str, turn_id: str, index: int) -> bytes | N
     segments = turn["tutor_output"]["segments"] if turn else []
     if not 0 <= index < len(segments):        # someone else's turn, no such turn, or no such segment
         raise NotFound(f"turn {turn_id} has no segment {index} for this student")
-    text, voice = segments[index]["say"], tutor.settings.tts_voice
+    return _spoken(tutor, segments[index]["say"], turn_id, index)
+
+
+def wait_speech(tutor: Tutor, key: str) -> bytes | None:
+    """MP3 of a replies.WAIT line ("Sure, let me think of one."), cached like every line. NotFound for another key."""
+    if key not in replies.WAIT:
+        raise NotFound(f"no waiting line {key}")
+    return _spoken(tutor, replies.WAIT[key], "wait", key)
+
+
+def _spoken(tutor: Tutor, text: str, turn_id: str, index) -> bytes | None:
+    """The tutor's voice saying text, from the cache on disk or else text-to-speech. None: the browser voice."""
+    voice = tutor.settings.tts_voice
     if tutor.scripted or not text.strip():
         return None
     key = f"{MODELS['tts'][0]['id']}|{voice}|{text}"

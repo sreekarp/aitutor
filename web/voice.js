@@ -1,8 +1,8 @@
 // Sound and the mic: the browser voice, each segment's server audio, the stop-click-to-first-audio timing,
 // and recording. The mic stays on between answers, so after the first one Speak starts at once; while the mic
 // opens, the Speak button reads "Opening mic…". Each recording is sent with two mic timings (mic_open_ms,
-// recording_ms). Loaded after board.js; it calls runTurn, cutShort, request, setStatus, showNote, setBusy,
-// addTranscript and setCaption from app.js. Plain JS, no build step.
+// recording_ms). Loaded after board.js and net.js (request); it calls runTurn, cutShort, sayWait, setStatus,
+// showNote, setBusy, addTranscript and setCaption from app.js. Plain JS, no build step.
 "use strict";
 
 const MAX_RECORDING_MS = 30000;   // a recording stops by itself after 30 s
@@ -76,8 +76,8 @@ function unlockSound() {   // call inside a click: browsers (iPhones most of all
   if (canSpeak) speechSynthesis.speak(new SpeechSynthesisUtterance(""));
 }
 
-function fetchAudio(turnId, i) {   // resolves to a blob: URL of segment i's audio, or null when there is none
-  return fetch(`/api/tts/${turnId}/${i}`)
+function fetchAudio(url) {   // resolves to a blob: URL of that audio (a segment's, or a waiting line's), or null
+  return fetch(url)
     .then((res) => (res.ok ? res.blob() : null))
     .then((blob) => (blob ? URL.createObjectURL(blob) : null))
     .catch(() => null);
@@ -283,7 +283,7 @@ function sendRecording(blob, micOpenMs, recordingMs) {   // the recording and it
   const ms = takeFirstAudioMs();
   if (ms !== null) form.append("prev_first_audio_ms", String(ms));
   runTurn(async () => {
-    const reply = await request("/api/turn/audio", { method: "POST", body: form });
+    const reply = await request("/api/turn/audio", { method: "POST", body: form }, sayWait);   // (app.js)
     if (reply.transcript) {   // what the mic heard, on the board too: a mishearing is easy to spot
       addTranscript("you", reply.transcript);
       setCaption(`You said: ${reply.transcript}`, "you");

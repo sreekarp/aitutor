@@ -202,7 +202,7 @@ keep the default SQLite file.
 | `app/llm.py`, `app/prompts.py`, `app/prompts/` | OpenRouter (backups, retries, time limits) and the two versioned prompts |
 | `app/db.py`, `app/main.py`, `app/cli.py` | The six tables; the web routes and sign-in; the terminal tutor |
 | `curriculum/ch4/` | The six lesson files, and `index.yaml` (order, version, the four formulas) |
-| `web/` | The page: `index.html`, `style.css`, and its scripts in load order: `board.js` (whiteboard and panels), `voice.js` (sound and the mic), `topics.js` (choosing a topic), `app.js` (sign-in and turns) |
+| `web/` | The page: `index.html`, `style.css`, and its scripts in load order: `board.js` (whiteboard and panels), `net.js` (talking to the server), `voice.js` (sound and the mic), `topics.js` (choosing a topic), `app.js` (sign-in and turns) |
 | `evals/`, `sims/`, `tests/` | Evals, simulated students, tests |
 
 `data/`, `evals/results/`, `sims/runs/` and `.env` are git-ignored.

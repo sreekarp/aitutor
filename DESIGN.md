@@ -19,7 +19,7 @@ reading a tap needs no model call (only a solved example calls RESPOND).
 | A topic's start: its intro, then "Shall I teach it? Or say 'test me' if you already know it." | "test me", "quiz me", "I already know this" (**Test me first**) | R6: the questions start now |
 | | Anything else: "teach me", "ok", "no", a question (**Teach me**) | R0: step 1. An unclear reply gets R8: "Sorry, I may have misheard you..." (spoken) or "Sorry, I didn't follow that." (typed), then just the offer again. A failed recording gets only "Sorry, I didn't catch that..." (with the offer's buttons) |
 | A step, ending "Did that make sense? Shall we go on?" (the last step: "Ready for a question?") | "yes", "yeah", "sure", "go ahead", "ok", "got it", "understood", "move on" (**Yes, go on**, **Yes, quiz me**) | R0: the next step, or after the last one the first question |
-| | "not sure", "no", "nope", "not really", "didn't get it", "another example" (**Not sure**) | R7 `example`: RESPOND solves a similar equation on the board (SymPy checks each line; never a lesson question), then "Shall we go on, or shall I do another example?" (**Go on**, **Another example**). Scripted: "Let's go over that step again." and the step is replayed |
+| | "not sure", "no", "nope", "not really", "didn't get it", "another example" (**Not sure**) | R7 `example`: RESPOND solves a similar equation on the board (SymPy checks each line; never a question from any topic, which would give a later answer away), then "Shall we go on, or shall I do another example?" (**Go on**, **Another example**). Scripted: "Let's go over that step again." and the step is replayed |
 | | "test me", "skip to the questions" | R6: the questions start now; the other steps are skipped |
 | | A question, "I don't know" | R7: explained; same step |
 | A question is open (**Not sure**) | An answer | SymPy grades it: R1 credit, R2 "how did you get that?", R3 reteach, R4 hint or R5 follow-up |
@@ -378,6 +378,12 @@ compare models with `--model-understand`), fewer RESPOND rejections, and streami
 
 What the student perceives, and what we do about it:
 
+- **Fill the AI's wait:** when the tutor is about to ask the AI to write its reply (a solved example, an
+  explanation, a hint: 2–6 s), the server sends the page a short line at once, before the reply, and the
+  page says it in the tutor's voice: "Sure, let me think of one.", "Good question. Let me think." or "Hmm,
+  let me think." (`replies.WAIT`). The turn's JSON comes as lines (the waiting line, then the turn), so
+  one request carries both. Replies that need no AI (a button, a known phrase, a graded answer) get no
+  such line, so it never becomes a habit. It shortens no time; it makes the wait feel like thinking.
 - **Show progress immediately:** the status line goes Opening the microphone… → Listening… →
   Thinking… → Speaking…, and the mic and text box are disabled while the page waits for the server
   (while the tutor speaks they work, and cut it short). While the mic

@@ -1,44 +1,10 @@
 // The tutor's page: sign-in, Start / Continue and the conversation, one turn at a time, typed or spoken.
-// board.js (the whiteboard and panels), voice.js (sound and the mic) and topics.js (choosing a topic) load first.
-// Plain JS, no build step.
+// board.js (the whiteboard and panels), net.js (talking to the server), voice.js (sound and the mic) and topics.js
+// (choosing a topic) load first. Plain JS, no build step.
 "use strict";
 
-// ---------- settings ----------
-const REPLY_TIMEOUT_MS = 17000;   // stop waiting for the server after ~17 s
-const TOO_LONG = "That took too long — try again or type it";
 const TOAST_MS = 3000;            // how long "Topic mastered!" stays up
-
 const startButton = $("start"), sayForm = $("say-form"), textBox = $("text-box");
-
-// ---------- talking to the server ----------
-class ApiError extends Error {
-  constructor(status, message) {
-    super(message);
-    this.status = status;   // the HTTP status, or 0 when no answer came
-  }
-}
-
-async function request(path, options = {}) {   // resolves to the JSON reply, or throws ApiError
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REPLY_TIMEOUT_MS);
-  try {
-    const res = await fetch(path, { ...options, signal: controller.signal });
-    const data = await res.json().catch(() => ({}));
-    if (res.ok) return data;
-    const fallback = res.status === 422 ? "Please check what you typed." : "Something went wrong. Please try again.";
-    throw new ApiError(res.status, typeof data.detail === "string" ? data.detail : fallback);
-  } catch (e) {
-    if (e instanceof ApiError) throw e;
-    throw new ApiError(0, e.name === "AbortError" ? TOO_LONG : "Can't reach the tutor. Check your connection.");
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-function postJSON(path, body, keepalive = false) {   // keepalive: it is still sent if the page is closing
-  return request(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-    keepalive });
-}
 
 // ---------- conversation and status ----------
 function addTranscript(who, text) {   // who: "you", "tutor" or "note"
@@ -81,6 +47,7 @@ function celebrate() {
 let turnNo = 0;             // the newest turn: an older one, cut short by it, leaves the page alone
 let speakingReply = null;   // the reply being spoken: {turnId, segments, heard and shown (counts), stopped}
 let stopSaved = Promise.resolve();   // telling the server where a stop left off: the next turn waits for it
+let waitSaid = Promise.resolve();    // the line said while the AI writes the reply: the reply starts after it
 const AFTER_STOP = [{ label: "↻ Repeat", say: "repeat" }, { label: "▶ Continue", say: "continue" }];
 
 function showSegment(segment) {
@@ -102,8 +69,15 @@ function hush() {
   $("hush").hidden = true;
   if (reply.heard >= reply.segments.length || !reply.turnId) return false;   // all of it was said
   const where = { heard: reply.heard, shown: reply.shown };
-  stopSaved = postJSON(`/api/turn/${reply.turnId}/stopped`, where, true).catch(() => {});
+  stopSaved = postJSON(`/api/turn/${reply.turnId}/stopped`, where, { keepalive: true }).catch(() => {});
   return true;
+}
+
+function sayWait(wait) {   // the AI is writing the reply: a short line meanwhile, in the tutor's voice (net.js)
+  setCaption(wait.say);
+  addTranscript("tutor", wait.say);
+  waitSaid = playAudio(fetchAudio(`/api/tts/wait/${wait.wait}`), noteFirstAudio)
+    .then((played) => played || speakWithBrowser(wait.say));
 }
 
 function onStop() {   // Stop, Esc or Speak: the reply's own buttons stay, and Repeat and Continue come first
@@ -122,7 +96,7 @@ async function playReply(reply) {
   const now = { turnId: reply.turn_id, segments: reply.segments, heard: 0, shown: 0, stopped: false };
   speakingReply = now;
   $("hush").hidden = false;
-  const audios = reply.segments.map((_, i) => fetchAudio(reply.turn_id, i));
+  const audios = reply.segments.map((_, i) => fetchAudio(`/api/tts/${reply.turn_id}/${i}`));
   for (const [i, segment] of reply.segments.entries()) {
     const show = () => { now.shown = i + 1; showSegment(segment); };
     const played = await playAudio(audios[i], () => { show(); noteFirstAudio(); });
@@ -159,6 +133,8 @@ async function runTurn(send) {   // send() makes the request and resolves to the
   try {
     await stopSaved;   // "continue" needs the server to know where the stop left off
     const reply = await send();
+    await waitSaid;   // a "let me think" line finishes first
+    waitSaid = Promise.resolve();
     drawPanels(reply);
     showChosen();
     drawChoices(reply);
@@ -239,7 +215,7 @@ function onStart() {   // the big button: Start / Continue, or the topic chosen 
 function sendText(text) {   // a typed reply, or a choice button's words: the same turn either way (runTurn hushes)
   addTranscript("you", text);
   setCaption(`You: ${text}`, "you");
-  runTurn(() => postJSON("/api/turn", { text, prev_first_audio_ms: takeFirstAudioMs() }));
+  runTurn(() => postJSON("/api/turn", { text, prev_first_audio_ms: takeFirstAudioMs() }, { onWait: sayWait }));
 }
 
 function onSend(event) {

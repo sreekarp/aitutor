@@ -1,21 +1,26 @@
 """The web app: the sign-in cookie, the JSON routes the page calls, and the page's own files."""
 from __future__ import annotations
 
+import json
 import logging
+import queue
 import secrets
 import sys
+import threading
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response, UploadFile
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.middleware.sessions import SessionMiddleware
 
-from app import curriculum, db, page, stops, voice
+from app import curriculum, db, page, replies, stops, voice
 from app.config import WEB_DIR, Settings, load_settings
 from app.llm import Client
 from app.models import Curriculum
 from app.tutor import NoSession, Tutor
 
+log = logging.getLogger(__name__)
 COOKIE_MAX_AGE = 30 * 24 * 60 * 60   # the sign-in cookie lasts 30 days (in seconds)
 MAX_AUDIO_BYTES = 2 * 1024 * 1024    # 2 MB: a 30-second recording is under 1 MB, and speech-to-text is paid
 
@@ -98,13 +103,18 @@ def create_app(settings: Settings | None = None, *, llm=None, cur: Curriculum | 
             raise HTTPException(status_code=404, detail="There's no such topic.")
         return page.payload(tutor, student_id, tutor.jump(student_id, body.concept_id))
 
-    @app.post("/api/turn")
-    def text_turn(body: TextTurn, student_id: str = Depends(signed_in)) -> dict:
+    def started(student_id: str) -> None:
+        """409 before the first Start: there is no session to add a turn to."""
         try:
-            result = tutor.turn(student_id, body.text, prev_first_audio_ms=body.prev_first_audio_ms)
+            tutor.open_session(student_id)
         except NoSession:
             raise HTTPException(status_code=409, detail="Press Start first.") from None
-        return page.payload(tutor, student_id, result)
+
+    @app.post("/api/turn")
+    def text_turn(body: TextTurn, student_id: str = Depends(signed_in)) -> StreamingResponse:
+        started(student_id)
+        return as_lines(lambda on_wait: page.payload(tutor, student_id, tutor.turn(
+            student_id, body.text, prev_first_audio_ms=body.prev_first_audio_ms, on_wait=on_wait)))
 
     @app.post("/api/turn/{turn_id}/stopped")
     def stopped(turn_id: str, body: StopReport, student_id: str = Depends(signed_in)) -> dict:
@@ -115,19 +125,26 @@ def create_app(settings: Settings | None = None, *, llm=None, cur: Curriculum | 
     @app.post("/api/turn/audio")
     def audio_turn(audio: UploadFile, prev_first_audio_ms: int | None = Form(None),
                    mic_open_ms: int | None = Form(None), recording_ms: int | None = Form(None),
-                   student_id: str = Depends(signed_in)) -> dict:
+                   student_id: str = Depends(signed_in)) -> StreamingResponse:
         if tutor.scripted:
             raise HTTPException(status_code=503, detail="Voice needs the API key; type instead.")
         data = audio.file.read(MAX_AUDIO_BYTES + 1)   # one byte more than allowed is enough to tell
         if len(data) > MAX_AUDIO_BYTES:
             raise HTTPException(status_code=413, detail="That recording is too long.")
+        started(student_id)
+        return as_lines(lambda on_wait: page.payload(tutor, student_id, voice.turn_audio(
+            tutor, student_id, data, audio.content_type or "", prev_first_audio_ms=prev_first_audio_ms,
+            mic_open_ms=mic_open_ms, recording_ms=recording_ms, on_wait=on_wait)))
+
+    @app.get("/api/tts/wait/{key}", dependencies=[Depends(signed_in)])
+    def wait_tts(key: str) -> Response:
         try:
-            result = voice.turn_audio(tutor, student_id, data, audio.content_type or "",
-                                      prev_first_audio_ms=prev_first_audio_ms, mic_open_ms=mic_open_ms,
-                                      recording_ms=recording_ms)
-        except NoSession:
-            raise HTTPException(status_code=409, detail="Press Start first.") from None
-        return page.payload(tutor, student_id, result)
+            audio = voice.wait_speech(tutor, key)
+        except voice.NotFound:
+            raise HTTPException(status_code=404, detail="No such line.") from None
+        if audio is None:
+            raise HTTPException(status_code=503, detail="No server voice right now; the browser voice reads it.")
+        return Response(content=audio, media_type="audio/mpeg")
 
     @app.get("/api/tts/{turn_id}/{index}")
     def tts(turn_id: str, index: int, student_id: str = Depends(signed_in)) -> Response:
@@ -154,6 +171,28 @@ def create_app(settings: Settings | None = None, *, llm=None, cur: Curriculum | 
 
     app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")   # last, so the /api routes win
     return app
+
+
+def as_lines(run_turn) -> StreamingResponse:
+    """A turn's JSON as lines. run_turn(on_wait) runs the turn and returns its JSON; while it runs, on_wait(key)
+    (the tutor is about to ask the AI for its reply) sends {"wait": key, "say": that line} at once, so the page can
+    say it during the wait. The turn's own JSON is the last line."""
+    found = queue.Queue()
+
+    def work():
+        try:
+            found.put(run_turn(lambda key: found.put({"wait": key, "say": replies.WAIT[key]})))
+        except Exception:                             # the turn itself never raises; this is a last resort
+            log.exception("a turn failed before its reply")
+            found.put({"error": "Something went wrong. Please try again."})
+
+    def lines():
+        while "wait" in (item := found.get()):
+            yield json.dumps(item) + "\n"
+        yield json.dumps(item) + "\n"
+
+    threading.Thread(target=work, daemon=True).start()
+    return StreamingResponse(lines(), media_type="application/x-ndjson")
 
 
 # The tutor's JSON log lines (one per turn) go to stdout. Other libraries stay at WARNING:

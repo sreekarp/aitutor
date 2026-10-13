@@ -13,7 +13,7 @@ SETTINGS = Settings(openrouter_api_key="test-key", access_code="test", session_s
                     database_url="sqlite://", llm_mode="auto", max_turns_per_day=1000, tts_voice="sarah",
                     stt_language="en", https_only=False)
 NOT_SURE = {"type": "not_sure", "answer": "", "showed_working": False, "mistake": None, "safety": False}
-REJECTED = "respond_rejected:line e1: a solved example can't use this concept's questions as its example"
+REJECTED = "respond_rejected:line e1: a solved example can't use a lesson question as its example"
 
 
 def write(line_id: str, latex: str, check: str, relation: str = "equiv") -> dict:
@@ -32,6 +32,9 @@ EXAMPLE = {"segments": [
 # The same move on a lesson question (fa1): rejected, as solving it would give that question's answer away.
 USES_FA1 = {"segments": [{"say": "Here's one like it.", "board": [
     write("e1", "x^2 - 5x + 6 = 0", "Eq(x**2 - 5*x + 6, 0)", "new")]}]}
+# Another topic's question (the quadratic formula's qf4): solved here, its answer would be known before it is asked.
+USES_QF4 = {"segments": [{"say": "Here's one like it.", "board": [
+    write("e1", "x^2 - 7x + 10 = 0", "Eq(x**2 - 7*x + 10, 0)", "new")]}]}
 
 
 def on_split_middle(cur, db_engine, llm=None) -> tuple[Tutor, str]:
@@ -113,3 +116,14 @@ def test_say_again_and_a_reload_after_an_example_keep_its_cue_and_buttons(cur):
     assert len(cues) == 1 and again["segments"][-1]["say"] == cues[0]
     assert again["choices"] == buttons
     assert client.get("/api/state").json()["choices"] == buttons
+
+
+def test_a_solved_example_never_uses_another_topics_question(cur, db_engine):
+    """Every topic's questions are off limits as examples, not only this topic's: the facts list them all, and an
+    example on one is rejected (twice here, so the scripted words go over the step)."""
+    fake = FakeLLM(respond=[USES_QF4, USES_QF4])
+    tutor, student_id = on_split_middle(cur, db_engine, fake)
+    result = tutor.turn(student_id, "not sure")
+    assert result.issues == [REJECTED, REJECTED, "respond_fallback"]
+    facts = fake.asked[0][1][1]["content"]
+    assert all(check.equation in facts for concept in cur.concepts.values() for check in concept.checks)

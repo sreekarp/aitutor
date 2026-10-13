@@ -31,7 +31,7 @@ def test_the_browser_checks_for_a_newer_page_every_time(cur):
     """After a deploy, a browser must not mix old and new page files: each one is checked every time (a quick 304 when
     nothing changed)."""
     client = make_client(cur)
-    for path in ("/", "/app.js", "/voice.js", "/topics.js", "/style.css"):
+    for path in ("/", "/app.js", "/net.js", "/voice.js", "/topics.js", "/style.css"):
         assert client.get(path).headers.get("cache-control") == "no-cache", path
 
 

@@ -30,7 +30,7 @@ class ReplyContext:
     key: AnswerKey | None           # pending question's key
     next_key: AnswerKey | None      # for a reteach: the next question's key
     student_answer: str             # values the student already said (never flagged)
-    check_equations: list[str]      # this concept's check equations ("never use as examples")
+    check_equations: list[str]      # every topic's question equations ("never use as examples")
     formulas: dict[str, str]
 
 
@@ -151,11 +151,11 @@ def _command_problems(cmd: BoardCommand, ctx: ReplyContext, latex_of: dict[str, 
     if cmd.relation == "new" and ctx.action in ("hint", "follow_up"):
         return [f"{line}: hints and follow-ups can't use relation new; stay with the question"]
     if ctx.action in NO_LESSON_QUESTIONS and cmd.check and _uses_check_equation(cmd.check, ctx.check_equations):
-        return [f"{line}: {NO_LESSON_QUESTIONS[ctx.action]} can't use this concept's questions as its example"]
+        return [f"{line}: {NO_LESSON_QUESTIONS[ctx.action]} can't use a lesson question as its example"]
     if ctx.action == "explain" and cmd.check:      # the open question's own equation is allowed
         others = [equation for equation in ctx.check_equations if equation != ctx.anchor]
         if _uses_check_equation(cmd.check, others):
-            return [f"{line}: an explanation can't use another of this concept's questions as its example"]
+            return [f"{line}: an explanation can't use another lesson question as its example"]
     return []
 
 

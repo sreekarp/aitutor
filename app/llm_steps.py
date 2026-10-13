@@ -86,7 +86,8 @@ def _llm_respond(llm, cur: Curriculum, ctx: TurnContext, decision: Decision, und
     next_check = curriculum.get_check(concept, decision.ask_check_id) if decision.action == "reteach" else None
     key = grading.answer_key(check) if check else None
     next_key = grading.answer_key(next_check) if next_check else None
-    equations = [question.equation for question in concept.checks]
+    # every topic's questions: an example solved now would give away a later topic's answer
+    equations = [question.equation for each in cur.concepts.values() for question in each.checks]
     reply_ctx = board.ReplyContext(action=decision.action, board=ctx.board,
                                    anchor=check.equation if check else None, key=key, next_key=next_key,
                                    student_answer=understood.answer, check_equations=equations,

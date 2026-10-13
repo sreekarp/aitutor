@@ -17,6 +17,9 @@ MISHEARD = "Sorry, I may have misheard you. Say it again, or type it."
 DIDNT_FOLLOW = "Sorry, I didn't follow that."
 APOLOGIES = (DIDNT_CATCH, MISHEARD, DIDNT_FOLLOW)
 SORRY = "Sorry, let's try that again."                 # after an error on our side: nothing changed
+# Said at once while the AI writes the reply (wait_key picks which), so the wait isn't silent.
+WAIT = {"example": "Sure, let me think of one.", "explain": "Good question. Let me think.",
+        "think": "Hmm, let me think."}
 SAFETY_REPLY = ("Thank you for telling me. If something is worrying you, please talk to a parent, a teacher or "
                 "another adult you trust. And please don't share personal details like your phone number or "
                 "address here.")
@@ -45,6 +48,11 @@ CUES = {"offer": ("Shall I teach it? Or say 'test me' if you already know it.",
         "last_step": ("Ready for a question?", "Ready to try a question?", "Shall we try a question now?"),
         "example": ("Shall we go on, or shall I do another example?",
                     "Shall we go on, or would you like another example?")}
+
+
+def wait_key(action: str) -> str:
+    """Which WAIT line goes with an action the AI writes the reply for."""
+    return action if action in ("example", "explain") else "think"
 
 
 # ---------- scripted replies ----------

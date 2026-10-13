@@ -11,7 +11,8 @@ from sqlalchemy import Engine
 
 from app import board, compose, curriculum, db, engine, fallback, llm_steps, replies, safety, sessions, stops
 from app.config import MAX_INPUT_CHARS, MODELS, PROMPT_VERSIONS, SESSION_GAP_MIN, TURN_DEADLINE_S, Settings
-from app.models import Curriculum, Decision, Grade, Progress, Segment, TurnContext, TurnResult, Understood
+from app.models import (LLM_ACTIONS, Curriculum, Decision, Grade, Progress, Segment, TurnContext, TurnResult,
+                        Understood)
 from app.replies import APOLOGIES, DIDNT_CATCH, DIDNT_FOLLOW, MISHEARD, SAFETY_REPLY, SORRY
 
 log = logging.getLogger(__name__)
@@ -80,8 +81,10 @@ class Tutor:
                              first_name=ctx.student["first_name"])
 
     def turn(self, student_id: str, text: str, *, input_mode: str = "text", prev_first_audio_ms: int | None = None,
-             stt_failed: bool = False, pre_calls: list | None = None, pre_latency: dict | None = None) -> TurnResult:
-        """One student turn. Raises NoSession before the first Start; any other error gives a scripted "Sorry"."""
+             stt_failed: bool = False, pre_calls: list | None = None, pre_latency: dict | None = None,
+             on_wait=None) -> TurnResult:
+        """One student turn. Raises NoSession before the first Start; any other error gives a scripted "Sorry".
+        on_wait(key) is called just before the AI writes the reply (a replies.WAIT key), so the page can talk."""
         pre_latency = pre_latency or {}
         started = time.monotonic() - pre_latency.get("stt", 0) / 1000    # a voice turn began with speech-to-text
         text = text.strip()[:MAX_INPUT_CHARS]
@@ -89,7 +92,7 @@ class Tutor:
         latency = {**pre_latency, "prev_first_audio_ms": prev_first_audio_ms}
         try:
             ctx, replaced = self._context(student_id, session, text, started, list(pre_calls or []), latency)
-            return self._run(ctx, replaced, over_limit, input_mode, stt_failed)
+            return self._run(ctx, replaced, over_limit, input_mode, stt_failed, on_wait)
         except Exception:
             log.exception("turn failed for student %s", student_id)
             return self._sorry(session, text)
@@ -104,7 +107,7 @@ class Tutor:
         return session, over_limit
 
     def _run(self, ctx: TurnContext, replaced: bool, over_limit: bool, input_mode: str,
-             stt_failed: bool) -> TurnResult:
+             stt_failed: bool, on_wait=None) -> TurnResult:
         """The order of checks: LIMIT, safety, curriculum change, a replay after a stop ("repeat", "continue", or any
         reply when the question wasn't shown yet), a topic asked for, fast paths, understanding."""
         understood = grade = None
@@ -130,6 +133,8 @@ class Tutor:
             again = ctx.last_speech[-1:] if ctx.phase == "teaching" and apology != DIDNT_CATCH else []
             words = [Segment(say=apology), *again]
         else:
+            if on_wait and decision.action in LLM_ACTIONS and not ctx.scripted:     # the AI writes it: a few seconds
+                on_wait(replies.wait_key(decision.action))
             words, decision, after = _timed(ctx, "respond", llm_steps.respond, self.llm, self.cur, ctx, decision,
                                             after, understood or Understood(type="unclear"), grade)
         hint = _input_hint(decision, understood, apology in (DIDNT_CATCH, MISHEARD))

@@ -141,7 +141,7 @@ def test_reteach_cannot_use_check_equation():
     for latex, check in (("x^{2}-5x+6=0", "Eq(x**2 - 5*x + 6, 0)"), ("x^{2}+6=5x", "Eq(x**2 + 6, 5*x)"),
                          ("(x-2)(x-3)=0", "Eq((x-2)*(x-3), 0)")):
         found = problems(write("e1", latex, check, relation="new"), **reteach)
-        assert any("questions as its example" in p for p in found), latex
+        assert any("a lesson question as its example" in p for p in found), latex
     assert problems(write("e1", "x^{2}-7x+12=0", "Eq(x**2 - 7*x + 12, 0)", relation="new"), **reteach) == []
 
 
@@ -156,7 +156,7 @@ def test_an_explanation_cannot_use_another_question_as_its_example(cur):
                   write("e2", "(2x - 1)(x - 3) = 0", "Eq((2*x - 1)*(x - 3), 0)"),
                   write("e3", r"x = 3 \text{ or } x = \frac{1}{2}", "Or(Eq(x, 3), Eq(x, 1/2))")]
     assert problems(*solves_fa7, say="Here is a similar one.", **open_fa2) == [
-        f"line {line_id}: an explanation can't use another of this concept's questions as its example"
+        f"line {line_id}: an explanation can't use another lesson question as its example"
         for line_id in ("e1", "e2", "e3")]
     own = [write("e1", "3x^2 - 6x + x - 2 = 0", "Eq(3*x**2 - 6*x + x - 2, 0)"),
            write("e2", "3x(x - 2) + 1(x - 2) = 0", "Eq(3*x*(x - 2) + 1*(x - 2), 0)")]
@@ -176,7 +176,7 @@ def test_a_solved_example_starts_new_but_never_on_a_lesson_question():
     for latex, check in (("x^{2}-5x+6=0", "Eq(x**2 - 5*x + 6, 0)"), ("(x-2)(x-3)=0", "Eq((x-2)*(x-3), 0)"),
                          ("3x^{2}-5x-2=0", "Eq(3*x**2 - 5*x - 2, 0)")):
         assert problems(write("e1", latex, check, relation="new"), **teaching) == [
-            "line e1: a solved example can't use this concept's questions as its example"], latex
+            "line e1: a solved example can't use a lesson question as its example"], latex
 
 
 def test_llm_cannot_reuse_id():
