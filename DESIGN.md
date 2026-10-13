@@ -29,8 +29,9 @@ reading a tap needs no model call (only a solved example calls RESPOND).
 | Anywhere | "Can we skip to the factorization topic?", "move on to the discriminant" | S2: that topic, as if it was picked in Topics |
 | | "say again", "pardon?" | R8: while teaching, the last reply again, check-in included; while a question is open, "Let me ask that again." and the question |
 
-"Yes", "no", "ok" and "haan" are read this way only while teaching: while a question is open they are
-answers, because several questions are yes or no. A spoken topic switch has to start the reply: only a
+"Yes", "yeah", "sure", "ok", "haan", "no", "nope" and "not really" (and "that makes sense") are read this way only
+while teaching: while a question is open they are answers, because several questions are yes or no. (The full list
+is under "Skip work" below.) A spoken topic switch has to start the reply: only a
 few polite lead-in words (ok, so, please, can we, I want to, let's) may come before a move word (skip, go, move, jump,
 switch, change, take me), then "to" and a topic's name from the `aliases` in its lesson file (unique,
 checked at startup), at the end of the reply; only a few filler words (topic, chapter, lesson, please, now...;
@@ -38,8 +39,10 @@ checked at startup), at the end of the reply; only a few filler words (topic, ch
 roots") goes to UNDERSTAND as usual. The switch is read after the safety check and before the keyword rules
 and UNDERSTAND, so "move on to the discriminant" switches topics instead of moving on. A safety reply, the
 day's limit and the end of the lessons get no check-in and no buttons, and "say again" after a safety reply
-says it again as it was, also with none. A lone "Sorry, I didn't catch that" asks for the reply itself, so it ends on no check-in,
-but it keeps the buttons the student already had. *(Designed)* Fairer passing: two clean answers in a row
+says it again as it was, also with none. A lone "Sorry, I didn't catch that" asks for the reply itself, so it ends
+on no check-in, but it shows the buttons of where the lesson stands (the step's, the offer's, or **Not sure** with a
+question open). Right after a safety reply the student had no buttons, so these are the first ones they get back, and
+a reload draws the same. *(Designed)* Fairer passing: two clean answers in a row
 to master a topic, a **Move on** button that passes it with a review question next session, and a
 "test me" slip sending the student to step 1.
 
@@ -357,9 +360,9 @@ What the student perceives, and what we do about it:
 - **Speak while synthesising:** the audio for every segment is requested at once, so segment 2 is
   being made while segment 1 plays.
 - **Skip work:** short replies made only of listed phrases ("ok", "haan", "not sure", "test me", "say
-  again", "pardon?"; "ok", "haan", "yes", "yeah", "sure", "no" and "nope" only while teaching), a spoken topic switch ("skip to
-  factorisation") and every button tap (each sends such a phrase) never reach a model, and scripted
-  actions (the next step, a new question, praise, "how did you get that?") need no RESPOND. So, while
+  again", "pardon?"; "ok", "haan", "yes", "yeah", "sure", "no", "nope" and "that makes sense" only while teaching), a
+  spoken topic switch ("skip to factorisation") and every button tap (each sends such a phrase) never reach a model,
+  and scripted actions (the next step, a new question, praise, "how did you get that?") need no RESPOND. So, while
   teaching, an "ok" uses no model, a right answer one (UNDERSTAND), a tap on **Not sure** while teaching one
   (RESPOND's solved example), and a wrong answer or a question two. Audio
   is cached on disk by model, voice and text, so lesson steps and scripted lines play at once after
