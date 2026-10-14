@@ -268,10 +268,15 @@ What that says:
   Render's free tier (a tenth of a CPU). A numeric pre-check (`board._could_be_same`) brought it to 0.19 s.
   Lesson learned: time CPU-bound changes on the slow host.
 - **Give up on a stalled model sooner.** In that afternoon's simulation logs every slow call looked the same: the
-  primary model hit the 8 s timeout, then the backup answered in 2–5 s. UNDERSTAND now switches after 4 s
-  (`ROLE_TIMEOUT_S`), so those 10–13 s waits should drop to about 6–9 s *(estimate; not re-measured live
-  yet)*. RESPOND keeps 8 s.
-- *(Designed)* **Next levers, by what the numbers say:** a short "Mm, let me check" when UNDERSTAND is slow,
+  primary model hit the 8 s timeout, then the backup answered in 2–5 s. So UNDERSTAND now switches to its backup
+  after 4 s and RESPOND after 5 s (`ROLE_TIMEOUT_S`). Re-tested live the same evening (11 spoken turns): three
+  UNDERSTAND calls hit the 4 s cut, the backup answered in 1.5–2.7 s, and those turns took 5.5–6.7 s instead of
+  10–13 s. One wrong answer still took 15 s: RESPOND's primary stalled for 8 s (before its cut was lowered), its
+  backup ran out of the turn's 15 s, and a scripted hint was used. The primary stalled on 4 of 13 calls that evening
+  and on none of 464 on 12 Oct, so this is the provider's bad day, but the tutor has to survive one.
+- *(Designed)* **Next levers, by what the numbers say:** a hedged request (if the primary hasn't answered in
+  ~2.5 s, also ask the backup and take whichever answers first), the real fix for a stalling provider; a short
+  "Mm, let me check" when UNDERSTAND is slow,
   as the waiting line does for RESPOND; a faster UNDERSTAND model (the evals compare models with
   `--model-understand`); streaming speech-to-text; stream RESPOND; barge-in.
 

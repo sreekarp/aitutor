@@ -164,14 +164,14 @@ def test_at_most_two_calls():
     assert len(seen) == 2
 
 
-def test_understand_switches_to_the_backup_after_4_seconds_and_respond_after_8():
-    """Waiting 8 s for a stalled UNDERSTAND primary made 10-13 s turns; RESPOND writes more and keeps 8 s."""
+def test_understand_switches_to_the_backup_after_4_seconds_and_respond_after_5():
+    """Waiting 8 s for a stalled primary made 10-13 s turns, and once left RESPOND's backup too little time."""
     client, seen = make_client(lambda request: chat_reply(GOOD))
     ask(client, [])
     assert seen[0].extensions["timeout"]["read"] == 4.0
     client, seen = make_client(lambda request: chat_reply(GOOD))
     client.chat_json("respond", MESSAGES, "reply", SCHEMA, lambda data: data, deadline=client.now() + 15.0, calls=[])
-    assert seen[0].extensions["timeout"]["read"] == 8.0
+    assert seen[0].extensions["timeout"]["read"] == 5.0
 
 
 def test_deadline_respected():

@@ -23,9 +23,10 @@ SESSION_GAP_MIN = 30
 TURN_DEADLINE_S = 15.0
 STT_TIMEOUT_S = 8.0
 LLM_TIMEOUT_S = 8.0
-# UNDERSTAND takes 2-3 s when healthy. When its primary stalled (live, 14 Oct) the backup answered in 2-5 s, so
-# waiting the full 8 s first made 10-13 s turns: it switches sooner. RESPOND writes more and keeps 8 s.
-ROLE_TIMEOUT_S = {"understand": 4.0}
+# When a primary model stalled (live, 14 Oct), waiting the full 8 s first made 10-13 s turns, and once left RESPOND's
+# backup too little of the turn's 15 s. Healthy, UNDERSTAND takes 2-3 s and RESPOND 2-3 s (p95 3.2 s), so both
+# switch to the backup sooner.
+ROLE_TIMEOUT_S = {"understand": 4.0, "respond": 5.0}
 TTS_TIMEOUT_S = 4.0
 BREAKER_FAILURES = 3
 BREAKER_COOLDOWN_S = 60.0
