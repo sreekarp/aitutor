@@ -7,7 +7,7 @@ from sympy import Poly, expand
 
 from app import board, curriculum, examples, grading, mathcheck, prompts
 from app.config import PROMPT_VERSIONS, ROOT
-from app.models import BoardCommand, BoardLine, Decision, Kind, Reply, ReplyType, Segment, Understood
+from app.models import BoardCommand, BoardLine, Check, Decision, Kind, Reply, ReplyType, Segment, Understood
 
 NO_REVEAL = "- Never give away the answer to the PENDING QUESTION"
 DEMO_LINE = "hint: Give the hint for HINT LEVEL, built on the LESSON'S HINT but aimed at what the student said."
@@ -128,7 +128,7 @@ def test_the_broken_prompt_demo_edits_a_line_of_the_configured_respond_prompt():
     assert f"cp app/prompts/{respond}.md app/prompts/respond.broken.md" in readme and DEMO_LINE in readme
 
 
-@pytest.mark.parametrize("name", ["respond.v2", "respond.v3", "respond.v4", "respond.v5", "respond.v6"])
+@pytest.mark.parametrize("name", ["respond.v2", "respond.v3", "respond.v4", "respond.v5", "respond.v6", "respond.v7"])
 def test_later_respond_prompts_keep_the_no_reveal_rule(name):
     """Every respond version keeps v1's no-reveal rule word for word."""
     v1, later = prompts.load_prompt("respond.v1").splitlines(), prompts.load_prompt(name).splitlines()
@@ -143,7 +143,7 @@ def _a_times_c(equation: str):
     return poly.coeff_monomial(mathcheck.x**2) * poly.coeff_monomial(1) if poly.degree() == 2 else None
 
 
-@pytest.mark.parametrize("name", ["respond.v2", "respond.v3", "respond.v4", "respond.v5", "respond.v6"])
+@pytest.mark.parametrize("name", ["respond.v2", "respond.v3", "respond.v4", "respond.v5", "respond.v6", "respond.v7"])
 def test_labelled_step_example_passes_the_reply_rules(cur, name):
     """The two-line example (a words line, then its maths line) is a reply board.py accepts. Its product
     is no lesson question's a × c, so a model copying it into a hint can't mix it up with the question's numbers."""
@@ -227,6 +227,22 @@ def test_working_hint_covers_every_kind():
         assert kind in prompts.ANSWER_FORMATS
 
 
+def test_find_k_facts_are_about_values_of_k(cur):
+    """UNDERSTAND reads the values of k ("k = 4" is fine); RESPOND's verdict says what is wrong with them."""
+    in_front = Check(id="k1", say="Find k.", label="Find k:", equation="Eq(k*x**2 + k*x + 1, 0)", kind="find_k",
+                     hints=["One.", "Two.", "Three."])                  # k = 4 (k = 0 leaves no x squared term)
+    reply = {"type": "answer", "answer": "k = 0 or k = 4", "showed_working": True, "mistake": None, "safety": False}
+    assert prompts.read_understood(reply, in_front)[1] == []
+    decision = Decision(rule="R5", action="follow_up", concept_id="discriminant", reason="Partly right.")
+    facts = prompts.respond_messages(
+        decision=decision, concept=cur.concepts["discriminant"], step=None, check=in_front,
+        key=grading.answer_key(in_front), next_check=None, next_key=None,
+        understood=Understood(type="answer", answer="0, 4"), grade=grading.grade(in_front, "0, 4"), mistake=None,
+        hint_text=None, board=[], check_equations=[], formulas=cur.formulas, previous_reason="")[1]["content"]
+    assert "SYMPY'S VERDICT: partial (a value of k that makes a zero was kept" in facts
+    assert "root" not in _line(facts, "SYMPY'S VERDICT: ")
+
+
 def test_read_understood_checks_the_answer_format(cur):
     check = cur.concepts["factorisation"].checks[0]
     reply = {"type": "answer", "answer": "2, 3", "showed_working": True, "mistake": None, "safety": False}
@@ -308,9 +324,8 @@ def test_respond_facts_name_only_lines_still_on_the_board(cur):
 
 
 def test_respond_v6_takes_new_examples_from_the_example_equations(cur):
-    """respond.v6 (in use) is v5, except a new example's equation comes from EXAMPLE EQUATIONS (checked, none a
-    lesson question), which the facts list with their roots, leaving out any sharing a root with the answer."""
-    assert PROMPT_VERSIONS["respond"] == "respond.v6"
+    """respond.v6 is v5, except a new example's equation comes from EXAMPLE EQUATIONS (checked, none a lesson
+    question), which the facts list with their roots, leaving out any sharing a root with the answer."""
     v5, v6 = prompts.load_prompt("respond.v5"), prompts.load_prompt("respond.v6")
     assert v6.startswith(v5[:v5.index("## Rules for the board")])          # the opening and format are v5's
     assert " ".join(v6.split()).count("EXAMPLE EQUATIONS") >= 4           # the board rule, explain, example, reteach
@@ -331,3 +346,22 @@ def test_respond_v6_takes_new_examples_from_the_example_equations(cur):
     assert kept and all(examples.discriminant(e) != d for e in kept)     # 3x^2 - 7x + 2 (D = 25) is left out
     assert len(kept) < len(cur.examples)
     assert "2x^2 - 7x + 6" not in facts and "x^2 + 9x + 18" not in facts    # they share 2, and -3
+
+
+def test_respond_v7_knows_find_k_questions():
+    """respond.v7 (in use) is v6 plus a find-k question: a line in k after its equation is that equation's D = 0,
+    values of k are written like roots and never given away, and a worked answer ends on them. Its examples pass
+    the board's checks."""
+    assert PROMPT_VERSIONS["respond"] == "respond.v7"
+    v6, v7 = prompts.load_prompt("respond.v6"), prompts.load_prompt("respond.v7")
+    assert v7.startswith(v6[:v6.index("## Rules for the board")])          # the opening and format are v6's
+    flat = " ".join(v7.split())
+    assert flat.count("find-k question") >= 4                              # the board, examples, no reveal, review
+    assert 'no letters other than x (and k, in a find-k question)' in flat
+    for rule in ("Arithmetic (no x and no k)", "this replaces EXAMPLE EQUATIONS",     # what the checker accepts
+                 "a hint or follow_up writes no line in x after a line in k"):
+        assert rule in flat, rule
+    worked = [{"latex": r"k^2 - 4 \cdot 1 \cdot 9 = 0", "check": "Eq(k**2 - 4*1*9, 0)"},
+              {"latex": r"k = 6 \text{ or } k = -6", "check": "Or(Eq(k, 6), Eq(k, -6))"}]
+    assert all(line["latex"] in v7 and line["check"] in v7 for line in worked)
+    assert mathcheck.problems(worked, anchor="Eq(x**2 + k*x + 9, 0)") == []

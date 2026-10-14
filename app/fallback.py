@@ -90,6 +90,7 @@ METHOD = re.compile(r"\b(?:d|formula|discriminant|(?:factor|split|bracket|substi
 BECAUSE = phrases("because", "since")
 MARKER = re.compile(r"\b(?:because|since|so|as)\b|=")    # the answer is read from the text before these
 X_OR_D = re.compile(r"(?<![a-z])[xd](?![a-z])")           # a part that mentions x or D is working, not a value
+LETTER_K = re.compile(r"(?<![a-z])k(?![a-z])")            # and, on a find-k question, one that mentions k
 MATHS = re.compile(r"sqrt|[-+*/().±0-9 ]")
 NUMBER_WORDS = {word: str(n) for n, word in enumerate(
     "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "
@@ -98,7 +99,7 @@ NUMBER_WORD = re.compile(r"\b(?:" + "|".join(NUMBER_WORDS) + r")\b")
 # The answer words each kind accepts, from grading's lists: "haan" -> "yes", "no solution" -> "none".
 WORD_CHOICES = {"is_quadratic": grading.YES_NO_WORDS, "is_root": grading.YES_NO_WORDS,
                 "has_real_roots": grading.YES_NO_WORDS, "nature": grading.NATURE_WORDS,
-                "roots": {"none": grading.NONE_PHRASES}}
+                "roots": {"none": grading.NONE_PHRASES}, "find_k": {"none": grading.NONE_PHRASES}}
 
 
 # A topic asked for by name: a move verb, maybe "on" or "back", then "to" ("can we skip to", "move on to", "take me
@@ -226,10 +227,13 @@ def understand(text: str, *, phase: str, check: Check | None, awaiting_working: 
 
 
 def _drop_names(text: str, check: Check | None) -> str:
-    """Remove "x =", "x is", "x equals" (and "D =" on D questions, "b =" when b is asked): they aren't working."""
+    """Remove "x =", "x is", "x equals" (and "D =" on D questions, "k =" on find-k questions, "b =" when b is asked):
+    they aren't working."""
     names = "x"
     if check and check.kind == "discriminant":
         names += "d"
+    if check and check.kind == "find_k":
+        names += "k"
     if check and check.kind == "coefficient" and check.which:
         names += check.which
     return re.sub(rf"(?<![a-z0-9])[{names}]\s*(?:=|equals\b|is\b)\s*", " ", text)
@@ -250,7 +254,7 @@ def _answer(text: str, check: Check) -> str:
     text = MARKER.split(_drop_names(text, check), maxsplit=1)[0]
     if check.kind in WORD_KINDS:
         return _answer_word(text, check.kind)
-    return _numbers(text) or _answer_word(text, check.kind)
+    return _numbers(text, check.kind == "find_k") or _answer_word(text, check.kind)
 
 
 def _answer_word(text: str, kind: str) -> str:
@@ -260,11 +264,12 @@ def _answer_word(text: str, kind: str) -> str:
     return spellings[" ".join(re.findall(r"[a-z]+", found.group(0)))] if found else ""
 
 
-def _numbers(text: str) -> str:
-    """The value in each comma / and / or part, e.g. "-2, 3". Numbers next to x or D ("-2x") are working."""
+def _numbers(text: str, find_k: bool = False) -> str:
+    """The value in each comma / and / or part, e.g. "-2, 3". Numbers next to x or D ("-2x"), or k on a find-k
+    question ("k squared minus 64"), are working."""
     values = []
     for part in grading.SEPARATORS.split(text):
         value = " ".join("".join(MATHS.findall(part)).split()).rstrip(".")
-        if re.search(r"[0-9]", value) and not X_OR_D.search(part):
+        if re.search(r"[0-9]", value) and not X_OR_D.search(part) and not (find_k and LETTER_K.search(part)):
             values.append(value)
     return ", ".join(values)

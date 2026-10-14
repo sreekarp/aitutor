@@ -60,11 +60,11 @@ def test_hint_follow_up_clarify_explain_and_reteach(cur):
     progress = fresh_progress(cur)
     progress["factorisation"].step_id = "split_middle"                  # while teaching, the step is replayed
     explained = spoken(cur, "explain", None, "factorisation", progress)
-    assert explained[1:] == [s.say for s in concept.steps[1].segments]
+    assert explained[1:] == [s.say for s in curriculum.get_step(concept, "split_middle").segments]
     fix = next(m.fix for m in concept.mistakes if m.id == "sign_flip")
     retaught = spoken(cur, "reteach", fa1, "factorisation", mistake="sign_flip")
     assert retaught[0] == f"Let's look at it another way. {fix}"
-    assert retaught[1:] == [s.say for s in concept.steps[0].segments]   # reteach_step zero_product, replayed
+    assert retaught[1:] == [s.say for s in curriculum.get_step(concept, concept.reteach_step).segments]
     assert spoken(cur, "probe", check_of(cur, "rt1")) == ["Right — how do you know?"]
     assert spoken(cur, "probe", fa1) == ["Right — how did you get that?"]
 
@@ -111,10 +111,10 @@ def test_praise_greeting_and_summary(cur):
     progress["standard_form"] = ConceptState("standard_form", status="teaching", step_id="hook")   # on step 1
     greeting = spoken(cur, "greet", None, "standard_form", progress, resume_concept_id="standard_form")
     assert greeting == ["Hi Asha! Let's start today with standard form and recognising a quadratic."]
-    progress["discriminant"] = ConceptState("discriminant", status="teaching", step_id="what_is_d")
+    progress["discriminant"] = ConceptState("discriminant", status="teaching", step_id="hook")   # on step 1
     assert spoken(cur, "greet", None, "discriminant", progress, resume_concept_id="discriminant") == [
         "Hi Asha! Let's start today with the discriminant and the nature of roots."]
-    progress["roots"] = ConceptState("roots", status="teaching", step_id="definition", last_check_id="rt3")
+    progress["roots"] = ConceptState("roots", status="teaching", step_id="hook", last_check_id="rt3")
     assert spoken(cur, "greet", None, "roots", progress, resume_concept_id="roots") == [   # S0 started it again
         "Hi Asha! Last time, roots and checking by substitution needed more practice, so let's go over it again."]
     progress["standard_form"].status, progress["roots"].status = "mastered", "needs_review"
@@ -151,7 +151,7 @@ def test_greeting_at_a_topic_start_starts_the_topic(cur):
 
 def test_names_typed_in_one_case_get_capitals(cur):
     progress = fresh_progress(cur)
-    progress["roots"] = ConceptState("roots", status="teaching", step_id="definition")     # on step 1
+    progress["roots"] = ConceptState("roots", status="teaching", step_id="hook")           # on step 1
     for typed, said in (("sreekar", "Sreekar"), ("SREEKAR", "Sreekar"), ("sai kiran", "Sai Kiran"),
                         ("McDonald", "McDonald")):                                        # mixed case is kept
         greeting = spoken(cur, "greet", None, "roots", progress, first_name=typed, resume_concept_id="roots")
@@ -195,8 +195,9 @@ def test_answer_line_is_checked_or_text(cur):
     for check in [c for concept in cur.concepts.values() for c in concept.checks] + [no_roots]:
         line, key = replies.answer_line(check), grading.answer_key(check)
         assert (line.op, line.id) == ("write", "answer")
-        if check.kind == "roots" and key.values:
-            assert line.text is None and line.relation == ("select" if check.keep else "equiv")
+        if check.kind in ("roots", "find_k") and key.values:
+            dropped = len(key.values) < len(key.all_roots)           # a negative length, or k = 0 (no x squared)
+            assert line.text is None and line.relation == ("select" if check.keep or dropped else "equiv")
             assert mathcheck.problems([line.model_dump()], anchor=check.equation) == [], check.id
             claimed = list(mathcheck.solutions(mathcheck.parse_check(line.check)))
             assert len(claimed) == len(key.values)                       # the claim states exactly the key
@@ -230,6 +231,20 @@ def test_reask_per_kind(cur):
         check = check_of(cur, check_id)
         assert replies.reask(check, awaiting_working=False) == Segment(say=say), check_id
         assert replies.reask(check, awaiting_working=True).say == "So, how did you get your answer?"
+
+
+def test_find_k_scripted_words_are_about_values_of_k(cur):
+    """A find-k question's answer is its values of k, so its scripted lines never talk about roots."""
+    in_front = Check(id="k1", say="Find k.", label="Find k:", equation="Eq(k*x**2 + k*x + 1, 0)", kind="find_k",
+                     hints=["One.", "Two.", "Three."])                  # k = 4 (k = 0 leaves no x squared term)
+    assert replies.reask(in_front, awaiting_working=False) == Segment(say="So, what are the values of k?")
+    assert spoken(cur, "clarify", in_front) == ["Say just the values of k, or type them."]
+    for detail in ("missing", "extra"):
+        [line] = spoken(cur, "follow_up", in_front, "discriminant", grade=Grade("partial", "4", detail=detail))
+        assert "of k" in line and "root" not in line, detail
+    answer = replies.answer_line(in_front)
+    assert (answer.latex, answer.check, answer.text, answer.relation) == ("k = 4", "Eq(k, 4)", None, "select")
+    assert mathcheck.problems([answer.model_dump()], anchor=in_front.equation) == []
 
 
 def test_reask_after_hint_1_or_2_asks_for_that_step(cur):

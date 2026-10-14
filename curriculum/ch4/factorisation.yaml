@@ -7,6 +7,16 @@ intro: "Factorising lets us find the roots ourselves: we write the quadratic as 
 aliases: [factorisation, factorization, factorising, factorizing, factoring]
 
 steps:
+  - id: hook
+    segments:
+      - say: "Let's start with a garden. It is 2 metres longer than it is wide, and its area is 24 square metres. If its width is x metres, then x times x plus 2 is 24."
+        board:
+          - {op: write, id: fh1, latex: 'x(x+2) = 24', check: "Eq(x*(x+2), 24)"}
+          - {op: write, id: fh2, latex: 'x^2 + 2x - 24 = 0', check: "Eq(x**2 + 2*x - 24, 0)"}
+      - say: "Factorising turns it into x plus 6, times x minus 4, equals zero. That gives x as minus 6 or 4, and a width can't be negative, so the garden is 4 metres wide. Let's see how factorising works."
+        board:
+          - {op: write, id: fh3, latex: '(x+6)(x-4) = 0', check: "Eq((x+6)*(x-4), 0)"}
+
   - id: zero_product
     segments:
       - say: "If two numbers multiply to give zero, at least one of them must be zero. Look at this equation."

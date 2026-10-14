@@ -13,9 +13,9 @@ from app.models import AnswerKey, Curriculum, Example
 
 def for_turn(cur: Curriculum, keys: list[AnswerKey | None]) -> list[str]:
     """The example equations RESPOND may use this turn, one line each with its roots: none sharing a root with
-    these answer keys (the question being asked, and the next one), and none with no real roots when one of
-    those answers is "no real roots"."""
-    answers = [key for key in keys if key and key.kind == "roots"]
+    these answer keys (the question being asked, and the next one; for a find-k question, its values of k, since
+    "x equals 4" sounds like "k is 4"), and none with no real roots when one of those answers is "no real roots"."""
+    answers = [key for key in keys if key and key.kind in ("roots", "find_k")]
     taken = [complex(value) for key in answers for value in key.all_roots or key.values or []]
     no_roots = any(not key.values for key in answers)
     d_values = [key.values[0] for key in keys if key and key.kind == "discriminant" and key.values]
@@ -70,6 +70,8 @@ def _could_be_same(a, b) -> bool:
     equations in x differ when, at a sample x, their sides (left minus right) differ either way round; a root claim
     ("x = 2 or x = 5") and an equation differ when a claimed root doesn't solve the equation. Anything else: True,
     and same_maths decides. A real match is never ruled out."""
+    if a.free_symbols != b.free_symbols:                        # x and k lines: same_maths says no too
+        return False
     if isinstance(a, Or) != isinstance(b, Or):                  # a root claim and an equation
         claim, other = (a, b) if isinstance(a, Or) else (b, a)
         if not (isinstance(other, Eq) and other.free_symbols):

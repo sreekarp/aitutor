@@ -45,7 +45,7 @@ def trouble() -> FakeLLM:
 
 def test_scenarios_file_valid(cur):
     scenarios = layer2.load_scenarios()
-    assert len(scenarios) == 22 and len({s["id"] for s in scenarios}) == 22
+    assert len(scenarios) == 24 and len({s["id"] for s in scenarios}) == 24
     for s in scenarios:
         setup, expect = s["setup"], s["expect"]
         assert set(setup) <= layer2.SETUP_KEYS and set(expect) <= layer2.EXPECT_KEYS, s["id"]

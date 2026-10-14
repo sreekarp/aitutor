@@ -51,7 +51,7 @@ MODELS: dict[str, list[dict]] = {
     "tts": [{"id": "elevenlabs/eleven-flash-v2.5", "params": {}}],   # mp3 out; Gemini TTS is PCM-only on OpenRouter
 }
 TTS_INSTRUCTIONS = "Warm, patient teacher; clear, moderate pace."
-PROMPT_VERSIONS = {"understand": "understand.v4", "respond": "respond.v6"}
+PROMPT_VERSIONS = {"understand": "understand.v4", "respond": "respond.v7"}
 
 
 @dataclass(frozen=True)

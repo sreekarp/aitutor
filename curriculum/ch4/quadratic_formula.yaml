@@ -8,6 +8,14 @@ intro: "Some quadratics are hard to factorise by splitting the middle term, and 
 aliases: [quadratic formula]
 
 steps:
+  - id: hook
+    segments:
+      - say: "Here's a garden that's harder to solve. It is 2 metres longer than it is wide, and its area is 10 square metres. If its width is x metres, then x times x plus 2 is 10."
+        board:
+          - {op: write, id: qh1, latex: 'x(x+2) = 10', check: "Eq(x*(x+2), 10)"}
+          - {op: write, id: qh2, latex: 'x^2 + 2x - 10 = 0', check: "Eq(x**2 + 2*x - 10, 0)"}
+      - say: "No two whole numbers multiply to minus 10 and add up to 2, so splitting the middle term won't work here. The quadratic formula still finds the width: it is about 2.3 metres."
+
   - id: the_formula
     segments:
       - say: "Here is the formula. Read a, b and c from the standard form and put them in."

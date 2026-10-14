@@ -5,7 +5,7 @@ import re
 
 from sympy import Eq, Expr, Poly, S, expand, simplify, solveset, sstr
 
-from app.mathcheck import parse_check, x
+from app.mathcheck import k, parse_check, x
 from app.models import WORD_KINDS, AnswerKey, Check, Grade
 
 # ---------- reading an answer ----------
@@ -31,7 +31,7 @@ def parse_answer(text: str, kind: str):
     text = _tidy(text)               # lower case, no outer spaces or final full stop
     text = _plain_symbols(text)      # minus signs, × ÷ ^ and the spellings of ±
     text = _square_roots(text)       # √2 -> sqrt(2), 2√3 -> 2*sqrt(3)
-    text = _drop_x_equals(text)      # "x = 2, x = 3" -> "2, 3"
+    text = _drop_x_equals(text)      # "x = 2, x = 3" -> "2, 3" (and "k = 4" -> "4")
     if _words_only(text) in NONE_PHRASES:
         return []
     values = []
@@ -66,7 +66,7 @@ def _square_roots(text):
 
 
 def _drop_x_equals(text):
-    return re.sub(r"(?<![\w.])x\s*=\s*", "", text)     # not the "x =" inside "2x = 6"
+    return re.sub(r"(?<![\w.])[xk]\s*=\s*", "", text)     # not the "x =" inside "2x = 6"
 
 
 def _words_only(text):
@@ -118,6 +118,8 @@ def answer_key(check: Check) -> AnswerKey:
     """The check's right answer, computed by SymPy. Raises ValueError or CheckError if its maths is broken."""
     expr = _left_minus_right(check.equation)
     kind = check.kind
+    if (k in expr.free_symbols) != (kind == "find_k"):
+        raise ValueError(f"{check.id}: only a find_k question has k in it, and it must")
     if kind == "roots":
         all_roots = _real_roots(expr)
         values = [r for r in all_roots if r.is_positive] if check.keep == "positive" else list(all_roots)
@@ -140,14 +142,21 @@ def answer_key(check: Check) -> AnswerKey:
         return AnswerKey(kind=kind, word="distinct" if d > 0 else "equal" if d == 0 else "none")
     if kind == "has_real_roots":
         return AnswerKey(kind=kind, word="yes" if d >= 0 else "no")
+    if kind == "find_k":             # the k that make D zero, but not one that makes a zero: then it's no quadratic
+        all_values = _real_roots(expand(d), k)
+        values = [value for value in all_values if simplify(a.subs(k, value)) != 0]     # by value: 1 ± √2 too
+        if not values:
+            raise ValueError(f"{check.id}: no value of k gives two equal roots")
+        return AnswerKey(kind=kind, values=values, all_roots=all_values)
     raise ValueError(f"{check.id}: unknown kind {kind!r}")
 
 
 def key_text(check: Check) -> str:
-    """The key as words for a scripted line: "x = 2 or x = 3", "b = -7", "No real roots"."""
+    """The key as words for a scripted line: "x = 2 or x = 3", "k = 4", "b = -7", "No real roots"."""
     key = answer_key(check)
-    if check.kind == "roots":
-        return " or ".join(f"x = {_show(value)}" for value in key.values) or "No real roots"
+    if check.kind in ("roots", "find_k"):
+        letter = "k" if check.kind == "find_k" else "x"
+        return " or ".join(f"{letter} = {_show(value)}" for value in key.values) or "No real roots"
     if check.kind == "coefficient":
         return f"{check.which} = {_show(key.values[0])}"
     if check.kind == "discriminant":
@@ -188,9 +197,9 @@ def _left_minus_right(equation):
     return expr
 
 
-def _real_roots(expr):
+def _real_roots(expr, letter=x):
     """Every real root of expr = 0, smallest first."""
-    roots = solveset(expr, x, S.Reals)
+    roots = solveset(expr, letter, S.Reals)
     if not roots.is_finite_set:
         raise ValueError(f"{expr} = 0 doesn't have a list of roots")
     return sorted(roots, key=float)
@@ -228,7 +237,7 @@ def grade(check: Check, answer: str) -> Grade:
         return Grade(verdict="unsure", student=student)
     if check.kind in WORD_KINDS:
         verdict, detail = ("correct" if given == key.word else "wrong"), ""
-    elif check.kind == "roots":
+    elif check.kind in ("roots", "find_k"):
         verdict, detail = _grade_roots(given, key)
     else:
         verdict, detail = _grade_one_number(given, key)
@@ -238,7 +247,7 @@ def grade(check: Check, answer: str) -> Grade:
 
 
 def _grade_roots(given, key):
-    """A roots answer, compared with the key as sets of values. Returns (verdict, detail)."""
+    """A roots (or find_k) answer, compared with the key as sets of values. Returns (verdict, detail)."""
     if _same_set(given, key.values):
         return "correct", ""
     if not given:

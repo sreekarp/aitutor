@@ -103,6 +103,32 @@ checks:
       - "That simplifies to x squared plus 2x minus 48 equals zero. Factorise it and keep the positive root."
     traps: {kept_impossible_root: "6, -8"}
 
+  - id: wp6
+    say: "The squares of two consecutive positive integers add up to 145. What is the smaller one? Tell me how you got it."
+    label: "The squares of two consecutive positive integers add up to 145. What is the smaller one?"
+    equation: "Eq(x**2 + (x + 1)**2, 145)"
+    kind: roots
+    keep: positive
+    show_equation: false
+    hints:
+      - "Call the smaller integer x. What is the next one?"
+      - "The next integer is x plus 1. So the square of x, plus the square of x plus 1, equals 145. Expand it and bring the 145 to the left side."
+      - "That gives 2x squared plus 2x minus 144 equals zero. Divide by 2, factorise, and keep the positive root."
+    traps: {kept_impossible_root: "8, -9"}
+
+  - id: wp7
+    say: "A potter makes some cups in a day. Each cup costs 4 rupees more than twice the number of cups made, and the total cost is 198 rupees. How many cups were made? Tell me how you got it."
+    label: "Each cup costs ₹4 more than twice the number of cups made. The total cost is ₹198. How many cups were made?"
+    equation: "Eq(x*(2*x + 4), 198)"
+    kind: roots
+    keep: positive
+    show_equation: false
+    hints:
+      - "Call the number of cups x. What does each cup cost?"
+      - "Each cup costs 2x plus 4 rupees, so x times 2x plus 4 equals 198. Bring the 198 to the left side."
+      - "That gives 2x squared plus 4x minus 198 equals zero. Divide by 2, factorise, and keep the positive root."
+    traps: {kept_impossible_root: "9, -11"}
+
 mistakes:
   - id: kept_impossible_root
     looks_like: "keeps a root the story rules out, such as a negative length, age or count"

@@ -4,169 +4,32 @@ It grew out of an equation_check.py prototype, hardened after two reviews: it ne
 never crashes or hangs, and refuses any line it can't fully check. A board line is a dict with "latex"
 (what the student sees), "check" (the same maths in SymPy syntax) and "relation": "equiv" (the default:
 same roots as the line before), "select" (keeps some of those roots) or "new" (a fresh start).
+Reading the maths safely is mathread.py's job; its names are used from here too (mathcheck.parse_check).
 """
 from __future__ import annotations
 
-import re
+from sympy import Eq, FiniteSet, Or, Poly, S, expand, simplify, solveset
 
-from sympy import (Add, Eq, Expr, FiniteSet, Float, Integer, Mul, Number, Or, Poly, Pow, Rational, S,
-                   Symbol, preorder_traversal, simplify, solveset, sqrt)
-from sympy import latex as to_latex
-from sympy.core.function import AppliedUndef
-from sympy.core.parameters import evaluate
-from sympy.core.relational import Relational
-from sympy.parsing.latex import parse_latex
-from sympy.parsing.sympy_parser import parse_expr, rationalize, standard_transformations
+from app.mathread import CheckError, k, parse_check, parse_display, question_latex, root_of, unknown, x
 
-x = Symbol("x")
-# Eq stays unevaluated: otherwise sympy turns Eq(4, -4) into plain False before we can inspect it.
-ALLOWED_NAMES = {"x": x, "Eq": lambda a, b: Eq(a, b, evaluate=False), "Or": Or,
-                 "sqrt": sqrt, "Rational": Rational}
-# What sympy's generated code may call; nothing else (no builtins) is reachable.
-GLOBALS = {"Integer": Integer, "Float": Float, "Symbol": Symbol, "Rational": Rational,
-           "Add": Add, "Mul": Mul, "Pow": Pow, "__builtins__": {}}
-TOKEN = re.compile(r"\s*(\d+\.?\d*|[A-Za-z_]+|\*\*|[-+*/(),])")    # no "=": equations use Eq
-# Safety limits, so "9**9**9" or "x*x*...*x" can't hang the server: at most 200 characters and
-# 4 powers, every exponent a number up to 10, and x never raised above the power 10 overall.
-MAX_LENGTH, MAX_POWERS, MAX_EXPONENT = 200, 4, 10
-ALLOWED_NODES = (Symbol, Number, Add, Mul, Pow, Eq, Or)             # no factorials, sums or functions
-OR_WORD = re.compile(r"\\text\{\s*or\s*\}|,")                        # "x = 2 \text{ or } x = 3"
-SPACING = re.compile(r"\\left|\\right|\\[,;:!]|\\q?quad")            # strict mode rejects a leading \left(
-SQUEEZE = re.compile(r"(?<=[^A-Za-z])\s+|\s+(?=[^A-Za-z])")          # "(x - 2) (x + 3)" -> "(x-2)(x+3)"
-# Load the LaTeX parser now. This fails at startup if antlr is missing or the wrong version, and its
-# first call must not happen inside evaluate(False) (sympy.physics.units fails to import there).
-parse_latex("x = 1")
+__all__ = ["CheckError", "check_line", "check_steps", "k", "parse_check", "parse_display", "problems",
+           "question_latex", "same_maths", "self_test", "solutions", "x"]
 
-
-class CheckError(Exception):
-    """A check string or board line that must not be shown; the message says why."""
-
-
-# ---------- reading maths safely ----------
-
-def parse_check(text: str):
-    """Parse SymPy-syntax text (from a lesson or the LLM) without running arbitrary code."""
-    text = text.strip()
-    if not text or len(text) > MAX_LENGTH or text.count("**") > MAX_POWERS:
-        raise CheckError("empty, too long, or too many powers")
-    pos = 0
-    while pos < len(text):                      # parse_expr uses eval, so every token is whitelisted first
-        m = TOKEN.match(text, pos)
-        if not m:
-            raise CheckError(f"unexpected character {text[pos:].strip()[0]!r}")
-        tok = m.group(1)
-        if (tok[0].isalpha() or tok[0] == "_") and tok not in ALLOWED_NAMES:
-            raise CheckError(f"name not allowed: {tok}")
-        pos = m.end()
-    try:
-        # evaluate=False keeps "Eq(2*1**2 - 3*1 + 1, 0)" as an equation instead of collapsing it to True;
-        # rationalize turns decimals into exact fractions while parsing (12.5 becomes 25/2).
-        expr = parse_expr(text, local_dict=dict(ALLOWED_NAMES), global_dict=dict(GLOBALS),
-                          transformations=standard_transformations + (rationalize,), evaluate=False)
-    except Exception as err:
-        raise CheckError(f"could not read {text!r} ({type(err).__name__})") from None
-    if not isinstance(expr, (Expr, Eq, Or)):                          # e.g. "1, 2" parses to a tuple
-        raise CheckError("expected one expression or equation")
-    problem = _limit_problem(expr)
-    if problem:
-        raise CheckError(problem)
-    return expr
-
-
-def _limit_problem(expr):
-    """Why expr is unsafe to work with (the same limits as answers), or "" when it is fine."""
-    for node in preorder_traversal(expr):
-        if not isinstance(node, ALLOWED_NODES):
-            return f"{type(node).__name__} is not allowed"            # e.g. 10000000!
-        if isinstance(node, Pow) and not (node.exp.is_Rational and abs(node.exp) <= MAX_EXPONENT):
-            return "powers must be small numbers"                      # e.g. 9**9**9
-    if _degree(expr) > MAX_EXPONENT:
-        return "x is raised to too high a power"                       # e.g. ((x**10)**10)**10
-    return ""
-
-
-def _degree(expr):
-    """How high a power of x expr can reach, worked out without multiplying anything out."""
-    if expr == x:
-        return 1
-    if isinstance(expr, Pow):
-        return _degree(expr.base) * abs(expr.exp)
-    if isinstance(expr, Mul):
-        return sum(_degree(arg) for arg in expr.args)
-    if isinstance(expr, (Add, Eq, Or)):
-        return max(_degree(arg) for arg in expr.args)
-    return 0
-
-
-def _parse_one(latex):
-    """One equation or expression from LaTeX, or None when it is unreadable or unsafe."""
-    try:
-        with evaluate(False):                                         # keep "(-2)^2 = -4" an equation
-            shown = parse_latex(latex, strict=True)                   # strict: don't ignore trailing text
-            # The LaTeX parser reads "x(x+1)" as a function call; in this chapter it means x times (x+1).
-            shown = shown.replace(lambda e: isinstance(e, AppliedUndef) and e.func.__name__ == "x",
-                                  lambda e: x * e.args[0])
-    except ImportError:
-        raise                                                         # a wrong antlr must not switch checks off
-    except Exception:
-        return None
-    if not isinstance(shown, (Eq, Expr)) or shown.free_symbols - {x}:
-        return None                                                   # e.g. \text{..} read as letters
-    if isinstance(shown, Eq) and any(isinstance(s, Relational) for s in (shown.lhs, shown.rhs)):
-        return None                                                   # chained "a = b = c"
-    fractions = {f: Rational(str(f)) for f in shown.atoms(Float)}      # decimals: 12.5 becomes 25/2
-    with evaluate(False):
-        shown = shown.xreplace(fractions)
-    return None if _limit_problem(shown) else shown                   # e.g. x = 9^{9^{9}}
-
-
-def parse_display(latex: str):
-    """Parse the LaTeX shown to the student, or None when it is unreadable or too big to check."""
-    if len(latex) > MAX_LENGTH or latex.count("^") > MAX_POWERS:
-        return None
-    latex = SPACING.sub(" ", latex)
-    parts = [p for p in OR_WORD.split(latex) if p.strip()]
-    if "\\pm" in latex:                                               # "1 \pm \sqrt{2}" is two roots
-        parts = [p.replace("\\pm", sign) for p in parts for sign in "+-"]
-    if len(parts) <= 1:
-        return _parse_one(latex)
-    claims = [_parse_one(p) for p in parts]                           # x = a or x = b, or x - a = 0 or x - b = 0
-    if all(_root_of(c) is not None for c in claims):
-        return Or(*claims)
-    return None
-
-
-def question_latex(equation: str) -> str:
-    """The question as LaTeX that reads exactly as written: "(x-2)(x+3)=0", "5+2x^{2}=7x"."""
-    tex = to_latex(parse_check(equation), order="none").replace("\\left", "").replace("\\right", "")
-    return SQUEEZE.sub("", tex)
-
-
-# ---------- checking lines and steps ----------
 
 def solutions(expr):
-    """Complex solution set of an equation or an 'or' line (x = a or x - b = 0); None for a bare expression."""
+    """Complex solution set of an equation or an 'or' line (x = a or x - b = 0), in x, or in k for a line with
+    only k in it; None for a bare expression."""
+    letter = unknown(expr)
     if isinstance(expr, Or):
-        values = [_root_of(part) for part in expr.args]
+        values = [root_of(part, letter) for part in expr.args]
         if None in values:
             raise CheckError("an 'or' line joins first-degree equations: Or(Eq(x, a), Eq(x, b)) or "
                              "Or(Eq(x - a, 0), Eq(x - b, 0))")
         return FiniteSet(*values)
     if isinstance(expr, Eq):
         # Complex roots, not just real ones: otherwise any two equations with no real roots look the same.
-        return solveset(expr.lhs - expr.rhs, x, S.Complexes)
+        return solveset(expr.lhs - expr.rhs, letter, S.Complexes)
     return None
-
-
-def _root_of(part):
-    """The one root of a first-degree equation ("x = 3", "x - 2 = 0", "2x + 1 = 0"), else None."""
-    if not isinstance(part, Eq):
-        return None
-    side = part.lhs - part.rhs
-    if not side.is_polynomial(x) or Poly(side, x).degree() != 1:
-        return None
-    slope, start = Poly(side, x).all_coeffs()
-    return simplify(-start / slope)                                   # evaluate "-1/3" before comparing sets
 
 
 def _equal(a, b):
@@ -180,6 +43,8 @@ def same_maths(a, b) -> bool | None:
     # or be negated; a bare expression must be exactly equal, never negated.
     if a is None or b is None:
         return None
+    if a.free_symbols != b.free_symbols:
+        return False                                                  # "x = 6" and "k = 6" aren't the same
     if isinstance(a, Or) or isinstance(b, Or):
         return solutions(a) == solutions(b)
     if isinstance(a, Eq) and isinstance(b, Eq):
@@ -223,7 +88,11 @@ def check_line(line: dict, prev):
         return expr, ""
     if not isinstance(prev, (Eq, Or)):                                # an equation after a bare expression E
         prev = Eq(prev, 0, evaluate=False)                            # is compared with E = 0
-    before, after = solutions(prev), solutions(expr)
+    if expr.free_symbols == prev.free_symbols == {x, k}:              # a find-k question's equation, rearranged
+        if not _same_for_every_k(prev, expr):
+            raise CheckError("not the same equation as the previous line, for every k")
+        return expr, ""
+    before, after = _compared(prev, expr)
     if relation == "select":
         if not after.is_subset(before):
             raise CheckError(f"{after} is not among the previous roots {before}")
@@ -232,6 +101,41 @@ def check_line(line: dict, prev):
                   if roots != S.EmptySet]
         raise CheckError("not equivalent to the previous line: " + ", ".join(detail))
     return expr, ""
+
+
+def _compared(prev, expr):
+    """The two solution sets to compare: of two lines in x, or two lines in k. A line in k right after an equation
+    in x and k (a find-k question) is compared with that equation's D = 0, the condition for two equal roots."""
+    if prev.free_symbols == {x, k} and expr.free_symbols == {k}:
+        return solutions(_equal_roots_condition(prev)), solutions(expr)
+    if prev.free_symbols != expr.free_symbols:
+        raise CheckError("a line in k can't follow a line in x, or the other way round: start it with "
+                         "relation 'new'")
+    return solutions(prev), solutions(expr)
+
+
+def _equal_roots_condition(equation):
+    """D = 0 for a quadratic in x whose numbers use k, as an equation in k: b² - 4ac = 0."""
+    side = expand((equation.lhs - equation.rhs).doit()) if isinstance(equation, Eq) else None
+    if side is None or not side.is_polynomial(x) or Poly(side, x).degree() != 2:
+        raise CheckError("a line in k after an equation in x is its D = 0, so that equation must be a quadratic")
+    a, b, c = Poly(side, x).all_coeffs()
+    d = expand(b**2 - 4 * a * c)
+    if k not in d.free_symbols:                                       # e.g. x² + 2kx + k² = 0: D is 0 for every k
+        raise CheckError(f"this equation's D is {d} whatever k is, so no line in k follows from it")
+    return Eq(d, 0, evaluate=False)
+
+
+def _same_for_every_k(a, b) -> bool:
+    """Two equations in x and k say the same thing: one's left side minus right side is a fixed number times the
+    other's, so they agree whatever k is."""
+    if not (isinstance(a, Eq) and isinstance(b, Eq)):
+        return False
+    below = simplify(b.lhs - b.rhs)
+    if below == 0:                                                    # "kx = kx" is no rearrangement of anything
+        return False
+    ratio = simplify((a.lhs - a.rhs) / below)
+    return bool(ratio.is_number and ratio.is_finite and ratio != 0)
 
 
 def _check_expression(expr, prev):

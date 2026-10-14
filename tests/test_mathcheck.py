@@ -2,7 +2,7 @@
 import time
 
 import pytest
-from sympy import Eq, Or, Rational, simplify, sqrt
+from sympy import Eq, FiniteSet, Or, Rational, simplify, sqrt
 
 from app import mathcheck
 from app.mathcheck import CheckError
@@ -240,6 +240,69 @@ def test_anchor_catches_wrong_factorisation():
     assert statuses([L("x^2 + 3x - 40 = 0", "Eq(x**2 + 3*x - 40, 0)"),
                      L(r"x = 5 \text{ or } x = -8", "Or(Eq(x, 5), Eq(x, -8))"),
                      L("x = 5", "Eq(x, 5)", "select")], anchor=word_problem) == ["ok"] * 3
+
+
+# ---------- k: the unknown number in a "find k" question ----------
+
+k = mathcheck.k
+FIND_K = [L("x^2 + kx + 9 = 0", "Eq(x**2 + k*x + 9, 0)"),
+          L(r"k^2 - 4 \cdot 1 \cdot 9 = 0", "Eq(k**2 - 4*1*9, 0)"),
+          L("k^2 = 36", "Eq(k**2, 36)"),
+          L(r"k = 6 \text{ or } k = -6", "Or(Eq(k, 6), Eq(k, -6))")]
+K_IN_FRONT = [L("kx^2 + kx + 1 = 0", "Eq(k*x**2 + k*x + 1, 0)"),
+              L(r"k^2 - 4 \cdot k \cdot 1 = 0", "Eq(k**2 - 4*k*1, 0)"),
+              L("k(k-4) = 0", "Eq(k*(k-4), 0)"),
+              L(r"k = 0 \text{ or } k = 4", "Or(Eq(k, 0), Eq(k, 4))"),
+              L("k = 4", "Eq(k, 4)", "select")]
+
+
+def test_k_is_the_only_other_letter():
+    assert mathcheck.parse_check("Eq(x**2 + k*x + 9, 0)").free_symbols == {x, k}
+    assert mathcheck.question_latex("Eq(k*x**2 + k*x + 1, 0)") == "kx^{2}+kx+1=0"
+    product = mathcheck.parse_display("k(k-4) = 0")
+    assert simplify(product.lhs - k * (k - 4)) == 0                     # k(k-4) means k times (k-4)
+    assert mathcheck.solutions(mathcheck.parse_display(r"k = 6 \text{ or } k = -6")) == FiniteSet(-6, 6)
+    with pytest.raises(CheckError):
+        mathcheck.parse_check("Eq(y, 2)")
+    assert mathcheck.parse_display("y = 2") is None
+    x_claim, k_claim = mathcheck.parse_check("Or(Eq(x, 6), Eq(x, -6))"), mathcheck.parse_check("Or(Eq(k, 6), Eq(k, -6))")
+    assert mathcheck.same_maths(x_claim, k_claim) is False             # the same values, but not the same letter
+    assert statuses([L(r"x = 6 \text{ or } x = -6", "Or(Eq(k, 6), Eq(k, -6))")]) == ["FAIL"]
+    start = time.perf_counter()
+    assert mathcheck.problems([L("k = 1", "Eq(" + "*".join(["k"] * 60) + ", 1)")]) != []
+    assert time.perf_counter() - start < 1                              # k has the same power limit as x
+
+
+def test_a_line_in_k_after_the_question_is_its_d_equals_zero():
+    """A find-k question's working: D = 0 as an equation in k, then solved like an equation in x. A value of k that
+    makes a zero (no x squared term left) is dropped with a "select" line."""
+    assert report(FIND_K) == [("ok", "")] * 4
+    assert report(K_IN_FRONT) == [("ok", "")] * 5
+    assert statuses(FIND_K[1:], anchor="Eq(x**2 + k*x + 9, 0)") == ["ok"] * 3   # the question as the anchor
+    wrong_d = [FIND_K[0], L(r"k^2 + 4 \cdot 1 \cdot 9 = 0", "Eq(k**2 + 4*1*9, 0)")]
+    assert statuses(wrong_d) == ["ok", "FAIL"]
+    lost = FIND_K[:3] + [L("k = 6", "Eq(k, 6)")]
+    assert report(lost)[-1] == ("FAIL", "not equivalent to the previous line: loses {-6}")
+    not_quadratic = [L("kx + 1 = 0", "Eq(k*x + 1, 0)"), L("k = 1", "Eq(k, 1)")]
+    assert statuses(not_quadratic) == ["ok", "FAIL"]
+
+
+def test_letters_cant_change_without_a_new_start():
+    """Lines in x and lines in k aren't compared, except a question's equation and its D = 0 condition."""
+    after_k = FIND_K[:2] + [L("x^2 + 6x + 9 = 0", "Eq(x**2 + 6*x + 9, 0)")]
+    assert statuses(after_k) == ["ok", "ok", "FAIL"]
+    after_k[2] = L("x^2 + 6x + 9 = 0", "Eq(x**2 + 6*x + 9, 0)", "new")
+    assert statuses(after_k) == ["ok"] * 3
+    assert statuses([L("x^2 - 9 = 0", "Eq(x**2 - 9, 0)"), L("k^2 = 9", "Eq(k**2, 9)")]) == ["ok", "FAIL"]
+    rearranged = [K_IN_FRONT[0], L("kx(x+1) + 1 = 0", "Eq(k*x*(x+1) + 1, 0)")]
+    assert statuses(rearranged) == ["ok", "ok"]                         # the same equation, whatever k is
+    changed = [K_IN_FRONT[0], L("kx^2 + x + 1 = 0", "Eq(k*x**2 + x + 1, 0)")]
+    assert statuses(changed) == ["ok", "FAIL"]
+    nothing = [L("x + k = x + k + 1", "Eq(x + k, x + k + 1)", "new"), L("kx = kx", "Eq(k*x, k*x)")]
+    assert statuses(nothing) == ["ok", "FAIL"]                          # 0 = 0 is no rearrangement of it
+    no_k_in_d = [L("x^2 + 2kx + k^2 = 0", "Eq(x**2 + 2*k*x + k**2, 0)"), L("k = 1", "Eq(k, 1)")]
+    status, note = report(no_k_in_d)[1]                                 # D is 0 whatever k is
+    assert status == "FAIL" and not note.startswith("internal error"), note
 
 
 GARBAGE_CHECKS = ["", "   ", "Eq(x)", "x == 2", "x = 2", "__import__('os')", "9**9**9", "1, 2",

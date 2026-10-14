@@ -69,7 +69,7 @@ def test_full_pass_through_factorisation_scripted(tutor, db_engine, cur):
     assert "q-eq" not in [line.id for line in result.board]     # the board was cleared for the new concept
     assert result.calls == []
     step_1 = tutor.turn(student_id, "ok")                       # "ok" at its start: step 1
-    assert step_1.segments[0].say == "Here is the formula. Read a, b and c from the standard form and put them in."
+    assert step_1.segments[0].say.startswith("Here's a garden that's harder to solve.")   # its story opener
 
 
 def test_wrong_trap_answer_reteaches_and_asks_next(tutor, db_engine, cur):
@@ -239,7 +239,7 @@ def test_payload_shape(tutor, db_engine, cur):
     assert [row["concept_id"] for row in data["progress"]] == cur.order
     rows = {row["concept_id"]: row for row in data["progress"]}
     assert rows["factorisation"] == {"concept_id": "factorisation", "title": cur.concepts["factorisation"].title,
-                                     "status": "checking", "step_index": None, "step_count": 4, "at_start": False,
+                                     "status": "checking", "step_index": None, "step_count": 5, "at_start": False,
                                      "points": 0.0, "hint_level": 0, "reteach_count": 1, "current": True}
     assert rows["roots"]["status"] == "mastered" and not rows["roots"]["current"]
 

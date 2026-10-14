@@ -1,4 +1,5 @@
-# Concept 2. Our own variants of the opening of NCERT 4.3. Every answer key is computed by SymPy.
+# Concept 2. Our own variants of the opening of NCERT 4.3; the opener is 4.1's prayer hall. Every answer key is computed
+# by SymPy.
 # Answers here are yes or no, so there are no traps: the LLM spots these mistakes from the working.
 id: roots
 title: Roots and checking by substitution
@@ -7,6 +8,15 @@ intro: "Solving an equation means finding its roots. We'll learn what a root is,
 aliases: [roots, checking by substitution, substitution]
 
 steps:
+  - id: hook
+    segments:
+      - say: "Here's a real problem. A prayer hall's floor is 300 square metres, and its length is 1 metre more than twice its breadth, x metres. So 2x squared plus x minus 300 equals zero. Let's test a breadth of 12 metres."
+        board:
+          - {op: write, id: rh1, latex: '2x^2 + x - 300 = 0', check: "Eq(2*x**2 + x - 300, 0)"}
+      - say: "2 times 12 squared is 288. Add 12 and take away 300, and you get zero. So a breadth of 12 metres works. Numbers like 12 are called roots, and they are this topic."
+        board:
+          - {op: write, id: rh2, latex: '2 \cdot 12^2 + 12 - 300 = 0', check: "Eq(2*12**2 + 12 - 300, 0)"}
+
   - id: definition
     segments:
       - say: "A number is a root of an equation if putting it in place of x makes the equation true. Let's try x equals 1 in this equation."

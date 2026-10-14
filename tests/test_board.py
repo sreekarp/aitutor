@@ -236,15 +236,56 @@ def test_needs_review_must_end_on_key():
     assert any("must end with a root claim" in p for p in problems(both, **hall))
 
 
+def k_check(equation: str = "Eq(4*x**2 + k*x + 1, 0)") -> Check:
+    return Check(id="k1", say="Find k.", label="Find k:", equation=equation, kind="find_k",
+                 hints=["One.", "Two.", "Three."])
+
+
+def test_a_find_k_reply_is_checked_like_a_roots_reply():
+    """A find-k question's answer is its values of k: a hint can write D = 0 in k, but never say or claim the values.
+    A worked answer ends on the key, after a "select" line that drops a k making a zero."""
+    key = grading.answer_key(k_check())                                   # k = -4 or k = 4
+    hint = dict(anchor="Eq(4*x**2 + k*x + 1, 0)", key=key)
+    d_zero = write("h1", r"k^2 - 4 \cdot 4 \cdot 1 = 0", "Eq(k**2 - 4*4*1, 0)")
+    assert problems(d_zero, say="Two equal roots means D is zero.", **hint) == []
+    wrong_d = write("h1", r"k^2 + 4 \cdot 4 \cdot 1 = 0", "Eq(k**2 + 4*4*1, 0)")
+    assert any("not equivalent" in p for p in problems(wrong_d, **hint))
+    assert any("gives away the answer" in p for p in problems(say="So k equals 4 or minus 4.", **hint))
+    claim = write("h2", r"k = 4 \text{ or } k = -4", "Or(Eq(k, 4), Eq(k, -4))")
+    assert any("gives away the answer" in p for p in problems(d_zero, claim, **hint))
+    in_front = "Eq(k*x**2 + k*x + 1, 0)"                                  # k = 0 or 4 make D zero; k = 0 is dropped
+    review = dict(action="needs_review", anchor=in_front, key=grading.answer_key(k_check(in_front)))
+    steps = [write("w1", r"k^2 - 4 \cdot k \cdot 1 = 0", "Eq(k**2 - 4*k*1, 0)"),
+             write("w2", r"k = 0 \text{ or } k = 4", "Or(Eq(k, 0), Eq(k, 4))")]
+    assert problems(*steps, write("w3", "k = 4", "Eq(k, 4)", relation="select"), **review) == []
+    assert any("must end with a root claim" in p for p in problems(*steps, **review))
+    as_x = write("w3", "x = 4", "Eq(x, 4)", relation="new")              # the right number, but not a value of k
+    assert any("must end with a root claim" in p for p in problems(*steps, as_x, **review))
+    as_k = write("w2", r"k = 2 \text{ or } k = 3", "Or(Eq(k, 2), Eq(k, 3))", relation="new")
+    assert any("must end with a root claim" in p for p in problems(as_k, action="needs_review"))   # x = 2 or 3
+    in_front_key = review["key"]                                          # k = 4
+    for said in ("With k equal to 4, it is a perfect square.", "So k must be 4.", "k has to be 4 here."):
+        assert board.reveals_answer([Segment(say=said)], in_front_key, ""), said
+    assert board.reveals_answer([Segment(say="D must be zero here.")], in_front_key, "") is None
+
+
+def test_examples_for_a_find_k_turn_share_no_number_with_its_values_of_k(cur):
+    """Saying an example's root ("x equals 4") must not sound like a value of k (k = 4 or k = -4)."""
+    listed = examples.for_turn(cur, [grading.answer_key(k_check())])          # 4x² + kx + 1 = 0: k = -4 or 4
+    kept = [e for e in cur.examples if any(line.startswith(f"- {e.latex}:") for line in listed)]
+    assert kept and all(root not in ("4", "-4") for e in kept for root in e.roots)
+    assert len(kept) < len(cur.examples)
+
+
 def test_the_lesson_question_rule_is_cheap_with_every_topics_questions(cur, monkeypatch):
-    """Rule 7 compares each line with every topic's questions (34): the slow symbolic check runs only for a
+    """Rule 7 compares each line with every topic's questions (38): the slow symbolic check runs only for a
     question the line could be, so a reply is checked in well under a second even on a slow server."""
     calls = []
     real = examples.mathcheck.same_maths
     monkeypatch.setattr(examples.mathcheck, "same_maths", lambda a, b: calls.append(1) or real(a, b))
     every = [c.equation for concept in cur.concepts.values() for c in concept.checks]
     assert examples.is_a_question("Eq(2*x**2 - 5*x + 3, 0)", every) is False
-    assert calls == []                                                 # none of the 34 could be it
+    assert calls == []                                                 # none of the 38 could be it
     assert examples.is_a_question("Eq(x**2 + 10, 7*x)", every) is True        # qf4, rearranged
 
 

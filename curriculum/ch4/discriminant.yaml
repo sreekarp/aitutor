@@ -1,13 +1,25 @@
-# Concept 5. Our own variants of NCERT 4.4 (Examples 7 and 9), in NCERT's words for the three cases.
+# Concept 5. Our own variants of NCERT 4.4 (Examples 7 and 9; Exercise 4.3 Q2 finds k, Q5 is the park opener),
+# in NCERT's words for the three cases.
 # SymPy can't read "D = ...", so a value of D is always a pure arithmetic line, e.g. (-4)^2 - 4.2.3 = -8.
+# A find-k question's working is in k: a line in k right after its equation is that equation's D = 0.
 # Mistake fixes and the reteach step (three_cases) use numbers that answer no check in this file.
 id: discriminant
 title: The discriminant and the nature of roots
-ncert: "4.4, Examples 7 and 9"
+ncert: "4.4, Examples 7 and 9; Exercise 4.3"
 intro: "Sometimes we only need the nature of the roots: two distinct real roots, two equal real roots, or no real roots. We'll learn to tell which, without solving."
 aliases: [discriminant, nature of roots, nature of the roots]
 
 steps:
+  - id: hook
+    segments:
+      - say: "Here's a real problem. A builder wants a rectangular park with a perimeter of 60 metres and an area of 250 square metres. Its two sides add up to 30, so if one side is x metres, the other is 30 minus x."
+        board:
+          - {op: write, id: dh1, latex: 'x(30-x) = 250', check: "Eq(x*(30-x), 250)"}
+          - {op: write, id: dh2, latex: 'x^2 - 30x + 250 = 0', check: "Eq(x**2 - 30*x + 250, 0)"}
+      - say: "One number tells us if that's possible, without solving. Here it is 900 minus 1000, which is minus 100. A negative value means no real roots, so no such park exists. That number is the discriminant."
+        board:
+          - {op: write, id: dh3, latex: '(-30)^2 - 4 \cdot 1 \cdot 250 = -100', check: "Eq((-30)**2 - 4*1*250, -100)"}
+
   - id: what_is_d
     segments:
       - say: "The number b squared minus 4ac is called the discriminant, D. It tells us what kind of roots an equation has, before we solve it."
@@ -53,6 +65,20 @@ steps:
           - {op: write, id: dz3, latex: '(2x-1)^2 = 0', check: "Eq((2*x-1)**2, 0)"}
           - {op: write, id: dz4, latex: 'x = \frac{1}{2} \text{ or } x = \frac{1}{2}', check: "Or(Eq(x, 1/2), Eq(x, 1/2))"}
 
+  - id: find_k
+    segments:
+      - say: "Sometimes one number in the equation is unknown, and we call it k. Let's find k so that x squared plus k x plus 9 equals zero has two equal real roots."
+        board:
+          - {op: write, id: fk1, latex: 'x^2 + kx + 9 = 0', check: "Eq(x**2 + k*x + 9, 0)"}
+      - say: "Two equal real roots means D is zero. Here a is 1, b is k and c is 9, so D is k squared minus 36, and it must equal zero."
+        board:
+          - {op: write, id: fk2, latex: 'k^2 - 4 \cdot 1 \cdot 9 = 0', check: "Eq(k**2 - 4*1*9, 0)"}
+          - {op: write, id: fk3, latex: 'k^2 = 36', check: "Eq(k**2, 36)"}
+      - say: "So k is 6 or minus 6, and both work. With k equal to 6, the equation is x plus 3, all squared, equals zero."
+        board:
+          - {op: write, id: fk4, latex: 'k = 6 \text{ or } k = -6', check: "Or(Eq(k, 6), Eq(k, -6))"}
+      - say: "Watch out when k is in front of x squared. A value of k that makes a zero leaves no x squared term, so the equation isn't quadratic. Throw that value away."
+
 checks:
   - id: di1
     say: "What is the discriminant of x squared plus 3x minus 4 equals zero? Tell me how you worked it out."
@@ -74,6 +100,17 @@ checks:
       - "Work out D first. Its sign tells you the nature of the roots."
       - "b squared is 144, and 4ac is 4 times 4 times 9."
       - "4 times 4 times 9 is also 144, so D is 144 minus 144. What does that value of D tell you?"
+
+  - id: dk1
+    say: "For what values of k does 2x squared plus k x plus 8 equals zero have two equal real roots? Tell me how you got them."
+    label: "Find k so that this has two equal real roots:"
+    equation: "Eq(2*x**2 + k*x + 8, 0)"
+    kind: find_k
+    hints:
+      - "Two equal real roots means D is zero. Start by writing D using k."
+      - "Here a is 2, b is k and c is 8, so D is k squared minus 64. Set that equal to zero."
+      - "So k squared is 64. Two numbers square to give 64, and both are values of k."
+    traps: {one_k_value: "8", sign_in_D: "none"}
 
   - id: di3
     say: "What is the nature of the roots of 3x squared minus 2x plus 4 equals zero? Tell me how you know."
@@ -117,6 +154,17 @@ checks:
       - "The left side is a perfect square: 3x minus 1, all squared, equals zero. So what is x?"
     traps: {mixed_cases: "none"}
 
+  - id: dk2
+    say: "For what value of k does k x squared plus k x plus 1 equals zero have two equal real roots? Tell me how you got it."
+    label: "Find k so that this has two equal real roots:"
+    equation: "Eq(k*x**2 + k*x + 1, 0)"
+    kind: find_k
+    hints:
+      - "Read a, b and c first: here a is k, b is k and c is 1. Two equal real roots means D is zero."
+      - "D is k squared minus 4k. Set it equal to zero and take out the common factor, k."
+      - "Each factor gives a value of k. Then check each one: does it still leave an x squared term?"
+    traps: {kept_k_zero: "0, 4"}
+
 mistakes:
   - id: mixed_cases
     looks_like: "treats D equal to zero as no real roots, mixing up the three cases"
@@ -124,6 +172,12 @@ mistakes:
   - id: sign_in_D
     looks_like: "the 4ac part with the wrong sign: b squared plus 4ac instead of b squared minus 4ac, often from a negative a or c"
     fix: "D is b squared minus 4ac. Put a negative a or c in brackets, and work out the sign of 4ac before you subtract it."
+  - id: one_k_value
+    looks_like: "gives only one value of k when k squared equals a positive number, forgetting the negative square root"
+    fix: "When k squared equals a positive number, k can be its positive or its negative square root. Check both: each one makes D zero."
+  - id: kept_k_zero
+    looks_like: "keeps a value of k that makes a zero, so the x squared term disappears"
+    fix: "If a value of k makes a zero, there is no x squared term left, so the equation isn't quadratic any more. Throw that value away."
 
 strategies: [worked_example, compare_non_example]
 reteach_step: three_cases

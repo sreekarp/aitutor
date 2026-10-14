@@ -148,3 +148,16 @@
   setup: {concept: factorisation, status: checking, check: fa1}
   student_says: "can you repeat the question please?"
   expect: {type: say_again, rule: R8, action: repeat, unchanged: true}
+
+# Find k (NCERT Exercise 4.3 Q2): the answer is the values of k. One of the two is part of it; k = 0 is dropped.
+- id: find_k_one_value
+  title: Find k, one value only
+  setup: {concept: discriminant, status: checking, check: dk1}
+  student_says: "k is 8, because k squared minus 64 has to be zero"
+  expect: {type: answer, rule: R5, action: follow_up, mistake: one_k_value, points: 0, no_reveal: true}
+
+- id: find_k_drops_zero
+  title: Find k, k = 0 dropped
+  setup: {concept: discriminant, status: checking, check: dk2}
+  student_says: "k squared minus 4k is zero, so k is 0 or 4. But k can't be 0, then there's no x squared. So k is 4"
+  expect: {type: answer, rule: R1, action: credit, points: 1}

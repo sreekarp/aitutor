@@ -14,10 +14,11 @@ from app.models import PINNED_IDS, AnswerKey, BoardCommand, BoardLine, Segment
 
 # Numbers in speech, after spoken_maths(): "2", "-1/2", "2 + sqrt(3)", "1 ± sqrt(2)".
 NUMBERS = re.compile(r"(?:sqrt\(\d+\)|[-+*/.±0-9 ])+")
-# Saying the answer outright: "x =", "x is", "x equals" (and "D is" for a discriminant), "the root is",
-# "the roots are", "the answer is", followed by the numbers that come straight after.
-ANSWER_PHRASE = re.compile(r"(?:\b[xd]\s*(?:=|\bis\b|\bequals\b)|\broots?\s+(?:is|are)\b|\banswer\s+is\b)"
-                           r"((?:sqrt\(\d+\)|[-+*/.±0-9 ])*)")
+# Saying the answer outright: "x =", "x is", "x equals", "x equal to", "x must be", "x has to be" (and "D is" for
+# a discriminant, "k is" for find k), "the root is", "the roots are", "the answer is", followed by the numbers
+# that come straight after.
+ANSWER_PHRASE = re.compile(r"(?:\b[xdk]\s*(?:=|\bis\b|\bequals?(?:\s+to)?\b|\bmust\s+be\b|\bhas\s+to\s+be\b)"
+                           r"|\broots?\s+(?:is|are)\b|\banswer\s+is\b)((?:sqrt\(\d+\)|[-+*/.±0-9 ])*)")
 STEP_LABEL = re.compile(r"\bstep\s+\w+")       # "Step two": a label, not one of the answer's values
 # Rule 7: the replies whose own example may never be one of this concept's questions, as their problems name them.
 NO_LESSON_QUESTIONS = {"reteach": "a reteach", "example": "a solved example"}
@@ -177,11 +178,12 @@ def _branches(latex: str) -> str | None:
 
 
 def _answer_problems(segments: list[Segment], maths: list[dict], ctx: ReplyContext) -> list[str]:
-    """Rule 6; and a needs-review worked answer on a roots question must end on the key."""
+    """Rule 6; and a needs-review worked answer on a roots (or find_k) question must end on the key."""
     if ctx.action == "needs_review":                # showing the answer is the point here
         key = ctx.key
-        if key and key.kind == "roots" and key.values:
-            last = _claimed(maths[-1]["check"]) if maths else None
+        if key and key.kind in ("roots", "find_k") and key.values:
+            letters = (mathcheck.k,) if key.kind == "find_k" else (mathcheck.x,)    # "x = 4" is no value of k
+            last = _claimed(maths[-1]["check"], letters) if maths else None
             if last is None or not _same_set(last, key.values):
                 return ["a worked answer must end with a root claim equal to the answer"]
         return []
@@ -223,14 +225,15 @@ def _values(text: str) -> list:
     return [value for run in NUMBERS.findall(text) for value in grading.parse_answer(run, "roots") or []]
 
 
-def _claimed(check: str | None) -> list | None:
-    """The values of a root claim line ("Or(Eq(x, 2), Eq(x, 3))" -> [2, 3]); None for any other line."""
+def _claimed(check: str | None, letters: tuple = (mathcheck.x, mathcheck.k)) -> list | None:
+    """The values of a root claim line ("Or(Eq(x, 2), Eq(x, 3))" -> [2, 3]) or of k ("Eq(k, 4)" -> [4]), in one of
+    these letters; None for any other line."""
     try:
         expr = mathcheck.parse_check(check or "")
     except mathcheck.CheckError:
         return None
     parts = expr.args if isinstance(expr, Or) else (expr,)
-    if all(isinstance(p, Eq) and p.lhs == mathcheck.x and p.rhs.is_number for p in parts):
+    if all(isinstance(p, Eq) and p.lhs in letters and p.rhs.is_number for p in parts):
         return [p.rhs for p in parts]
     return None
 

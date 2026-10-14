@@ -2,6 +2,7 @@
 from conftest import check_of, make_settings, new_student
 
 from app import db, fallback, grading
+from app.models import Check
 from app.tutor import Tutor
 
 
@@ -202,6 +203,20 @@ def test_scripted_answer_odd_formats(cur):
     words = {"haan": "yes", "nahi": "no", "two distinct real roots": "distinct", "no real roots": "none"}
     for text, answer in words.items():
         assert understand(cur, text, "di2" if answer in ("distinct", "none") else "rt1").answer == answer, text
+
+
+def test_scripted_answer_for_find_k(cur):
+    """A find-k answer is its values of k ("k is 4 or minus 4"); a part about k ("k squared minus 16") is working."""
+    find_k = Check(id="k1", say="Find k.", label="Find k:", equation="Eq(4*x**2 + k*x + 1, 0)", kind="find_k",
+                   hints=["One.", "Two.", "Three."])
+    def said(text):
+        return fallback.understand(text, phase="checking", check=find_k, awaiting_working=False)
+    for text in ("k is 4 or minus 4", "k = 4, k = -4", "4 and minus 4", "k equals 4 or minus 4"):
+        assert (said(text).type, said(text).answer) == ("answer", "4, -4"), text
+    assert said("k squared minus 16").answer == ""                     # not the answer "-16"
+    assert said("none").answer == said("no solution").answer == "none"  # e.g. D written as k squared plus 16
+    assert understand(cur, "k 2 and 3", "fa1").answer == "2, 3"        # k is working only on a find-k question
+    assert said("k is 4 or minus 4 because k squared minus 16 is zero").showed_working
 
 
 def test_working_rules(cur):

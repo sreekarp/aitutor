@@ -7,7 +7,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 # ---------- lesson files (curriculum/ch4/*.yaml) ----------
-Kind = Literal["roots", "is_quadratic", "is_root", "coefficient", "discriminant", "nature", "has_real_roots"]
+Kind = Literal["roots", "is_quadratic", "is_root", "coefficient", "discriminant", "nature", "has_real_roots",
+               "find_k"]                    # find_k: the values of k that give two equal roots
 WORD_KINDS = ("is_quadratic", "is_root", "nature", "has_real_roots")
 Strategy = Literal["worked_example", "substitute_back", "compare_non_example"]
 
@@ -117,7 +118,7 @@ Verdict = Literal["correct", "wrong", "partial", "unsure"]
 class AnswerKey:
     kind: str
     values: list | None = None       # numeric kinds: the key ([] = no real roots); coefficient/discriminant: [one value]
-    all_roots: list | None = None    # roots kind: every real root before `keep`
+    all_roots: list | None = None    # roots kind: every real root before `keep`; find_k: every k with D = 0
     word: str | None = None          # word kinds: "yes" / "no" / "distinct" / "equal" / "none"
 
 

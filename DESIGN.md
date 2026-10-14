@@ -204,7 +204,7 @@ Rollout:
 1. A new prompt is a new file (`respond.v2.md`); a version in use is never edited, because prompt
    files are read on every call.
 2. `uv run python -m evals --prompt-understand understand.v2 --prompt-respond respond.v2` (or
-   `--model-respond <id>`) runs the 22 tutor scenarios against the new version, 3 runs each. A
+   `--model-respond <id>`) runs the 24 tutor scenarios against the new version, 3 runs each. A
    scenario passes with a majority of passing runs; a red scenario blocks the change unless the
    version in use fails it too.
    `uv run python -m sims` shows false advances over longer conversations.
@@ -247,7 +247,7 @@ own lights the whole line instead of rejecting the reply ("-3x" for "- 3x"). The
 
 Asking RESPOND to avoid every topic's questions (34) as examples, so none gives a later answer away,
 made it pick one anyway: the simple textbook equations it reaches for are the questions. `respond.v6.md`
-(in use) takes a new example's equation from `examples` in `index.yaml` (17 equations, checked at startup
+takes a new example's equation from `examples` in `index.yaml` (17 equations, checked at startup
 by `app/examples.py`: the LaTeX, the roots, and no lesson question with those roots); each turn the facts
 list those sharing no root with the answer being protected, with their roots. Three board rules also
 stopped rejecting what is still correct: small whole numbers in a words line become words ("minus six"),
@@ -261,6 +261,13 @@ stay digits (rejected); "twenty-five" is read as 25. The next full run passed 20
 line ("x = (-5 + 3)/2 = -1", "a · c = 3 · (-2) = -6"), so v6 asks for one "=" per line; with that,
 `formula_sign` passed 3 of 5 and `question_while_checking` 5 of 5.
 
+`respond.v7.md` (in use) is v6 plus find-k questions (NCERT Exercise 4.3 Q2: for what k are the two roots
+equal?). Their equations have a second letter, k, so the maths checker reads two letters (`app/mathread.py`):
+a line with only k in it, right after an equation in x and k, must be that equation's D = 0; later lines in k
+follow from it, like lines in x; values of k are written like roots ("k = 6 or k = -6"), and one that makes a
+zero (no x squared left) is dropped with a "select" line. Lines in x and k are never compared otherwise, so a
+line can't show x while its check says k. Its first full eval run is still to do.
+
 *(Designed)* Gradual rollout: send a share of students to the new version (by a hash of the
 student id: 10%, then 50%, then 100%) and compare the two side by side. Every turn already records
 its versions, so the comparison is a query.
@@ -270,7 +277,11 @@ its versions, so the comparison is a query.
 example equations RESPOND may use.
 A lesson file holds the concept's title, its `intro` (a sentence or two on what it's for, said before
 step 1), its teaching steps, its questions with hints and trap answers, its known mistakes, and how to
-reteach it.
+reteach it. Step 1 of every topic but word problems (all stories already) is a short real-life problem
+(`hook`): NCERT's own prayer hall from 4.1, or a garden or a park in NCERT's style with our own numbers, so a
+topic starts with why it is useful rather than with a rule. The lessons are our own variants of the chapter, not a copy: the
+history in 4.1, Example 5 (surds in the equation) and the train problem (x under a fraction line) are left
+out.
 At startup the app validates all of it: the schema, the ids, every answer key (computed by SymPy,
 never typed in), every board line (checked by SymPy) and the spoken text (no LaTeX). If anything
 fails, the app refuses to start, so a broken lesson never reaches a student. A new NCERT chapter is
@@ -321,7 +332,7 @@ Alerts *(designed, not built; thresholds are targets to tune)*:
 
 **Finding out the tutor got worse before a student says so:**
 
-- **Evals before every change:** the 22 tutor scenarios run against a new prompt or model, and a red
+- **Evals before every change:** the 24 tutor scenarios run against a new prompt or model, and a red
   scenario blocks it. A run fails if the first output of either prompt was rejected, so the safety
   net (one retry, then scripted words) can't hide a bad prompt. *(Designed)* The same suite nightly
   against the live config, plus a simulation batch reporting the false advance rate (points given
@@ -402,7 +413,7 @@ What the student perceives, and what we do about it:
   one request carries both. Replies that need no AI (a button, a known phrase, a graded answer) get no
   such line, so it never becomes a habit. It shortens no time; it makes the wait feel like thinking. The
   page's 17 s limit starts again when the line arrives: the server is busy, and has its own deadline.
-- **Keep the checks cheap:** every line RESPOND writes is compared with every topic's questions (34; an
+- **Keep the checks cheap:** every line RESPOND writes is compared with every topic's questions (38; an
   example on one would give a later answer away), and SymPy's comparison is slow. A quick numeric look
   first (`board._could_be_same`: the two sides at a sample x, or a claimed root put back in) skips the
   questions a line can't be. Checking a 5-line example went from 2.1 s to 0.19 s on a laptop. Render's
@@ -574,7 +585,7 @@ Known gaps, after the build:
 - **The mic stays on between answers.** The browser shows its mic indicator while the tutor replies
   and for up to a minute of the student's turn after that, though nothing is recorded until Speak is
   pressed. Phones and tablets don't keep it on, so every answer there still waits for the mic to open.
-- **Small, synthetic test sets:** 22 eval scenarios and 4 simulated students, and the simulated
+- **Small, synthetic test sets:** 24 eval scenarios and 4 simulated students, and the simulated
   students are LLMs with their own biases. Real student sessions are the missing check.
 - **Hinglish speech is untested.** Two eval scenarios type Hinglish, but no Hinglish recording has
   been through speech-to-text, and the voice ("sarah", chosen by listening) isn't Indian English.

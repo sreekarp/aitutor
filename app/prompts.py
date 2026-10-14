@@ -71,6 +71,7 @@ WORKING = {
     "has_real_roots": "the equation they formed, or the value or the sign of D",
     "is_quadratic": "what is left after simplifying (for example, that the x squared terms cancel)",
     "coefficient": "the equation rearranged into standard form",
+    "find_k": "D written using k, or setting D equal to zero",
 }
 ANSWER_FORMATS = {
     "roots": ('the roots in SymPy syntax, separated by commas ("4, -1", "1/2, -5", "1 + sqrt(2), 1 - sqrt(2)"); '
@@ -81,6 +82,8 @@ ANSWER_FORMATS = {
     "nature": '"distinct", "equal" or "none"',
     "coefficient": 'one number in SymPy syntax, e.g. "-3"',
     "discriminant": 'one number in SymPy syntax, e.g. "-8"',
+    "find_k": ('the values of k in SymPy syntax, separated by commas ("3, -3"); a ± answer is written as two values; '
+               '"none" if they say no value works'),
 }
 WORD_PROBLEM_FORMAT = ('every value they offer for the quantity asked for, in SymPy syntax, separated by commas '
                        '("6 or minus 9" -> "6, -9"); ignore values of other quantities')
@@ -92,6 +95,8 @@ STRATEGIES = {
 }
 DETAILS = {"missing": "a root is missing", "extra": "a value that can't be the answer was kept",
            "not_a_root": "some values are not roots", "empty": "no values given"}
+K_DETAILS = {"missing": "a value of k is missing", "extra": "a value of k that makes a zero was kept, so no quadratic",
+             "not_a_root": "some values of k don't make D zero", "empty": "no values given"}   # a find_k question
 NATURE_WORDS = {"distinct": "two distinct real roots", "equal": "two equal real roots", "none": "no real roots"}
 
 
@@ -147,7 +152,8 @@ def respond_messages(*, decision: Decision, concept: Concept, step: Step | None,
                   f"NEXT ANSWER KEY: {_answer_text(next_key)}"]
     lines.append(f"UNDERSTOOD AS: {_understood_text(understood)}")
     if grade is not None:
-        detail = f" ({DETAILS.get(grade.detail, grade.detail)})" if grade.detail else ""
+        details = K_DETAILS if check is not None and check.kind == "find_k" else DETAILS
+        detail = f" ({details.get(grade.detail, grade.detail)})" if grade.detail else ""
         lines.append(f"SYMPY'S VERDICT: {grade.verdict}{detail}")
     if mistake is not None:
         lines.append(f"MISTAKE: {mistake.id}. It looks like: {mistake.looks_like}. How to fix it: {mistake.fix}")

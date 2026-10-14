@@ -29,15 +29,18 @@ FIXED = {"start_check": "Let's see if you've got it.", "show_me": "Great, then s
 PRAISE = ("Right", "Well done", "That's right", "Nice work")
 YES_NO_KINDS = ("is_quadratic", "is_root", "has_real_roots")
 CLARIFY = {"roots": "Say just the numbers, or type them.", "coefficient": "Say just the number.",
-           "discriminant": "Say just the number.",
+           "discriminant": "Say just the number.", "find_k": "Say just the values of k, or type them.",
            "nature": "Two distinct real roots, two equal real roots, or no real roots?"}
 FOLLOW_UP = {"missing": "That's part of it, but a root is missing. Have another look.",
              "extra": "Nearly. One of those values doesn't fit the question. Think about which ones make sense."}
+K_FOLLOW_UP = {"missing": "That's part of it, but another value of k works too. Have another look.",
+               "extra": "Nearly. A value of k that leaves no x squared term doesn't count, so check each one."}
 # While teaching: the line before the step is said again, for an explanation and for a solved example without the AI.
 TEACHING_LEAD = {"explain": "Good question — let's go over it again.", "example": "Let's go over that step again."}
 REASK = {"roots": "So, what are the roots?", "discriminant": "So, what is the discriminant?",
          "nature": "So, what is the nature of the roots?", "is_quadratic": "So, is it a quadratic equation?",
-         "is_root": "So, is it a root?", "has_real_roots": "So, is it possible?"}
+         "is_root": "So, is it a root?", "has_real_roots": "So, is it possible?",
+         "find_k": "So, what are the values of k?"}
 REVIEW_LATER = "This one needs more practice, so we'll come back to this next time."   # R9, after the worked answer
 # The cue that ends a teaching turn, by where the student is (compose.cue_for picks which): at the topic start, on
 # a step, on the last step, after a solved example. Each place always gets the same phrasing (cue_line).
@@ -82,7 +85,8 @@ def words(decision: Decision, *, cur: Curriculum, progress: Progress, check: Che
     if action == "hint":
         return _say(f"Here's a hint. {check.hints[decision.hint_level - 1]}")
     if action == "follow_up":
-        return _say(FOLLOW_UP.get(grade.detail if grade else "", "Nearly. Have another look at your answer."))
+        follow_ups = K_FOLLOW_UP if check.kind == "find_k" else FOLLOW_UP
+        return _say(follow_ups.get(grade.detail if grade else "", "Nearly. Have another look at your answer."))
     if action == "explain" and check:                        # R7 adds no hint level; compose re-asks the question
         if decision.hint_level == 0:
             return _say("Good question. Here's where to start.") + _say(check.hints[0])
@@ -140,15 +144,18 @@ def opening(concept: Concept, action: str, from_top: bool) -> list[Segment]:
 
 
 def answer_line(check: Check) -> BoardCommand:
-    """Scripted R9's board line: a checked root claim built from SymPy's key, or a text line in words."""
+    """Scripted R9's board line: a checked claim of the roots (or of k) built from SymPy's key, or a text line in
+    words. It keeps only some of the values ("select") when the question rules some out."""
     key = grading.answer_key(check)
-    if check.kind != "roots" or not key.values:
+    if check.kind not in ("roots", "find_k") or not key.values:
         return BoardCommand(op="write", id="answer", text=grading.key_text(check))
-    shown = r" \text{ or } ".join(f"x = {latex(value)}" for value in key.values)
-    claims = [f"Eq(x, {value})" for value in key.values]
+    letter = "k" if check.kind == "find_k" else "x"
+    shown = r" \text{ or } ".join(f"{letter} = {latex(value)}" for value in key.values)
+    claims = [f"Eq({letter}, {value})" for value in key.values]
     checked = claims[0] if len(claims) == 1 else f"Or({', '.join(claims)})"
+    dropped = len(key.values) < len(key.all_roots or key.values)          # e.g. k = 0, which leaves no x squared
     return BoardCommand(op="write", id="answer", latex=shown, check=checked,
-                        relation="select" if check.keep else "equiv")
+                        relation="select" if check.keep or dropped else "equiv")
 
 
 def _say(text: str) -> list[Segment]:

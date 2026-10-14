@@ -4,7 +4,7 @@ import re
 import pytest
 import yaml
 from conftest import fresh_progress
-from sympy import Eq, Poly, Rational, expand, sqrt
+from sympy import Eq, Poly, Rational, expand, simplify, sqrt
 
 from app import curriculum, examples, grading, mathcheck
 from app.models import BoardCommand, Check, Concept, Curriculum, Example, Mistake, Segment, Step
@@ -224,11 +224,12 @@ def assert_keys_and_traps(concept: Concept, expected: dict) -> None:
 
 
 def test_load_real_curriculum(cur):
-    assert cur.version == "2026.10.4"
+    assert cur.version == "2026.10.5"
     assert set(cur.formulas) == {"standard_form", "quadratic_formula", "discriminant", "nature_cases"}
     concept = cur.concepts["factorisation"]
     assert concept.title == "Solving by factorisation"
-    assert [step.id for step in concept.steps] == ["zero_product", "split_middle", "a_not_one", "zero_on_one_side"]
+    assert [step.id for step in concept.steps] == ["hook", "zero_product", "split_middle", "a_not_one",
+                                                "zero_on_one_side"]
     assert sorted(m.id for m in concept.mistakes) == ["divided_by_x", "not_zero_first", "sign_flip", "wrong_split"]
     assert concept.strategies == ["worked_example", "substitute_back", "compare_non_example"]
     assert concept.reteach_step == "zero_product"
@@ -252,6 +253,33 @@ def test_every_topic_has_names_a_student_can_say(cur):
         "standard_form": "standard form", "roots": "roots", "factorisation": "factorisation",
         "quadratic_formula": "quadratic formula", "discriminant": "discriminant", "word_problems": "word problems"}
     assert "factorization" in cur.concepts["factorisation"].aliases          # the spelling in the session log
+
+
+def test_topics_open_with_a_real_problem(cur):
+    """Each topic's first step is a short real-life problem, so it starts with why the topic is useful rather than
+    with a rule. Word problems are all stories already."""
+    for concept_id in cur.order:
+        first = cur.concepts[concept_id].steps[0]
+        if concept_id == "word_problems":
+            continue
+        assert first.id == "hook" and len(first.segments) == 2, concept_id
+        assert re.search(r"\b(?:hall|garden|park)\b", first.segments[0].say), concept_id
+
+
+def test_no_step_or_example_answers_a_find_k_question(cur):
+    """A board line that is a find-k question with one of its k put in shows that k: d_zero's 4x² - 4x + 1 = 0 was
+    4x² + kx + 1 = 0 with k = -4. No step line or example equation may be one, even multiplied by a number."""
+    checks = [cmd.check for concept in cur.concepts.values() for step in concept.steps for segment in step.segments
+              for cmd in segment.board if cmd.op == "write" and cmd.check] + [e.check for e in cur.examples]
+    shown = [mathcheck.parse_check(check) for check in checks]
+    sides = [eq.lhs - eq.rhs for eq in shown if isinstance(eq, Eq) and eq.free_symbols == {mathcheck.x}]
+    for check in (check for concept in cur.concepts.values() for check in concept.checks if check.kind == "find_k"):
+        question = mathcheck.parse_check(check.equation)
+        for value in grading.answer_key(check).all_roots:
+            with_k = expand((question.lhs - question.rhs).subs(mathcheck.k, value))
+            for side in sides:
+                ratio = simplify(with_k / side)
+                assert not (ratio.is_number and ratio != 0), (check.id, value, side)
 
 
 def test_no_step_asks_the_student_something(cur):
@@ -331,7 +359,8 @@ ROOTS = {"rt1": ("-2", "yes"), "rt2": ("-1", "no"), "rt3": ("3/2", "yes"),   # c
 
 def test_roots_keys_three_yes_two_no(cur):
     concept = cur.concepts["roots"]
-    assert [step.id for step in concept.steps] == ["definition", "not_a_root", "negative_values", "at_most_two"]
+    assert [step.id for step in concept.steps] == ["hook", "definition", "not_a_root", "negative_values",
+                                                "at_most_two"]
     assert_keys_and_traps(concept, {check_id: (key, {}) for check_id, (_, key) in ROOTS.items()})
     assert [check.candidate for check in concept.checks] == [candidate for candidate, _ in ROOTS.values()]
     keys = [grading.answer_key(check).word for check in concept.checks]
@@ -396,7 +425,8 @@ FORMULA = {   # concept 4
 
 def test_formula_keys_and_traps(cur):
     concept = cur.concepts["quadratic_formula"]
-    assert [step.id for step in concept.steps] == ["the_formula", "find_abc", "careful_minus_b", "surd_answers"]
+    assert [step.id for step in concept.steps] == ["hook", "the_formula", "find_abc", "careful_minus_b",
+                                                "surd_answers"]
     assert_keys_and_traps(concept, FORMULA)
     assert [cmd.formula for cmd in writes(concept, "the_formula")] == ["quadratic_formula"]
     # The scripted reteach replays careful_minus_b: the formula again, then an example whose roots, 7 and 4,
@@ -408,16 +438,19 @@ def test_formula_keys_and_traps(cur):
 DISCRIMINANT = {   # concept 5
     "di1": ([25], {"sign_in_D": ("-7", "wrong")}),
     "di2": ("equal", {}),
+    "dk1": ([-8, 8], {"one_k_value": ("8", "partial"), "sign_in_D": ("none", "wrong")}),   # find k: two values
     "di3": ("none", {}),
     "di4": ([-4], {"sign_in_D": ("36", "wrong")}),
     "di5": ("distinct", {}),
     "di6": ([Rational(1, 3)], {"mixed_cases": ("none", "wrong")}),
+    "dk2": ([4], {"kept_k_zero": ("0, 4", "partial")}),                                    # k = 0: no x squared
 }
 
 
 def test_discriminant_keys_and_traps(cur):
     concept = cur.concepts["discriminant"]
-    assert [step.id for step in concept.steps] == ["what_is_d", "three_cases", "d_negative", "d_zero"]
+    assert [step.id for step in concept.steps] == ["hook", "what_is_d", "three_cases", "d_negative", "d_zero",
+                                                "find_k"]
     assert_keys_and_traps(concept, DISCRIMINANT)
     assert [cmd.formula for cmd in writes(concept, "what_is_d")][0] == "discriminant"
     assert [cmd.formula for cmd in writes(concept, "three_cases")] == ["nature_cases"]
@@ -427,6 +460,10 @@ def test_discriminant_keys_and_traps(cur):
         values = [board_numbers(cmd) for cmd in writes(concept, step_id)
                   if cmd.check and not mathcheck.parse_check(cmd.check).free_symbols]
         assert len(values) == 1 and grading.same_value(values[0][0], d), step_id
+    # Find k (Exercise 4.3 Q2): D = 0 as an equation in k. The step's k, 6 or -6, answers neither find-k question.
+    assert writes(concept, "find_k")[-1].check == "Or(Eq(k, 6), Eq(k, -6))"
+    find_k = [grading.answer_key(check).values for check in concept.checks if check.kind == "find_k"]
+    assert len(find_k) == 2 and not any(grading.same_value(v, s) for vs in find_k for v in vs for s in (6, -6))
 
 
 WORD_PROBLEMS = {   # concept 6: the impossible root kept grades partial
@@ -435,6 +472,8 @@ WORD_PROBLEMS = {   # concept 6: the impossible root kept grades partial
     "wp3": ([11], {"kept_impossible_root": ("11, -12", "partial")}),
     "wp4": ([7], {"kept_impossible_root": ("7, -4", "partial")}),
     "wp5": ([6], {"kept_impossible_root": ("6, -8", "partial")}),
+    "wp6": ([8], {"kept_impossible_root": ("8, -9", "partial")}),
+    "wp7": ([9], {"kept_impossible_root": ("9, -11", "partial")}),
 }
 
 
@@ -456,12 +495,15 @@ def test_all_six_concepts_load_in_order(cur):
     assert cur.order == ["standard_form", "roots", "factorisation", "quadratic_formula", "discriminant",
                          "word_problems"]
     assert list(cur.concepts) == cur.order
-    prefixes = {"standard_form": "sf", "roots": "rt", "factorisation": "fa", "quadratic_formula": "qf",
-                "discriminant": "di", "word_problems": "wp"}
-    for concept_id, prefix in prefixes.items():                # check ids are numbered in the order asked
+    prefixes = {"standard_form": ["sf"], "roots": ["rt"], "factorisation": ["fa"], "quadratic_formula": ["qf"],
+                "discriminant": ["di", "dk"], "word_problems": ["wp"]}      # dk: the find-k questions
+    for concept_id, names in prefixes.items():                 # check ids are numbered in the order asked
         ids = [check.id for check in cur.concepts[concept_id].checks]
-        assert ids == [f"{prefix}{n}" for n in range(1, len(ids) + 1)], concept_id
-    assert sum(len(concept.checks) for concept in cur.concepts.values()) == 34   # load() validated them all
+        assert all(any(i.startswith(name) for name in names) for i in ids), concept_id
+        for name in names:
+            mine = [i for i in ids if i.startswith(name)]
+            assert mine == [f"{name}{n}" for n in range(1, len(mine) + 1)], concept_id
+    assert sum(len(concept.checks) for concept in cur.concepts.values()) == 38   # load() validated them all
 
 
 def skill(check: Check) -> tuple:

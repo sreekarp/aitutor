@@ -97,7 +97,7 @@ uv run python -m sims --persona sign_flipper    # one simulated student
 ```
 
 **Evals** have two layers. Layer 1 is the test suite: engine rules, maths checks, grading, lesson
-validation, scripted mode and the provider failure paths. Layer 2 needs the key: 22 tutor scenarios
+validation, scripted mode and the provider failure paths. Layer 2 needs the key: 24 tutor scenarios
 (`evals/scenarios.yaml`), each run 3 times and passed by majority, which check the reply type, rule,
 action and points, and that the answer wasn't given away. A run also fails if either prompt's first
 output was rejected. Options: `--runs N`, `--only ID`, `--model-understand ID`, `--model-respond ID`,
@@ -113,7 +113,7 @@ given while the simulated student still held its mistake).
 
 ## Demo: the evals catch a broken prompt
 
-1. Copy the respond prompt: `cp app/prompts/respond.v6.md app/prompts/respond.broken.md`
+1. Copy the respond prompt: `cp app/prompts/respond.v7.md app/prompts/respond.broken.md`
 2. In `respond.broken.md`, replace the hint instruction, the line
    `hint: Give the hint for HINT LEVEL, built on the LESSON'S HINT but aimed at what the student said.`,
    with this one:
@@ -197,7 +197,7 @@ keep the default SQLite file.
 | `app/llm_steps.py` | The turn's two LLM steps (UNDERSTAND, RESPOND), each with its scripted fallback |
 | `app/voice.py`, `app/page.py` | Speech-to-text turns and the cached text-to-speech; the JSON the page gets |
 | `app/engine.py`, `app/sessions.py` | The teaching rules and their reasons (pure functions): after a reply; where a lesson picks up (Start, Continue, a picked topic) |
-| `app/mathcheck.py`, `app/grading.py` | SymPy: board-line checks, answer keys, grading |
+| `app/mathread.py`, `app/mathcheck.py`, `app/grading.py` | SymPy: reading maths safely (x, and k in a find-k question), board-line checks, answer keys, grading |
 | `app/board.py` | Reply checks and the board |
 | `app/fallback.py`, `app/replies.py` | Scripted mode: reading a reply without the AI; every scripted line the tutor says |
 | `app/llm.py`, `app/prompts.py`, `app/prompts/` | OpenRouter (backups, retries, time limits) and the two versioned prompts |

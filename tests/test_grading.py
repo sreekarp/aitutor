@@ -118,10 +118,12 @@ EXPECTED_KEYS = [
     # 5. discriminant
     (make("di1", "discriminant", "Eq(x**2 + 3*x - 4, 0)", traps={"sign_in_D": "-7"}), [25]),
     (make("di2", "nature", "Eq(4*x**2 - 12*x + 9, 0)"), "equal"),
+    (make("dk1", "find_k", "Eq(2*x**2 + k*x + 8, 0)", traps={"one_k_value": "8", "sign_in_D": "none"}), [-8, 8]),
     (make("di3", "nature", "Eq(3*x**2 - 2*x + 4, 0)"), "none"),
     (make("di4", "discriminant", "Eq(x**2 + 4*x + 5, 0)", traps={"sign_in_D": "36"}), [-4]),
     (make("di5", "nature", "Eq(x**2 - 5*x + 3, 0)"), "distinct"),
     (make("di6", "roots", "Eq(9*x**2 - 6*x + 1, 0)", traps={"mixed_cases": "none"}), [Rational(1, 3)]),
+    (make("dk2", "find_k", "Eq(k*x**2 + k*x + 1, 0)", traps={"kept_k_zero": "0, 4"}), [4]),
     # 6. word_problems: the board shows only the story (show_equation False); one positive quantity asked
     (make("wp1", "roots", "Eq(x*(x + 3), 40)", keep="positive", show_equation=False,
           traps={"kept_impossible_root": "5, -8"}), [5]),
@@ -132,13 +134,19 @@ EXPECTED_KEYS = [
           traps={"kept_impossible_root": "7, -4"}), [7]),
     (make("wp5", "roots", "Eq(x**2 + (x + 2)**2, 100)", keep="positive", show_equation=False,
           traps={"kept_impossible_root": "6, -8"}), [6]),
+    (make("wp6", "roots", "Eq(x**2 + (x + 1)**2, 145)", keep="positive", show_equation=False,
+          traps={"kept_impossible_root": "8, -9"}), [8]),
+    (make("wp7", "roots", "Eq(x*(2*x + 4), 198)", keep="positive", show_equation=False,
+          traps={"kept_impossible_root": "9, -11"}), [9]),
 ]
 CHECKS = {check.id: check for check, _ in EXPECTED_KEYS}
-ALL_ROOTS = {"wp1": [-8, 5], "wp3": [-12, 11], "wp4": [-4, 7], "wp5": [-8, 6]}   # before keep: positive
+# Before keep: positive; for dk2, every k that makes D zero, before dropping k = 0 (then it isn't a quadratic).
+ALL_ROOTS = {"wp1": [-8, 5], "wp3": [-12, 11], "wp4": [-4, 7], "wp5": [-8, 6], "wp6": [-9, 8], "wp7": [-11, 9],
+             "dk2": [0, 4]}
 
 
-def test_answer_keys_all_34_checks():
-    assert len(CHECKS) == 34
+def test_answer_keys_all_38_checks():
+    assert len(CHECKS) == 38
     for check, expected in EXPECTED_KEYS:
         key = grading.answer_key(check)
         assert key.kind == check.kind, check.id
@@ -146,7 +154,7 @@ def test_answer_keys_all_34_checks():
             assert key.word == expected and key.values is None, check.id
         else:
             assert same_values(key.values, expected), check.id
-        if check.kind == "roots":
+        if check.kind in ("roots", "find_k"):
             assert same_values(key.all_roots, ALL_ROOTS.get(check.id, expected)), check.id
 
 
@@ -182,6 +190,10 @@ def test_answer_key_refuses_broken_maths():
         make("b5", "coefficient", "Eq(2*x, 1)", which="a"),  # not a quadratic
         make("b6", "coefficient", "Eq(x**2, 1)"),            # no `which`
         make("b7", "is_root", "Eq(x**2, 1)"),                # no candidate
+        make("b8", "roots", "Eq(x**2 + k*x, 1)"),            # k is only for a find_k question
+        make("b9", "find_k", "Eq(x**2 + 4*x + 1, 0)"),       # which needs k
+        make("b10", "find_k", "Eq(k*x + 1, 0)"),             # and a quadratic
+        make("b11", "find_k", "Eq(x**2 + k**2 + 1, 0)"),     # D = -4k² - 4 is never zero for a real k
     ]
     for check in broken:
         with pytest.raises(ValueError):
@@ -190,11 +202,20 @@ def test_answer_key_refuses_broken_maths():
         grading.answer_key(make("b8", "roots", "__import__('os')"))
 
 
+def test_find_k_drops_every_value_that_makes_a_zero():
+    """a = k² - 2k - 1 is zero at k = 1 ± √2: compared by value, not by how it is written."""
+    a = "(k**2 - 2*k - 1)"
+    key = grading.answer_key(make("s1", "find_k", f"Eq({a}*x**2 + {a}*x + 1, 0)"))
+    assert same_values(key.values, [1 - sqrt(6), 1 + sqrt(6)])
+    assert len(key.all_roots) == 4                                      # 1 ± √2 make D zero too
+
+
 def test_key_text():
     expected = {
         "fa1": "x = 2 or x = 3", "fa2": "x = -1/3 or x = 2", "di6": "x = 1/3", "wp1": "x = 5",
         "qf2": "x = 2 - sqrt(3) or x = 2 + sqrt(3)",
         "sf2": "b = -7", "sf4": "c = -10", "di1": "D = 25", "di4": "D = -4",
+        "dk1": "k = -8 or k = 8", "dk2": "k = 4",
         "di2": "Two equal real roots", "di3": "No real roots", "di5": "Two distinct real roots",
         "rt1": "Yes, x = -2 is a root", "rt2": "No, x = -1 is not a root", "rt3": "Yes, x = 3/2 is a root",
         "sf1": "No, it is not a quadratic equation", "sf3": "Yes, it is a quadratic equation",
@@ -251,6 +272,13 @@ def test_verdict_table():
         (CHECKS["di3"], "no real roots", "correct", ""),
         (CHECKS["di3"], "equal", "wrong", ""),
         (CHECKS["fa1"], "banana", "unsure", ""),
+        (CHECKS["dk1"], "8, -8", "correct", ""),
+        (CHECKS["dk1"], "k = 8 or k = -8", "correct", ""),     # "k =" is dropped, like "x ="
+        (CHECKS["dk1"], "8", "partial", "missing"),
+        (CHECKS["dk1"], "none", "wrong", "empty"),
+        (CHECKS["dk2"], "4", "correct", ""),
+        (CHECKS["dk2"], "0, 4", "partial", "extra"),           # k = 0 leaves no x squared term
+        (CHECKS["dk2"], "2", "wrong", "not_a_root"),
     ]
     for check, answer, verdict, detail in table:
         result = grading.grade(check, answer)
