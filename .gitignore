@@ -6,7 +6,7 @@ data/
 evals/results/
 sims/runs/
 .env
-crredits.py
+check_key.py
 .venv/
 __pycache__/
 .pytest_cache/

@@ -1,12 +1,12 @@
 # DESIGN.md — AI tutor for quadratic equations (NCERT Class 10)
 
-Anything designed but not built is marked *(designed)*. Numbers are measured unless marked *(estimate)*.
+Anything designed but not built is marked *(designed)*. Numbers are measured unless marked estimate.
 
 **The core rule:** plain code decides every teaching move; the LLM only understands what the student said and
 phrases the tutor's help; SymPy checks the maths. State lives in the database, never in an LLM conversation.
 Most of what follows depends on that.
 
-**A lesson:** a topic opens with why it's useful (a short real-life problem), then teaching steps that each end
+**A lesson:** a topic opens with why it's relevant (a short real-life problem), then teaching steps that each end
 on a check-in ("Did that make sense?"), then questions. The rules (`engine.py`, `sessions.py`: R0–R10, S0–S2)
 pick one move per reply: next step, solved example, hint, reteach, credit, review. Each move has a reason, shown in the page's
 "Why?" panel. Buttons and common phrases ("ok", "not sure", "test me") skip the LLM entirely.
@@ -269,11 +269,17 @@ What that says:
   Lesson learned: time CPU-bound changes on the slow host.
 - **Give up on a stalled model sooner.** In that afternoon's simulation logs every slow call looked the same: the
   primary model hit the 8 s timeout, then the backup answered in 2–5 s. So UNDERSTAND now switches to its backup
-  after 4 s and RESPOND after 5 s (`ROLE_TIMEOUT_S`). Re-tested live the same evening (11 spoken turns): three
-  UNDERSTAND calls hit the 4 s cut, the backup answered in 1.5–2.7 s, and those turns took 5.5–6.7 s instead of
-  10–13 s. One wrong answer still took 15 s: RESPOND's primary stalled for 8 s (before its cut was lowered), its
-  backup ran out of the turn's 15 s, and a scripted hint was used. The primary stalled on 4 of 13 calls that evening
-  and on none of 464 on 12 Oct, so this is the provider's bad day, but the tutor has to survive one.
+  after 4 s and RESPOND after 5 s (`ROLE_TIMEOUT_S`). Re-tested live the same evening, twice:
+  - *UNDERSTAND cut to 4 s (11 spoken turns):* three calls hit the cut, the backup answered in 1.5–2.7 s, and
+    reading the answer took 5.5–6.7 s instead of 10–13 s. One wrong answer still took 15 s: RESPOND's primary stalled for
+    8 s, its backup was left 2.9 s of the turn's 15 s and timed out, and a scripted hint was used. So RESPOND's cut
+    went down to 5 s too.
+  - *Both cuts (6 spoken turns, two of them wrong answers):* RESPOND wrote both hints in 2.9 and 3.5 s, and the
+    waiting line put first audio at 3.4–6.7 s. UNDERSTAND's primary stalled twice; the slowest turn reached first
+    audio at 9.7 s (a 4 s stall, the backup's 1.7 s, and 3.0 s of speech-to-text), about 14 s with the old 8 s cut.
+
+  The primary stalled on 6 of 20 calls across the two re-tests and on none of 464 on 12 Oct: the provider's bad
+  day, but the tutor has to survive one. A stall still costs 4–5 s, which is why the hedged request below is next.
 - *(Designed)* **Next levers, by what the numbers say:** a hedged request (if the primary hasn't answered in
   ~2.5 s, also ask the backup and take whichever answers first), the real fix for a stalling provider; a short
   "Mm, let me check" when UNDERSTAND is slow,
@@ -354,8 +360,9 @@ Ranked by how much they could hurt a student:
 2. **While teaching, UNDERSTAND is trusted.** A mistake it names isn't verified, because no question is open
    for SymPy to grade. In a simulation it told a correct student, twice, that their sign was wrong.
 3. **The voice loop is slow:** measured live, 4.5 s typical and 13.6 s slow from Stop to first audio, against
-   a 2 s target. Speech-to-text and text-to-speech alone take about 2.5 s, and UNDERSTAND has a long tail. There is no
-   streaming, and no interrupting the tutor mid-sentence.
+   a 2 s target. Speech-to-text and text-to-speech alone take about 2.5 s. A stalling model provider was the long
+   tail; switching to the backup sooner brought the slowest re-test turn to 9.7 s, but a stall still costs 4–5 s.
+   There is no streaming, and no interrupting the tutor mid-sentence.
 4. **Small, synthetic test sets:** 24 eval scenarios, 4 simulated students (LLMs, with their own biases and
    drift), no real students, and no Hinglish recording through speech-to-text yet.
 5. **RESPOND's first output is still rejected about 1 time in 13** (5 of 66 eval turns). Students never see a bad
@@ -365,8 +372,10 @@ Ranked by how much they could hurt a student:
 7. **The keyword safety check** (`app/safety.py`) has known false alarms ("I got hit by the ball") and misses
    ("He gets drunk. Beats me."). UNDERSTAND's safety flag is the second net; scripted mode has only the keywords.
 8. **Speech-to-text mishears short replies,** especially when their start is cut off ("teach me" → "Ичми").
-   Unplaceable or foreign-script replies get "Sorry, I may have misheard you"; a mishearing that reads as a real
-   answer is taken at its word. A vocabulary hint fixed most cut-offs but invented "Teach me." from near-silence,
+   In the live tests on 14 Oct a spoken "test me" at a topic's start was read as unclear 5 times, and asked again
+   each time; the **Test me first** and **Teach me** buttons skip speech-to-text and always work. Unplaceable or
+   foreign-script replies get "Sorry, I may have misheard you"; a mishearing that reads as a real answer is taken
+   at its word. A vocabulary hint fixed most cut-offs but invented "Teach me." from near-silence,
    so it was dropped.
 9. **One process.** Model breakers live in memory and there's no duplicate-request guard, so the app runs one
    worker. The page never resends by itself.
