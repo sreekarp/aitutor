@@ -138,6 +138,6 @@ from near-silence. A reply the student never said is worse than "say it again".
   cut, letting questions to the tutor stay free while a question is open, the "let me think" line, and acting on
   the review.
 - **An AI coding assistant (Claude Code)** wrote most of the code , under my proposal and 
-  direction. I reviewed the changes and kept the code to rules I can explain (one job per file, 300 lines at most).
+  direction. I reviewed the changes .
 - **Testing by hand:** I used the tutor on the live site by voice and by typing; the latency numbers are from my
   own sessions.
