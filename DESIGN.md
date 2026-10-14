@@ -266,7 +266,11 @@ equal?). Their equations have a second letter, k, so the maths checker reads two
 a line with only k in it, right after an equation in x and k, must be that equation's D = 0; later lines in k
 follow from it, like lines in x; values of k are written like roots ("k = 6 or k = -6"), and one that makes a
 zero (no x squared left) is dropped with a "select" line. Lines in x and k are never compared otherwise, so a
-line can't show x while its check says k. Its first full eval run is still to do.
+line can't show x while its check says k. Its first full run (14 Oct) passed 22 of 24, both find-k scenarios
+3 of 3. The two failures were first drafts rejected for reasons v6 has too: a chained "a · c = 3 · (-2) = -6"
+line (`question_while_checking`, 1 of 3 on v6 as well), and a worked example in 5 parts, or on a lesson
+question (`not_sure_while_teaching`: 5 more runs each gave v6 4 of 5 and v7 3 of 5). In every run the
+student still heard a correct reply.
 
 *(Designed)* Gradual rollout: send a share of students to the new version (by a hash of the
 student id: 10%, then 50%, then 100%) and compare the two side by side. Every turn already records
