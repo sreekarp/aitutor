@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from sqlalchemy import create_engine, func, inspect, select
+from sqlalchemy import create_engine, func, inspect, select, text
 
 from app import db
 from app.models import BoardLine, ConceptState, Decision, Pending
@@ -46,8 +46,27 @@ def test_a_server_database_checks_a_connection_before_using_it(monkeypatch):
     made = {}
     monkeypatch.setattr(db, "create_engine", lambda url, **options: made.update(url=url, **options) or "engine")
     monkeypatch.setattr(db.metadata, "create_all", lambda engine: None)
+    monkeypatch.setattr(db, "add_columns", lambda engine: None)
     db.connect("postgres://u:p@localhost/db")
     assert made == {"url": "postgresql+psycopg://u:p@localhost/db", "pool_pre_ping": True}
+
+
+def test_an_older_progress_table_gets_the_columns_added_since(tmp_path):
+    """The live database was made before checks_seen existed; connect() adds it and keeps the rows."""
+    path = (tmp_path / "old.db").as_posix()
+    old = create_engine(f"sqlite:///{path}")
+    with old.begin() as conn:
+        conn.execute(text("CREATE TABLE progress (student_id TEXT, concept_id TEXT, points FLOAT)"))
+        conn.execute(text("INSERT INTO progress VALUES ('s1', 'roots', 1.0)"))
+    old.dispose()
+    engine = db.connect(f"sqlite:///{path}")
+    try:
+        assert "checks_seen" in {column["name"] for column in inspect(engine).get_columns("progress")}
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT points, checks_seen FROM progress")).one() == (1.0, None)
+        db.add_columns(engine)                          # a second start changes nothing
+    finally:
+        engine.dispose()
 
 
 def test_connect_creates_folder(tmp_path):

@@ -112,8 +112,8 @@ def working_hint(kind: str) -> str:
 
 # ---------- the messages for one turn ----------
 def understand_messages(*, concept: Concept, phase: str, check: Check | None, previous_answer: str,
-                        tutor_last_line: str, student_text: str) -> list[dict]:
-    """The system prompt plus this turn's facts for UNDERSTAND."""
+                        tutor_last_line: str, student_text: str, version: str | None = None) -> list[dict]:
+    """The system prompt (`version`, else the live one) plus this turn's facts for UNDERSTAND."""
     lines = [f"CONCEPT: {concept.title}", f"PHASE: {phase}"]
     if check is None:
         lines.append("PENDING QUESTION: none (teaching)")
@@ -126,7 +126,7 @@ def understand_messages(*, concept: Concept, phase: str, check: Check | None, pr
     lines.append("KNOWN MISTAKES:")
     lines += [f"- {mistake.id}: {mistake.looks_like}" for mistake in concept.mistakes]
     lines += [f"TUTOR'S LAST LINE: {tutor_last_line or 'none'}", f"STUDENT SAID: {student_text}"]
-    return _messages("understand", lines)
+    return _messages("understand", lines, version)
 
 
 def respond_messages(*, decision: Decision, concept: Concept, step: Step | None, check: Check | None,
@@ -134,9 +134,11 @@ def respond_messages(*, decision: Decision, concept: Concept, step: Step | None,
                      understood: Understood, grade: Grade | None, mistake: Mistake | None,
                      hint_text: str | None, board: list[BoardLine], check_equations: list[str],
                      formulas: dict[str, str], previous_reason: str, student_text: str = "",
-                     last_reply: list[Segment] | None = None, examples: list[str] | None = None) -> list[dict]:
-    """The system prompt plus this turn's facts for RESPOND. The student's words come last. The step and the tutor's
-    last reply are given part by part (_parts), so "the last example" or "that line" can be found."""
+                     last_reply: list[Segment] | None = None, examples: list[str] | None = None,
+                     version: str | None = None) -> list[dict]:
+    """The system prompt (`version`, else the live one) plus this turn's facts for RESPOND. The student's words come
+    last. The step and the tutor's last reply are given part by part (_parts), so "the last example" or "that line"
+    can be found."""
     lines = [f"ACTION: {decision.action}", f"ENGINE'S REASON: {decision.reason}",
              f"LAST DECISION'S REASON: {previous_reason or 'none'}", f"CONCEPT: {concept.title}"]
     if step is not None:
@@ -170,7 +172,7 @@ def respond_messages(*, decision: Decision, concept: Concept, step: Step | None,
     if examples:
         lines += ["EXAMPLE EQUATIONS (a new example's equation comes from here):", *examples]
     lines.append(f"STUDENT SAID: {student_text}")
-    return _messages("respond", lines)
+    return _messages("respond", lines, version)
 
 
 def _parts(segments: list[Segment], board: list[BoardLine], numbered: bool) -> list[str]:
@@ -220,8 +222,8 @@ def read_reply(data: dict, ctx: ReplyContext) -> tuple[list[Segment], list[str]]
 
 
 # ---------- small helpers ----------
-def _messages(role: str, lines: list[str]) -> list[dict]:
-    return [{"role": "system", "content": load_prompt(PROMPT_VERSIONS[role])},
+def _messages(role: str, lines: list[str], version: str | None) -> list[dict]:
+    return [{"role": "system", "content": load_prompt(version or PROMPT_VERSIONS[role])},
             {"role": "user", "content": "\n".join(lines)}]
 
 

@@ -39,7 +39,7 @@ class FakeVoice:
             raise ProviderError("text-to-speech is down")
         return MP3
 
-    def chat_json(self, role, messages, schema_name, schema, validate, *, deadline, calls):
+    def chat_json(self, role, messages, schema_name, schema, validate, *, deadline, calls, models=None):
         raise ProviderError("chat is down in these tests, so the tutor uses its scripted words")
 
 

@@ -142,6 +142,7 @@ class Pending:
     awaiting_working: bool = False
     followup_used: bool = False
     last_answer: str = ""
+    partly_right: bool = False       # an answer was partly right, and R5's follow-up said so: no longer independent
 
 
 @dataclass
@@ -149,11 +150,12 @@ class ConceptState:
     concept_id: str
     status: Status = "not_started"
     step_id: str | None = None
-    points: float = 0.0
+    points: float = 0.0              # clean answers in a row (engine._credit); mastered at POINTS_TO_MASTER
     pending: Pending | None = None
     last_check_id: str | None = None
     reteach_count: int = 0
     strategies_tried: list[str] = field(default_factory=list)
+    checks_seen: list[str] = field(default_factory=list)    # questions asked in this pass: each is asked once
 
 
 Progress = dict[str, ConceptState]   # concept id -> state, one entry per concept in Curriculum.order
@@ -256,3 +258,5 @@ class TurnContext:
     latency: dict
     scripted: bool = False             # no LLM for the rest of this turn (scripted mode, or UNDERSTAND failed)
     stopped: Stopped | None = None     # the last reply, when the student stopped it part-way
+    prompt_versions: dict = field(default_factory=dict)   # role -> prompt version, from the session (rollout.pinned)
+    models: dict = field(default_factory=dict)            # role -> models, from the session; {}: the live config

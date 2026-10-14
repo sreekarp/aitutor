@@ -79,14 +79,14 @@ function runBoard(commands) {
 
 // ---------- topics (progress) and "Why?" panels ----------
 // Each topic is a button: a click chooses it, and a Start button then opens it (app.js). ✓ mastered, ⚠ needs
-// review, ⏸ paused, ▶ current, · not started; the dots are the points towards mastery (● one, ◐ half, ○ none).
+// review, ⏸ paused, ▶ current, · not started; the dots are clean answers in a row towards mastery (● one, ○ none).
 function topicRow(row) {
   const icon = { mastered: "✓", needs_review: "⚠", paused: "⏸" }[row.status] || (row.current ? "▶" : "·");
   const button = make("button", "", "topic");
   button.type = "button";
   button.dataset.concept = row.concept_id;
   if (row.current) button.setAttribute("aria-current", "step");
-  const dot = (n) => (row.points >= n ? "●" : row.points >= n - 0.5 ? "◐" : "○");
+  const dot = (n) => (row.points >= n ? "●" : "○");
   const dots = Array.from({ length: POINTS_TO_MASTER }, (_, i) => dot(i + 1)).join("");
   button.append(make("span", icon, "icon"), make("span", row.title, "name"), make("span", dots, "dots"));
   const detail = topicDetail(row);

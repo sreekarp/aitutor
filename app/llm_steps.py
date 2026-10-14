@@ -69,7 +69,8 @@ def _llm_understand(llm, ctx: TurnContext, pending: Pending | None) -> Understoo
     messages = prompts.understand_messages(
         concept=ctx.concept, phase=ctx.phase, check=ctx.check,
         previous_answer=pending.last_answer if pending else "",
-        tutor_last_line=ctx.last_speech[-1].say if ctx.last_speech else "", student_text=ctx.text)
+        tutor_last_line=ctx.last_speech[-1].say if ctx.last_speech else "", student_text=ctx.text,
+        version=ctx.prompt_versions.get("understand"))
 
     def validate(data: dict) -> Understood:
         understood, problems = prompts.read_understood(data, ctx.check)
@@ -79,7 +80,7 @@ def _llm_understand(llm, ctx: TurnContext, pending: Pending | None) -> Understoo
         return understood
 
     return llm.chat_json("understand", messages, "understood", prompts.UNDERSTAND_SCHEMA, validate,
-                         deadline=ctx.deadline, calls=ctx.calls)
+                         deadline=ctx.deadline, calls=ctx.calls, models=ctx.models.get("understand"))
 
 
 def _llm_respond(llm, cur: Curriculum, ctx: TurnContext, decision: Decision, understood: Understood,
@@ -103,7 +104,8 @@ def _llm_respond(llm, cur: Curriculum, ctx: TurnContext, decision: Decision, und
         hint_text=check.hints[decision.hint_level - 1] if decision.action == "hint" else None,
         board=ctx.board, check_equations=equations, formulas=cur.formulas,
         previous_reason=ctx.previous_reason, student_text=ctx.text, last_reply=ctx.last_speech,
-        examples=examples.for_turn(cur, [key, next_key]) if decision.action in NEW_EXAMPLES else None)
+        examples=examples.for_turn(cur, [key, next_key]) if decision.action in NEW_EXAMPLES else None,
+        version=ctx.prompt_versions.get("respond"))
 
     def validate(data: dict) -> list[Segment]:
         segments, problems = prompts.read_reply(data, reply_ctx)
@@ -113,7 +115,7 @@ def _llm_respond(llm, cur: Curriculum, ctx: TurnContext, decision: Decision, und
         return segments
 
     words = llm.chat_json("respond", messages, "reply", prompts.RESPOND_SCHEMA, validate,
-                          deadline=ctx.deadline, calls=ctx.calls)
+                          deadline=ctx.deadline, calls=ctx.calls, models=ctx.models.get("respond"))
     # The worked answer, then "we'll come back to this next time": not after the very last topic, where END's summary
     # right after it says so.
     if decision.action == "needs_review" and decision.resume_concept_id:

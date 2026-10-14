@@ -313,12 +313,50 @@ def test_correct_with_working_gives_point_and_next_question():
     assert state.points == 1.0 and state.pending == Pending("a2") and state.last_check_id == "a2"
 
 
-def test_half_point_after_hint():
-    progress = progress_with(asking("a1", points=1.0, hint_level=1, followup_used=True, last_answer="11"))
+def test_a_right_answer_after_a_hint_earns_nothing():
+    progress = progress_with(asking("a1", points=0.0, hint_level=1, followup_used=True, last_answer="11"))
     decision, after = turn(progress, said("answer", "7, 11", working=True), graded("correct", "7, 11"))
     assert (decision.rule, decision.action) == ("R1", "credit")
-    assert after["alpha"].points == 1.5 and "0.5" in decision.reason
+    assert after["alpha"].points == 0 and "after help" in decision.reason
     assert after["alpha"].pending == Pending("a2")                 # the next question starts fresh
+
+
+def test_a_hint_starts_the_run_again():
+    """One clean answer, then "I don't know" on the next question: the run of clean answers is back to 0."""
+    decision, after = turn(progress_with(asking("a2", points=1.0)), said("dont_know"), None)
+    assert (decision.rule, decision.action, after["alpha"].points) == ("R4", "hint", 0)
+
+
+def test_a_partly_right_answer_starts_the_run_again_and_its_fix_earns_nothing():
+    progress = progress_with(asking("a2", points=1.0))
+    decision, after = turn(progress, said("answer", "11", working=True), graded("partial", "11", detail="missing"))
+    assert (decision.action, after["alpha"].points, after["alpha"].pending.partly_right) == ("follow_up", 0, True)
+    decision, after = turn(after, said("answer", "11, -7", working=True), graded("correct", "11, -7"))
+    assert (decision.action, after["alpha"].points) == ("credit", 0)
+
+
+def test_a_wrong_answer_with_a_known_mistake_starts_the_run_again():
+    progress = progress_with(asking("a2", points=1.0))
+    wrong = graded("wrong", "-11, 7", trap="sign_flip")
+    decision, after = turn(progress, said("answer", "-11, 7", working=True), wrong)
+    assert (decision.rule, after["alpha"].points) == ("R3", 0)
+
+
+def test_two_clean_answers_in_a_row_master_the_concept():
+    progress = progress_with(asking("a1"))
+    decision, after = turn(progress, said("answer", "7, 11", working=True), graded("correct", "7, 11"))
+    assert (decision.action, after["alpha"].points, after["alpha"].checks_seen) == ("credit", 1, ["a2"])
+    decision, after = turn(after, said("answer", "11, -7", working=True), graded("correct", "11, -7"))
+    assert (decision.action, after["alpha"].status) == ("mastered", "mastered")
+
+
+def test_every_question_is_asked_once_a_pass_then_the_concept_is_marked_for_review():
+    """Questions are fresh: once every one has been asked in this pass, the concept goes to review, not round again."""
+    state = asking("a1", hint_level=1)
+    state.checks_seen = ["a1", "a2", "a3", "a4"]                   # alpha's four questions, all asked
+    decision, after = turn(progress_with(state), said("answer", "7, 11", working=True), graded("correct", "7, 11"))
+    assert (decision.rule, decision.action, decision.resume_concept_id) == ("R9", "needs_review", "beta")
+    assert after["alpha"].status == "needs_review" and "Every question has been asked" in decision.reason
 
 
 def test_mastery_resumes_next_concept_with_clear():

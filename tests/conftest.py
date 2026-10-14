@@ -43,8 +43,10 @@ class FakeLLM:
     def __init__(self, **replies: list):
         self.replies = {role: list(queue) for role, queue in replies.items()}
         self.asked: list[tuple[str, list[dict]]] = []          # (role, messages) for every call made
+        self.models: list = []                                   # the `models` passed with every call (None: live)
 
-    def chat_json(self, role, messages, schema_name, schema, validate, *, deadline, calls):
+    def chat_json(self, role, messages, schema_name, schema, validate, *, deadline, calls, models=None):
+        self.models.append(models)
         for attempt in (1, 2):
             self.asked.append((role, messages))
             reply = self.replies[role].pop(0)

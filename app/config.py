@@ -12,7 +12,7 @@ WEB_DIR = ROOT / "web"
 DATA_DIR = ROOT / "data"
 TTS_CACHE_DIR = DATA_DIR / "tts"
 
-POINTS_TO_MASTER = 2.0
+POINTS_TO_MASTER = 2.0          # clean answers in a row: fresh question, first try, no hint, working shown
 MAX_HINTS = 3
 MAX_RETEACHES = 3
 BOARD_MAX_LINES = 8
@@ -23,6 +23,9 @@ SESSION_GAP_MIN = 30
 TURN_DEADLINE_S = 15.0
 STT_TIMEOUT_S = 8.0
 LLM_TIMEOUT_S = 8.0
+# UNDERSTAND takes 2-3 s when healthy. When its primary stalled (live, 14 Oct) the backup answered in 2-5 s, so
+# waiting the full 8 s first made 10-13 s turns: it switches sooner. RESPOND writes more and keeps 8 s.
+ROLE_TIMEOUT_S = {"understand": 4.0}
 TTS_TIMEOUT_S = 4.0
 BREAKER_FAILURES = 3
 BREAKER_COOLDOWN_S = 60.0
@@ -52,6 +55,10 @@ MODELS: dict[str, list[dict]] = {
 }
 TTS_INSTRUCTIONS = "Warm, patient teacher; clear, moderate pace."
 PROMPT_VERSIONS = {"understand": "understand.v4", "respond": "respond.v7"}
+# A staged rollout: new sessions of a stable share of students (a hash of its id and the student id, rollout.py) get
+# these prompts and models instead. Every session keeps the versions it started with. None: everyone gets the above.
+ROLLOUT: dict | None = None     # e.g. {"id": "respond-v8", "percent": 10, "prompt_versions": {...}, "models": MODELS}
+RETIRED_PROMPTS: set[str] = set()   # a rollback: sessions pinned to one of these move to PROMPT_VERSIONS next turn
 
 
 @dataclass(frozen=True)

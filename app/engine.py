@@ -41,7 +41,7 @@ def decide(progress: Progress, cur: Curriculum, understood: Understood,
     elif state is None:
         decision = end_decision()
     elif state.pending is None:
-        decision = _teaching(state, cur.concepts[cid], understood)
+        decision = _teaching(after, cur, state, understood)
     else:
         decision = _checking(after, cur, state, understood, grade)
     # the facts behind the decision, for the decisions table (the turn row keeps the full reply and grade)
@@ -56,10 +56,11 @@ def end_decision() -> Decision:
 
 
 # ---------- the rules while teaching, and while checking ----------
-def _teaching(state: ConceptState, concept: Concept, understood: Understood) -> Decision:
+def _teaching(after: Progress, cur: Curriculum, state: ConceptState, understood: Understood) -> Decision:
+    concept = cur.concepts[state.concept_id]
     kind, total = understood.type, len(concept.steps)
     if kind == "test_me":                          # the only reply that skips the steps
-        return _ask_next(state, concept, "R6", "start_check",
+        return _ask_next(after, cur, state, "R6", "start_check",
                          "You asked to be tested, so the remaining steps are skipped and a question checks it.")
     if state.step_id is None and kind not in ("say_again", "unclear"):
         kind = "next"            # the topic start: any other reply begins step 1, which answers a question too
@@ -69,7 +70,7 @@ def _teaching(state: ConceptState, concept: Concept, understood: Understood) -> 
     if kind in ("next", "answer", "claims_understanding", "move_on"):     # "got it" and "move on" go on, like "ok"
         step_id = next_step_id(concept, state.step_id)
         if step_id is None:
-            return _ask_next(state, concept, "R0", "start_check",
+            return _ask_next(after, cur, state, "R0", "start_check",
                              f"Teaching: all {total} steps done, so a question checks what you learned.")
         state.status, state.step_id = "teaching", step_id      # also starts a concept not started yet
         number = [step.id for step in concept.steps].index(step_id) + 1
@@ -134,8 +135,10 @@ def _answer(after: Progress, cur: Curriculum, state: ConceptState, understood: U
             return make_decision("R5", "clarify", state, "An answer couldn't be read from that reply, "
                                  "so one follow-up asks for just the answer.")
         what = "a value is missing" if grade.detail == "missing" else "a value doesn't fit the question"
+        pending.partly_right, state.points = True, 0                # the follow-up is help: the run starts again
         return make_decision("R5", "follow_up", state,
-                             f"SymPy: partly right ({what}). One follow-up; not counted wrong.",
+                             f"SymPy: partly right ({what}). One follow-up; not counted wrong, but the run of clean "
+                             "answers starts again.",
                              mistake=_mistake(concept, understood, grade), reask=True)
     if verdict == "partial":
         return _wrong(after, cur, state, "SymPy: still only partly right.", _mistake(concept, understood, grade),
@@ -163,23 +166,28 @@ def _wrong(after: Progress, cur: Curriculum, state: ConceptState, cause: str, mi
 
 
 def _hint(after: Progress, cur: Curriculum, state: ConceptState, cause: str, wrong_values: bool) -> Decision:
-    """R4: the next hint on the same question; once all 3 are used, a reteach with no target mistake."""
+    """R4: the next hint on the same question; once all 3 are used, a reteach with no target mistake. Any hint
+    starts the run of clean answers again."""
     pending = state.pending
     if pending.hint_level >= MAX_HINTS:
         return _reteach(after, cur, state, "R4", f"{cause} All {MAX_HINTS} hints used.", None, wrong_values)
     pending.hint_level += 1
+    state.points = 0
     return make_decision("R4", "hint", state, f"{cause} Hint {pending.hint_level} of {MAX_HINTS}.", reask=True)
 
 
 def _credit(after: Progress, cur: Curriculum, state: ConceptState, cause: str) -> Decision:
-    """R1: +1 point (+0.5 if a hint was given); mastered at 2, otherwise the next question."""
+    """R1: a right answer with working. A clean one (first try, no hint, no "partly right" follow-up; every question
+    is fresh) adds 1 to the run, and 2 in a row master the concept. One that came after help counts for nothing:
+    the help already set the run back to 0. Either way the next fresh question follows."""
     concept = cur.concepts[state.concept_id]
-    gain = 0.5 if state.pending.hint_level > 0 else 1.0
-    state.points += gain
-    hint_note = " (a hint was used)" if gain < 1 else ""
-    score = f"+{gain:g} point{hint_note}, now {state.points:g} of {POINTS_TO_MASTER:g}"
+    if state.pending.hint_level == 0 and not state.pending.partly_right:
+        state.points += 1
+        score = f"A clean answer: {state.points:g} of {POINTS_TO_MASTER:g} in a row"
+    else:
+        score = f"It came after help, so it doesn't count: 0 of {POINTS_TO_MASTER:g} in a row"
     if state.points < POINTS_TO_MASTER:
-        return _ask_next(state, concept, "R1", "credit", f"{cause} {score}.")
+        return _ask_next(after, cur, state, "R1", "credit", f"{cause} {score}.")
     state.status, state.pending = "mastered", None
     return make_decision("R1", "mastered", state, f"{cause} {score}, so {concept.title} is mastered.",
                          resume_concept_id=resume_next(after, cur), clear_board=True)
@@ -199,9 +207,9 @@ def _reteach(after: Progress, cur: Curriculum, state: ConceptState, rule: str, c
     untried = strategy not in state.strategies_tried
     if untried:
         state.strategies_tried.append(strategy)
-    state.reteach_count += 1
+    state.reteach_count, state.points = state.reteach_count + 1, 0
     reason = f"{cause} Reteach {state.reteach_count} of {MAX_RETEACHES} using {strategy}"
-    return _ask_next(state, concept, rule, "reteach", reason + (" (not tried yet)." if untried else "."),
+    return _ask_next(after, cur, state, rule, "reteach", reason + (" (not tried yet)." if untried else "."),
                      strategy=strategy, mistake=mistake, evidence={"cause": cause})
 
 
@@ -225,10 +233,18 @@ def replay_instead(decision: Decision, before: Progress, after: Progress) -> tup
 
 
 # ---------- small shared helpers ----------
-def _ask_next(state: ConceptState, concept: Concept, rule: str, action: str, reason: str, **extra) -> Decision:
-    """Ask the next question. Asking any question starts a fresh pending, on a clean board."""
-    check_id = next_check_id(concept, state.last_check_id)
+def _ask_next(after: Progress, cur: Curriculum, state: ConceptState, rule: str, action: str, reason: str,
+              **extra) -> Decision:
+    """Ask the next fresh question (not yet asked in this pass): a fresh pending, on a clean board. When every
+    question has been asked, R9: the concept is marked for review, as after too many reteaches."""
+    check_id = next_check_id(cur.concepts[state.concept_id], state.last_check_id, state.checks_seen)
+    if check_id is None:
+        state.status, state.pending = "needs_review", None
+        return make_decision("R9", "needs_review", state, f"{reason} Every question has been asked, so this concept "
+                             "is marked for review next session.", mistake=extra.get("mistake"),
+                             resume_concept_id=resume_next(after, cur), clear_board=True)
     state.status, state.pending, state.last_check_id = "checking", Pending(check_id), check_id
+    state.checks_seen.append(check_id)
     return make_decision(rule, action, state, reason, ask_check_id=check_id, clear_board=True, **extra)
 
 

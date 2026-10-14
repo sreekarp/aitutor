@@ -245,12 +245,12 @@ def get_check(concept: Concept, check_id: str | None) -> Check | None:
     return next((check for check in concept.checks if check.id == check_id), None)
 
 
-def next_check_id(concept: Concept, last_check_id: str | None) -> str:
-    """The check after last_check_id in file order, wrapping round. None or an unknown id gives check 1."""
+def next_check_id(concept: Concept, last_check_id: str | None, seen: list[str] = ()) -> str | None:
+    """The first check after last_check_id in file order, wrapping round, that isn't in `seen` (None once every
+    check is). None or an unknown last_check_id starts from check 1."""
     ids = [check.id for check in concept.checks]
-    if last_check_id not in ids:
-        return ids[0]
-    return ids[(ids.index(last_check_id) + 1) % len(ids)]
+    start = ids.index(last_check_id) + 1 if last_check_id in ids else 0
+    return next((check_id for check_id in ids[start:] + ids[:start] if check_id not in seen), None)
 
 
 def ask_segment(check: Check, formulas: dict[str, str]) -> Segment:

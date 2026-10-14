@@ -9,8 +9,8 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import Engine
 
-from app import board, compose, curriculum, db, engine, fallback, llm_steps, replies, safety, sessions, stops
-from app.config import MAX_INPUT_CHARS, MODELS, PROMPT_VERSIONS, SESSION_GAP_MIN, TURN_DEADLINE_S, Settings
+from app import board, compose, curriculum, db, engine, fallback, llm_steps, replies, rollout, safety, sessions, stops
+from app.config import MAX_INPUT_CHARS, SESSION_GAP_MIN, TURN_DEADLINE_S, Settings
 from app.models import (LLM_ACTIONS, Curriculum, Decision, Grade, Progress, Segment, TurnContext, TurnResult,
                         Understood)
 from app.replies import APOLOGIES, DIDNT_CATCH, DIDNT_FOLLOW, MISHEARD, SAFETY_REPLY, SORRY
@@ -70,10 +70,11 @@ class Tutor:
             session = db.latest_session(conn, student_id)
             last = db.last_turn(conn, session["id"]) if session else None
             new_session = not _recent(last)
-            if new_session:
-                models = {"mode": "scripted"} if self.scripted else MODELS
+            if new_session:                             # the live versions, or a staged rollout's (rollout.py)
+                versions, models = rollout.choose(student_id)
                 session = db.create_session(conn, student_id, curriculum_version=self.cur.version,
-                                            prompt_versions=PROMPT_VERSIONS, models=models)
+                                            prompt_versions=versions,
+                                            models={"mode": "scripted"} if self.scripted else models)
         return session, new_session, last
 
     def _words(self, ctx: TurnContext, decision: Decision, after: Progress) -> list[Segment]:
@@ -180,6 +181,7 @@ class Tutor:
             text=text, last_speech=said, previous_reason=last["reason"] if last else "",
             board=board_now, deadline=started + TURN_DEADLINE_S, calls=calls, issues=list(issues),
             latency=latency, scripted=self.scripted, stopped=stops.find(last))
+        ctx.prompt_versions, ctx.models = rollout.pinned(session)    # the session's versions, kept to its end
         return ctx, replaced
 
     def _read(self, ctx: TurnContext, unreadable: bool) -> Understood:
@@ -215,7 +217,7 @@ class Tutor:
                "tutor_output": {"segments": [segment.model_dump() for segment in segments],     # for a stop later:
                                 "board_before": [asdict(line) for line in ctx.board],         # the board it began
                                 "choices": [asdict(choice) for choice in choices]},           # on, and its buttons
-               "versions": {"curriculum": self.cur.version, **PROMPT_VERSIONS},
+               "versions": {"curriculum": self.cur.version, **ctx.prompt_versions},
                "latency_ms": ctx.latency, "calls": ctx.calls, "issues": ctx.issues}
         with self.db_engine.begin() as conn:
             if decision.rule != "LIMIT":                  # LIMIT: nothing else changes

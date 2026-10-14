@@ -15,7 +15,7 @@ import time
 
 import httpx
 
-from app.config import (BREAKER_COOLDOWN_S, BREAKER_FAILURES, LLM_TIMEOUT_S, MIN_AUDIO_BYTES, MODELS,
+from app.config import (BREAKER_COOLDOWN_S, BREAKER_FAILURES, LLM_TIMEOUT_S, MIN_AUDIO_BYTES, MODELS, ROLE_TIMEOUT_S,
                         OPENROUTER_URL, STT_TIMEOUT_S, TTS_INSTRUCTIONS, TTS_TIMEOUT_S)
 
 log = logging.getLogger(__name__)
@@ -43,18 +43,21 @@ class Client:
         self.skip_until: dict[str, float] = {}    # model id -> skipped until this time
 
     def chat_json(self, role: str, messages: list[dict], schema_name: str, schema: dict,
-                  validate, *, deadline: float, calls: list[dict]):
-        """Ask the role's model for JSON and return validate(reply). Raises ProviderError or BadOutputError."""
+                  validate, *, deadline: float, calls: list[dict], models: list[dict] | None = None):
+        """Ask the role's model for JSON and return validate(reply). Raises ProviderError or BadOutputError.
+        `models` are the session's for this role (rollout.pinned); None means the live MODELS[role]."""
         response_format = {"type": "json_schema",
                            "json_schema": {"name": schema_name, "strict": True, "schema": schema}}
-        models = self._models(role, calls)
+        configured = models or MODELS[role]
+        models = self._models(role, calls, configured)
         model, retried = models[0], False
         for attempt in (1, 2):
             body = {"model": model["id"], "messages": messages, "response_format": response_format,
                     "provider": {"require_parameters": True}, **model["params"]}
             try:
-                content = self._post(role, model, "/chat/completions", body, LLM_TIMEOUT_S, deadline,
-                                     calls, read=_chat_content, retried=retried)
+                limit = ROLE_TIMEOUT_S.get(role, LLM_TIMEOUT_S)
+                content = self._post(role, model, "/chat/completions", body, limit, deadline,
+                                     calls, read=_chat_content, retried=retried, primary=configured[0]["id"])
             except ProviderError:
                 if attempt == 2 or len(models) == 1:
                     raise
@@ -100,10 +103,10 @@ class Client:
                 if model is models[-1]:
                     raise
 
-    def _post(self, role, model, path, body, limit, deadline, calls, *, read, retried=False):
+    def _post(self, role, model, path, body, limit, deadline, calls, *, read, retried=False, primary=None):
         """Send one request and return read(response). Logs it in `calls`, updates the breaker, and
         raises ProviderError for any provider problem, or when no time is left (without calling)."""
-        entry = _entry(role, model["id"], "skipped", retried)
+        entry = _entry(role, model["id"], "skipped", retried, primary)
         calls.append(entry)
         timeout = min(limit, deadline - self.now())
         if timeout <= 0:
@@ -125,12 +128,13 @@ class Client:
         self.failures[model["id"]] = 0
         return result
 
-    def _models(self, role: str, calls: list[dict]) -> list[dict]:
-        """The role's models, primary first, minus those whose breaker is open (logged as skipped)."""
-        usable = []
-        for model in MODELS[role][:2]:
+    def _models(self, role: str, calls: list[dict], configured: list[dict] | None = None) -> list[dict]:
+        """The role's models (configured, else MODELS[role]), primary first, minus those whose breaker is open
+        (logged as skipped)."""
+        configured, usable = configured or MODELS[role], []
+        for model in configured[:2]:
             if self.now() < self.skip_until.get(model["id"], 0.0):
-                calls.append(_entry(role, model["id"], "skipped"))
+                calls.append(_entry(role, model["id"], "skipped", primary=configured[0]["id"]))
             else:
                 usable.append(model)
         if not usable:
@@ -155,10 +159,10 @@ def audio_format(mime: str) -> str:
     return AUDIO_FORMATS.get(base, base.split("/")[-1])
 
 
-def _entry(role: str, model_id: str, outcome: str, retried: bool = False) -> dict:
+def _entry(role: str, model_id: str, outcome: str, retried: bool = False, primary: str | None = None) -> dict:
     """One record for `calls`; ms, tokens and cost are filled in after the request."""
     return {"role": role, "model": model_id, "ms": 0, "outcome": outcome, "retried": retried,
-            "backup_used": model_id != MODELS[role][0]["id"], "tokens": None, "cost": None}
+            "backup_used": model_id != (primary or MODELS[role][0]["id"]), "tokens": None, "cost": None}
 
 
 def _json_body(response: httpx.Response) -> dict:

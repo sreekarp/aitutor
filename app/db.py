@@ -10,7 +10,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from sqlalchemy import (JSON, Column, DateTime, Engine, Float, ForeignKey, Integer, MetaData, Table, Text,
-                        UniqueConstraint, create_engine, func, select)
+                        UniqueConstraint, create_engine, func, inspect, select, text)
 from sqlalchemy.engine import make_url
 from sqlalchemy.pool import StaticPool
 
@@ -50,6 +50,7 @@ progress_table = Table(
     Column("last_check_id", Text),
     Column("reteach_count", Integer),
     Column("strategies_tried", JSON),
+    Column("checks_seen", JSON),                 # question ids asked in this pass
     Column("curriculum_version", Text),
     Column("updated_at", DateTime(timezone=True)),
 )
@@ -106,7 +107,7 @@ def with_driver(url: str) -> str:
 
 
 def connect(url: str) -> Engine:
-    """Open the database: create the SQLite file's folder if missing, then any missing tables."""
+    """Open the database: create the SQLite file's folder if missing, then any missing tables and columns."""
     url = with_driver(url)
     parsed = make_url(url)
     options = {}
@@ -120,7 +121,15 @@ def connect(url: str) -> Engine:
         options = {"pool_pre_ping": True}   # a hosted database (Neon) closes idle connections: test before reuse
     engine = create_engine(url, **options)
     metadata.create_all(engine)
+    add_columns(engine)
     return engine
+
+
+def add_columns(engine: Engine) -> None:
+    """create_all never changes an existing table, so a column added after a table went live is added here."""
+    if "checks_seen" not in {column["name"] for column in inspect(engine).get_columns("progress")}:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE progress ADD COLUMN checks_seen JSON"))
 
 
 def _now() -> datetime:
@@ -168,7 +177,8 @@ def load_progress(conn, student_id: str, cur: Curriculum) -> Progress:
             progress[concept_id] = ConceptState(
                 concept_id=concept_id, status=row.status, step_id=row.step_id, points=row.points,
                 pending=Pending(**row.pending) if row.pending else None, last_check_id=row.last_check_id,
-                reteach_count=row.reteach_count, strategies_tried=list(row.strategies_tried or []))
+                reteach_count=row.reteach_count, strategies_tried=list(row.strategies_tried or []),
+                checks_seen=list(row.checks_seen or []))
     return progress
 
 
@@ -178,7 +188,8 @@ def save_progress(conn, student_id: str, progress: Progress, curriculum_version:
         values = {"status": state.status, "step_id": state.step_id, "points": state.points,
                   "pending": asdict(state.pending) if state.pending else None,
                   "last_check_id": state.last_check_id, "reteach_count": state.reteach_count,
-                  "strategies_tried": list(state.strategies_tried), "curriculum_version": curriculum_version,
+                  "strategies_tried": list(state.strategies_tried), "checks_seen": list(state.checks_seen),
+                  "curriculum_version": curriculum_version,
                   "updated_at": _now()}
         same_row = (progress_table.c.student_id == student_id) & (progress_table.c.concept_id == state.concept_id)
         if conn.execute(progress_table.update().where(same_row).values(**values)).rowcount == 0:
@@ -257,8 +268,7 @@ def last_turn(conn, session_id: str) -> dict | None:
 
 
 def save_stop(conn, turn_id: str, student_id: str, heard: int, shown: int) -> None:
-    """Keep how many of a turn's segments were said, and shown, before the student stopped it (a later stop replaces
-    it)."""
+    """Keep how many of a turn's segments were said, and shown, before the student stopped it (the latest wins)."""
     conn.execute(stops_table.delete().where(stops_table.c.turn_id == turn_id))
     conn.execute(stops_table.insert().values(turn_id=turn_id, student_id=student_id, heard=heard, shown=shown,
                                              created_at=_now()))
