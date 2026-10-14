@@ -42,7 +42,10 @@
   tests: No points without proof.
   profile: >
     You are confident and want to finish fast. After the first example you say "I get it" and ask to
-    move on. Your answers are often wrong, and the first time you are corrected you insist you were right.
+    move on. You never check an answer by putting it back. Whenever a question lets you make one of your
+    mistakes, you make it, and the first time you are corrected you insist you were right.
+  # The first mistake shows on factorisation's second question (3x² - 5x - 2 = 0); the second only on its
+  # fifth, which a student who answers two questions right never reaches.
   mistakes:
+    - "When the x squared term has a number in front, splitting the middle term with two numbers that multiply to the last number instead of a times c: for 3x squared minus 5x minus 2 you look for two numbers that multiply to minus 2."
     - "Factorising before getting zero on one side: for x(x - 5) = 14 you say x = 14 or x = 19."
-    - "Dividing both sides by x, which loses the root x = 0."

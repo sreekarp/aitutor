@@ -480,6 +480,34 @@ Pairs keep each other honest: mastery with retained mastery, engagement with lea
 that entertains without teaching scores well on one and badly on the other), and cost with
 time to first audio (cheaper models can't be allowed to make the tutor feel slow).
 
+**Simulations, 14 Oct** (`uv run python -m sims` on factorisation, the version in use: 88 model calls,
+$0.025; the transcripts are in `sims/examples/`):
+
+| Student | Turns | Hints | Reteaches | Outcome | False advances |
+| --- | --- | --- | --- | --- | --- |
+| Fast learner | 3 | 0 | 0 | mastered | 0 |
+| Sign-flipper | 15 | 0 | 3 | mastered | 2 |
+| Guesser | 10 | 0 | 0 | mastered | 0 |
+| Overconfident | 10 | 0 | 1 | mastered | 0 |
+
+What they showed:
+- **Working as designed:** "test me" and two right answers is mastery in 3 turns. A bare answer gets
+  "how did you get that?" and earns nothing until the working comes (the guesser, twice). Five "I get
+  it, can we move on?" earned no points (the overconfident student).
+- **Mastery counts right answers, not a run of them.** The sign-flipper flipped signs on 3 of 5 questions
+  (wrong, right, wrong, wrong, right), had 3 reteaches, and was still marked mastered. Its 2 false advances
+  are the two points given while it said it still flipped signs. "Two right answers in a row" (Stage 2,
+  fair passing) is the fix.
+- **While teaching, a mistake the LLM names isn't checked.** The sign-flipper offered its own example,
+  (x - 3)(x + 2) = 0 so x = 3 or x = -2, which is right. UNDERSTAND named `sign_flip`, the teaching rule
+  took that at its word (no question is open, so SymPy has nothing to grade), and RESPOND told the
+  student twice that the middle sign was wrong, until the student changed to a wrong answer. Only board
+  lines are checked, not spoken maths.
+- **UNDERSTAND can read the working as the answer.** "The numbers are minus 2 and minus 3 … so x is 2
+  or 3" was read as "-2, -3", graded wrong, and retaught (the overconfident student): the reverse of
+  "UNDERSTAND can tidy up a wrong answer" below. The scripted re-check doesn't catch it, since it reads
+  the text before "because" too.
+
 ---
 
 ## 6. What's ugly
@@ -614,9 +642,11 @@ Known gaps, after the build:
   (most often digits in a words line); after the fixes of 13 Oct (example equations, words for small
   numbers, a 4th segment, ± lines) 5 of 66 eval turns were, and 4 fell back to scripted words. The student
   never sees a bad line, but each rejection costs about 2 s. Reteaches fail most: they write the most maths.
-- **The simulated students drift.** The "overconfident" student answered both questions right with
-  working, so that run tested nothing about over-confidence; false advances count only what the
-  student model admits to.
+- **The simulated students drift.** On 12 Oct the "overconfident" student answered both questions right
+  with working, so that run tested nothing about over-confidence: its mistakes only showed on
+  factorisation's fifth and sixth questions, which a student with two right answers never reaches. Its
+  first mistake now shows on the second question. Students still answer right while saying they hold the
+  mistake (the sign-flipper, 14 Oct), and false advances count only what the student model admits to.
 
 With two more days: measure a real voice session and act on it, stream LLM output into segments,
 add barge-in, check a student's spoken working for the exact slip, and run ten real students

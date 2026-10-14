@@ -109,7 +109,8 @@ learner, sign-flipper, guesser, overconfident) and talks to the tutor through th
 Options: `--persona ID` (default: all four), `--concept ID` (default `factorisation`; the concepts before
 it start as mastered) and `--turns N` (default 30). Each run is saved in `sims/runs/` as JSON plus a
 Markdown transcript, and prints one row: turns, hints, reteaches, outcome and **false advances** (points
-given while the simulated student still held its mistake).
+given while the simulated student still held its mistake). The four transcripts of 14 Oct are in
+`sims/examples/`, to read without a key; DESIGN.md (Metrics) has their results and what they showed.
 
 ## Demo: the evals catch a broken prompt
 
